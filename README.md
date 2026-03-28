@@ -1,7 +1,3 @@
-Based on the uploaded files for **Shiva Sniper v6.5**, here is the documentation and the content for a comprehensive `README.md` to complete your repository. 
-
----
-
 # Shiva Sniper v6.5 — Python Trading Bot
 **High-performance intraday & swing trading bot for Delta Exchange India.**
 
