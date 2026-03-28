@@ -1,0 +1,28 @@
+[Unit]
+Description=Shiva Sniper Bot v6.5
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/app/shiva_sniper_bot
+EnvironmentFile=/app/shiva_sniper_bot/.env
+ExecStart=/usr/bin/python3 /app/shiva_sniper_bot/main.py
+
+# Restart on crash — wait 10s between restarts
+Restart=on-failure
+RestartSec=10s
+
+# Output to journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=shiva_sniper
+
+# Resource limits
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

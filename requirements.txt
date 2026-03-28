@@ -1,0 +1,19 @@
+# Shiva Sniper v6.5 — Python dependencies
+# Generated for Hostinger VPS (Ubuntu 24.04, Python 3.12)
+
+# Exchange connectivity
+ccxt==4.4.57
+
+# Async HTTP (aiohttp for dashboard server + Telegram)
+aiohttp==3.11.11
+
+# Data / indicators
+pandas==2.2.3
+pandas-ta==0.3.14b0
+numpy==1.26.4
+
+# PostgreSQL driver (optional — only needed if DATABASE_URL is set)
+psycopg2-binary==2.9.10
+
+# Environment variables from .env file
+python-dotenv==1.0.1

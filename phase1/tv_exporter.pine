@@ -1,0 +1,45 @@
+// ============================================================
+// TV EXPORTER — Shiva Sniper v6.5 Indicator Verification
+// PURPOSE: Export exact TV indicator values so you can compare
+//          bar-by-bar against the Python bot output.
+//
+// HOW TO USE:
+//   1. Add this script to the SAME chart + timeframe as your bot
+//   2. Open "Data Window" (right panel) → see values per bar
+//   3. Or use TV's built-in CSV export:
+//      Right-click chart → Download historical data → includes all plots
+//   4. Compare exported CSV against phase1/data/*_indicators.csv
+// ============================================================
+//@version=5
+indicator("Shiva Sniper v6.5 — TV Exporter", overlay=false)
+
+// ── Inputs (must match config.py exactly) ───────────────────
+emaTrendLen = input.int(200, "EMA Trend Length")
+emaFastLen  = input.int(50,  "EMA Fast Length")
+atrLen      = input.int(14,  "ATR Length")
+diLen       = input.int(14,  "DI Length")
+adxSmooth   = input.int(14,  "ADX Smoothing")
+adxEMA      = input.int(5,   "ADX EMA")
+rsiLen      = input.int(14,  "RSI Length")
+
+// ── Indicators ───────────────────────────────────────────────
+emaTrend         = ta.ema(close, emaTrendLen)
+emaFast          = ta.ema(close, emaFastLen)
+atr              = ta.atr(atrLen)
+rsi              = ta.rsi(close, rsiLen)
+[dip, dim, adxRaw] = ta.dmi(diLen, adxSmooth)
+adx              = ta.ema(adxRaw, adxEMA)
+volSMA           = ta.sma(volume, 20)
+atrSMA           = ta.sma(atr, 50)
+
+// ── Plots (visible in Data Window + CSV export) ──────────────
+plot(emaTrend, title="ema200",   color=color.orange)
+plot(emaFast,  title="ema50",    color=color.blue)
+plot(atr,      title="atr",      color=color.yellow)
+plot(rsi,      title="rsi",      color=color.purple)
+plot(dip,      title="dip",      color=color.green)
+plot(dim,      title="dim",      color=color.red)
+plot(adxRaw,   title="adx_raw",  color=color.gray)
+plot(adx,      title="adx",      color=color.white)
+plot(volSMA,   title="vol_sma",  color=color.teal)
+plot(atrSMA,   title="atr_sma",  color=color.lime)

@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shiva Sniper v6.5 — Dashboard</title>
+<style>
+/* ── CSS Variables ── */
+:root {
+  --bg:        #0b0d11;
+  --bg-card:   #12151c;
+  --bg-card2:  #181c26;
+  --border:    rgba(255,255,255,0.06);
+  --border-hi: rgba(255,255,255,0.12);
+  --text-1:    #f0f2f5;
+  --text-2:    #8b92a4;
+  --text-3:    #555e70;
+  --accent-g:  #00d97e;
+  --accent-r:  #ff4d6d;
+  --accent-b:  #4da6ff;
+  --accent-y:  #ffd166;
+  --accent-p:  #c77dff;
+  --font-mono: 'Space Mono', 'Courier New', monospace;
+  --font-sans: 'Inter', 'Segoe UI', sans-serif;
+}
+[data-theme="light"] {
+  --bg:        #f4f6fa;
+  --bg-card:   #ffffff;
+  --bg-card2:  #f0f2f8;
+  --border:    rgba(0,0,0,0.07);
+  --border-hi: rgba(0,0,0,0.14);
+  --text-1:    #111827;
+  --text-2:    #4b5563;
+  --text-3:    #9ca3af;
+}
+
+/* ── Reset / Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+a { color: var(--accent-b); text-decoration: none; }
+.mono { font-family: var(--font-mono); font-size: 12px; }
+
+/* ── Layout ── */
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px; height: 56px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+.topbar-left { display: flex; align-items: center; gap: 14px; }
+.logo { font-family: var(--font-mono); font-size: 15px; font-weight: 700; letter-spacing: 0.5px; color: var(--text-1); }
+.logo span { color: var(--accent-g); }
+.version { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); padding: 2px 7px; border: 1px solid var(--border-hi); border-radius: 4px; }
+
+.status-badge {
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 12px; border-radius: 6px; border: 1px solid;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  background: rgba(0,217,126,0.08); border-color: rgba(0,217,126,0.25); color: var(--accent-g);
+}
+.status-badge.live { animation: pulse-border 2s ease-in-out infinite; }
+.status-badge .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent-g);
+}
+.status-badge.live .dot { animation: blink 1.2s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+@keyframes pulse-border { 0%,100%{border-color:rgba(0,217,126,0.25)} 50%{border-color:rgba(0,217,126,0.55)} }
+
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.clock { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
+.api-tag { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); opacity: 0.7; }
+
+/* Theme toggle */
+.toggle-wrap { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.toggle-wrap input { display: none; }
+.toggle-track {
+  width: 36px; height: 20px; background: var(--bg-card2); border: 1px solid var(--border-hi);
+  border-radius: 10px; position: relative; transition: background 0.2s;
+  cursor: pointer;
+}
+.toggle-track::after {
+  content: ''; position: absolute; left: 3px; top: 3px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--text-2); transition: transform 0.2s, background 0.2s;
+}
+input:checked + .toggle-track { background: rgba(0,217,126,0.15); }
+input:checked + .toggle-track::after { transform: translateX(16px); background: var(--accent-g); }
+
+.main { padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+/* ── Grid ── */
+.grid-kpi { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.grid-2   { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.grid-3   { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+@media(max-width:900px) { .grid-2,.grid-3 { grid-template-columns: 1fr; } }
+
+/* ── Card ── */
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px; position: relative; overflow: hidden;
+}
+.card::before {
+  content: ''; position: absolute; inset: 0; border-radius: 12px;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255,255,255,0.015) 0%, transparent 60%);
+}
+.card-label { font-size: 10px; font-weight: 600; letter-spacing: 1.2px; color: var(--text-3); text-transform: uppercase; margin-bottom: 10px; }
+.card-title { font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 16px; }
+
+/* ── KPI Cards ── */
+.stat-value {
+  font-family: var(--font-mono); font-size: 26px; font-weight: 700;
+  letter-spacing: -0.5px; line-height: 1;
+}
+.stat-value.positive { color: var(--accent-g); }
+.stat-value.negative { color: var(--accent-r); }
+.stat-value.neutral  { color: var(--text-1); }
+.stat-sub { font-size: 11px; color: var(--text-3); margin-top: 5px; font-family: var(--font-mono); }
+
+/* ── Position Card ── */
+.position-card { transition: border-color 0.3s; }
+.position-card.long  { border-color: rgba(0,217,126,0.25) !important; }
+.position-card.short { border-color: rgba(255,77,109,0.25) !important; }
+.position-card.none  { border-color: var(--border); }
+.pos-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 5px; border: 1px solid;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+.pos-badge.long  { background: rgba(0,217,126,0.08); border-color: rgba(0,217,126,0.3); color: var(--accent-g); }
+.pos-badge.short { background: rgba(255,77,109,0.08); border-color: rgba(255,77,109,0.3); color: var(--accent-r); }
+.pos-badge.none  { background: rgba(255,255,255,0.04); border-color: var(--border-hi); color: var(--text-3); }
+
+.pos-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; margin-bottom: 16px; }
+.pos-row { display: flex; flex-direction: column; gap: 2px; }
+.pos-lbl { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.8px; }
+.pos-val { font-family: var(--font-mono); font-size: 14px; color: var(--text-1); }
+.pos-pl {
+  font-family: var(--font-mono); font-size: 20px; font-weight: 700;
+  padding: 10px 0 4px;
+}
+.pos-pl.positive { color: var(--accent-g); }
+.pos-pl.negative { color: var(--accent-r); }
+.pos-pl.neutral  { color: var(--text-2); }
+
+/* Trail stage pips */
+.trail-label { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+.trail-pips { display: flex; gap: 5px; }
+.trail-stage-pip {
+  flex: 1; height: 5px; border-radius: 3px;
+  background: var(--bg-card2); border: 1px solid var(--border-hi);
+  transition: background 0.3s, border-color 0.3s;
+}
+.trail-stage-pip.done   { background: rgba(0,217,126,0.3); border-color: rgba(0,217,126,0.4); }
+.trail-stage-pip.active { background: var(--accent-g); border-color: var(--accent-g); box-shadow: 0 0 6px rgba(0,217,126,0.4); }
+
+/* ── Win Rate Ring ── */
+.ring-wrap { display: flex; align-items: center; gap: 20px; }
+.ring-svg { flex-shrink: 0; }
+#ring-fill { transition: stroke-dashoffset 0.8s ease, stroke 0.5s; }
+.ring-stats { display: flex; flex-direction: column; gap: 6px; }
+.ring-pct { font-family: var(--font-mono); font-size: 28px; font-weight: 700; color: var(--text-1); }
+.ring-sub-text { font-size: 11px; color: var(--text-3); }
+.ring-wl { display: flex; gap: 14px; margin-top: 4px; }
+.ring-wl-item { font-family: var(--font-mono); font-size: 12px; }
+.ring-wl-item.w { color: var(--accent-g); }
+.ring-wl-item.l { color: var(--accent-r); }
+
+/* ── Charts ── */
+canvas { display: block; }
+.chart-wrap { padding: 4px 0; }
+
+/* ── Table ── */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  font-size: 10px; font-weight: 600; color: var(--text-3); text-transform: uppercase;
+  letter-spacing: 0.8px; padding: 8px 10px; text-align: left;
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+td {
+  padding: 9px 10px; border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--text-1); white-space: nowrap;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,0.02); }
+td.win { color: var(--accent-g); font-weight: 600; }
+td.loss { color: var(--accent-r); font-weight: 600; }
+td.dir-long  { color: var(--accent-g); font-weight: 700; font-family: var(--font-mono); }
+td.dir-short { color: var(--accent-r); font-weight: 700; font-family: var(--font-mono); }
+.empty { text-align: center; padding: 40px 0; }
+.empty-icon { font-size: 28px; margin-bottom: 8px; }
+.empty-text { color: var(--text-3); font-size: 13px; }
+
+/* ── Donut legend ── */
+.donut-wrap { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-2); }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── Summary row ── */
+.summary-row { display: flex; gap: 24px; flex-wrap: wrap; padding: 12px 0; }
+.summary-item { display: flex; flex-direction: column; gap: 2px; }
+.summary-lbl { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.8px; }
+.summary-val { font-family: var(--font-mono); font-size: 14px; color: var(--text-1); }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ── TOPBAR ── -->
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="logo">SHIVA<span>.</span>SNIPER</div>
+    <div class="version">v6.5</div>
+    <div class="status-badge" id="bot-status">
+      <span class="dot"></span>
+      <span id="status-text">CONNECTING</span>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="clock" id="clock">--:-- -- IST</div>
+    <div class="api-tag" id="api-url-display"></div>
+    <label class="toggle-wrap" title="Toggle theme">
+      <input type="checkbox" id="theme-check">
+      <div class="toggle-track"></div>
+      <span id="thumb-icon" style="font-size:13px">🌙</span>
+    </label>
+  </div>
+</header>
+
+<main class="main">
+
+  <!-- KPI Row -->
+  <div class="grid-kpi">
+    <div class="card">
+      <div class="card-label">Total Trades</div>
+      <div class="stat-value neutral" id="kpi-total">—</div>
+      <div class="stat-sub" id="kpi-sub-total">—W · —L</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Win Rate</div>
+      <div class="stat-value neutral" id="kpi-winrate">—%</div>
+      <div class="stat-sub">vs 50% breakeven</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Total P/L (USDT)</div>
+      <div class="stat-value neutral" id="kpi-pl">—</div>
+      <div class="stat-sub">cumulative net</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Best Trade</div>
+      <div class="stat-value positive" id="kpi-best">—</div>
+      <div class="stat-sub">single trade</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Worst Trade</div>
+      <div class="stat-value negative" id="kpi-worst">—</div>
+      <div class="stat-sub">single trade</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Trail Stage</div>
+      <div class="stat-value neutral" id="kpi-stage">—</div>
+      <div class="stat-sub">active position</div>
+    </div>
+  </div>
+
+  <!-- Position + Win Rate -->
+  <div class="grid-2">
+
+    <!-- Open Position -->
+    <div class="card position-card none" id="pos-card">
+      <div class="card-title">Open Position</div>
+      <div class="pos-badge none" id="pos-badge">⬛ NO POSITION</div>
+      <div class="pos-grid">
+        <div class="pos-row">
+          <div class="pos-lbl">Entry</div>
+          <div class="pos-val mono" id="pos-entry">—</div>
+        </div>
+        <div class="pos-row">
+          <div class="pos-lbl">Current SL</div>
+          <div class="pos-val mono" id="pos-sl" style="color:var(--accent-r)">—</div>
+        </div>
+        <div class="pos-row">
+          <div class="pos-lbl">TP</div>
+          <div class="pos-val mono" id="pos-tp" style="color:var(--accent-g)">—</div>
+        </div>
+        <div class="pos-row">
+          <div class="pos-lbl">ATR</div>
+          <div class="pos-val mono" id="pos-atr">—</div>
+        </div>
+      </div>
+      <div class="pos-pl neutral" id="pos-pl">+0.00 USDT</div>
+      <div class="trail-label" id="trail-label">Trail Stage: —</div>
+      <div class="trail-pips">
+        <div class="trail-stage-pip" data-s="1"></div>
+        <div class="trail-stage-pip" data-s="2"></div>
+        <div class="trail-stage-pip" data-s="3"></div>
+        <div class="trail-stage-pip" data-s="4"></div>
+        <div class="trail-stage-pip" data-s="5"></div>
+      </div>
+    </div>
+
+    <!-- Win Rate Ring -->
+    <div class="card">
+      <div class="card-title">Win Rate</div>
+      <div class="ring-wrap">
+        <svg class="ring-svg" width="140" height="140" viewBox="0 0 140 140">
+          <circle cx="70" cy="70" r="54" fill="none" stroke="var(--bg-card2)" stroke-width="12"/>
+          <circle id="ring-fill" cx="70" cy="70" r="54" fill="none"
+            stroke="var(--accent-g)" stroke-width="12"
+            stroke-dasharray="339.3" stroke-dashoffset="339.3"
+            stroke-linecap="round" transform="rotate(-90 70 70)"/>
+          <text id="ring-pct" x="70" y="66" text-anchor="middle"
+            font-family="Space Mono, monospace" font-size="18" font-weight="700"
+            fill="var(--text-1)">—%</text>
+          <text x="70" y="84" text-anchor="middle"
+            font-family="Inter, sans-serif" font-size="10"
+            fill="var(--text-3)">WIN RATE</text>
+        </svg>
+        <div class="ring-stats">
+          <div class="ring-pct" id="ring-pct-big">—%</div>
+          <div class="ring-sub-text" id="ring-sub">— / — trades</div>
+          <div class="ring-wl">
+            <div class="ring-wl-item w">✓ <span id="ring-wins">0</span> wins</div>
+            <div class="ring-wl-item l">✗ <span id="ring-losses">0</span> losses</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts Row -->
+  <div class="grid-3">
+    <div class="card" style="grid-column:span 2">
+      <div class="card-title">Cumulative P/L (USDT)</div>
+      <div class="chart-wrap"><canvas id="pl-chart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Signal Mix</div>
+      <div class="donut-wrap">
+        <canvas id="donut-chart" width="140" height="140"></canvas>
+        <div id="donut-legend"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bar Chart -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-title">Last 20 Trades — P/L Bars</div>
+    <div class="chart-wrap"><canvas id="bar-chart"></canvas></div>
+  </div>
+
+  <!-- Trade History -->
+  <div class="card">
+    <div class="card-title">Trade History</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Time (IST)</th>
+            <th>Signal</th>
+            <th>Dir</th>
+            <th>Entry</th>
+            <th>Exit</th>
+            <th>SL</th>
+            <th>TP</th>
+            <th>Stage</th>
+            <th>Reason</th>
+            <th>P/L</th>
+          </tr>
+        </thead>
+        <tbody id="trade-table-body">
+          <tr><td colspan="11"><div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No trades yet</div></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   THEME TOGGLE
+══════════════════════════════════════════════════════════════ */
+const html  = document.documentElement;
+const check = document.getElementById('theme-check');
+const thumb = document.getElementById('thumb-icon');
+
+function applyTheme(dark) {
+  html.setAttribute('data-theme', dark ? 'dark' : 'light');
+  thumb.textContent = dark ? '🌙' : '☀️';
+  check.checked = !dark;
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+  if (_allTrades.length) redrawCharts();
+}
+check.addEventListener('change', () => applyTheme(!check.checked));
+const saved = localStorage.getItem('theme') || 'dark';
+applyTheme(saved === 'dark');
+
+/* ── Clock (IST) ── */
+function tick() {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true }) + ' IST';
+}
+tick(); setInterval(tick, 1000);
+
+/* ══════════════════════════════════════════════════════════════
+   DEMO DATA (fallback when API offline)
+══════════════════════════════════════════════════════════════ */
+function makeDemoData() {
+  const types   = ['Trend Long','Trend Short','Range Long','Range Short'];
+  const reasons = ['TP','SL','Trail S3','Trail S4','Trail S5','Max SL','BE'];
+  const trades  = [];
+  let entry = 68000;
+  const now = Date.now();
+  for (let i = 0; i < 22; i++) {
+    const isLong  = Math.random() > 0.5;
+    const isTrend = Math.random() > 0.5;
+    const atr     = 350 + Math.random() * 200;
+    const stop    = atr * (isTrend ? 0.6 : 0.5);
+    const tp      = entry + stop * (isTrend ? 4 : 2.5) * (isLong ? 1 : -1);
+    const sl      = entry - stop * (isLong ? 1 : -1);
+    const pl      = (Math.random() > 0.38 ? 1 : -1) * (Math.random() * 800 + 40);
+    const exit_px = isLong ? entry + pl / 30 : entry - pl / 30;
+    trades.push({
+      ts: new Date(now - (22-i)*4*3600000).toISOString(),
+      signal_type: types[Math.floor(Math.random()*types.length)],
+      is_long: isLong,
+      entry_price: +entry.toFixed(1),
+      exit_price:  +exit_px.toFixed(1),
+      sl:          +sl.toFixed(1),
+      tp:          +tp.toFixed(1),
+      atr:         +atr.toFixed(1),
+      qty: 30,
+      real_pl:     +pl.toFixed(2),
+      exit_reason: reasons[Math.floor(Math.random()*reasons.length)],
+      trail_stage: Math.floor(Math.random()*5),
+    });
+    entry += (Math.random()-0.5)*600;
+  }
+  const wins  = trades.filter(t=>t.real_pl>0).length;
+  const losses= trades.length - wins;
+  return {
+    summary: {
+      total: trades.length, wins, losses,
+      total_pl: +trades.reduce((s,t)=>s+t.real_pl,0).toFixed(2),
+      best:  Math.max(...trades.map(t=>t.real_pl)),
+      worst: Math.min(...trades.map(t=>t.real_pl)),
+      win_rate: +((wins/trades.length)*100).toFixed(1),
+    },
+    trades,
+    open_trade: null,
+    bot_status: { status: 'offline' },
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════
+   API FETCH
+══════════════════════════════════════════════════════════════ */
+const API_BASE = window.location.protocol === 'file:'
+  ? 'http://localhost:10000'
+  : window.location.origin;
+document.getElementById('api-url-display').textContent = API_BASE;
+
+async function fetchData() {
+  try {
+    const [sumRes, tradesRes, posRes, statusRes] = await Promise.all([
+      fetch(`${API_BASE}/api/summary`,        {signal: AbortSignal.timeout(4000)}),
+      fetch(`${API_BASE}/api/trades?limit=50`,{signal: AbortSignal.timeout(4000)}),
+      fetch(`${API_BASE}/api/position`,       {signal: AbortSignal.timeout(4000)}),
+      fetch(`${API_BASE}/api/status`,         {signal: AbortSignal.timeout(4000)}),
+    ]);
+    if (!sumRes.ok) throw new Error('API unavailable');
+    return {
+      summary:    await sumRes.json(),
+      trades:     await tradesRes.json(),
+      open_trade: posRes.ok ? await posRes.json() : null,
+      bot_status: statusRes.ok ? await statusRes.json() : { status: 'offline' },
+    };
+  } catch {
+    return makeDemoData();
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CHART HELPERS
+══════════════════════════════════════════════════════════════ */
+function cssVar(v) {
+  return getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+}
+
+function drawLineChart(canvasId, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || !data.length) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.parentElement.clientWidth - 32;
+  const H = 170;
+  canvas.width = W*dpr; canvas.height = H*dpr;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
+
+  const pad = {t:14,r:14,b:28,l:58};
+  const iW = W-pad.l-pad.r, iH = H-pad.t-pad.b;
+  ctx.clearRect(0,0,W,H);
+
+  const minV = Math.min(0,...data), maxV = Math.max(0,...data);
+  const range = maxV-minV || 1;
+  const toX = i => pad.l + (i/(data.length-1||1))*iW;
+  const toY = v => pad.t + iH - ((v-minV)/range)*iH;
+
+  // Grid lines
+  for (let s=0;s<=4;s++) {
+    const y = pad.t+(s/4)*iH;
+    const v = maxV-(s/4)*range;
+    ctx.strokeStyle = cssVar('--border'); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+iW,y); ctx.stroke();
+    ctx.fillStyle = cssVar('--text-3');
+    ctx.font = '10px Space Mono, monospace'; ctx.textAlign='right';
+    ctx.fillText((v>=0?'+':'')+v.toFixed(0), pad.l-6, y+3);
+  }
+  // Zero line
+  const y0 = toY(0);
+  ctx.strokeStyle=cssVar('--border-hi'); ctx.lineWidth=1.5;
+  ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(pad.l,y0); ctx.lineTo(pad.l+iW,y0); ctx.stroke();
+  ctx.setLineDash([]);
+
+  const finalVal = data[data.length-1];
+  const lineCol  = finalVal >= 0 ? cssVar('--accent-g') : cssVar('--accent-r');
+
+  // Fill
+  const grad = ctx.createLinearGradient(0,pad.t,0,pad.t+iH);
+  grad.addColorStop(0, lineCol+'44'); grad.addColorStop(1, lineCol+'00');
+  ctx.beginPath();
+  ctx.moveTo(toX(0), toY(data[0]));
+  data.forEach((v,i)=>{ if(i>0) ctx.lineTo(toX(i), toY(v)); });
+  ctx.lineTo(toX(data.length-1), pad.t+iH); ctx.lineTo(pad.l, pad.t+iH);
+  ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.strokeStyle=lineCol; ctx.lineWidth=2.5; ctx.lineJoin='round';
+  ctx.moveTo(toX(0), toY(data[0]));
+  data.forEach((v,i)=>{ if(i>0) ctx.lineTo(toX(i), toY(v)); });
+  ctx.stroke();
+
+  // Dots
+  data.forEach((v,i)=>{
+    ctx.beginPath(); ctx.arc(toX(i),toY(v),3,0,Math.PI*2);
+    ctx.fillStyle = v>=0 ? cssVar('--accent-g') : cssVar('--accent-r');
+    ctx.fill();
+  });
+}
+
+function drawBarChart(canvasId, data) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || !data.length) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.parentElement.clientWidth - 32;
+  const H = 140;
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  canvas.style.width=W+'px'; canvas.style.height=H+'px';
+  const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr);
+  const pad={t:8,r:8,b:8,l:8};
+  const iW=W-pad.l-pad.r, iH=H-pad.t-pad.b;
+  ctx.clearRect(0,0,W,H);
+  const values=data.map(t=>t.real_pl);
+  const minV=Math.min(0,...values), maxV=Math.max(0,...values);
+  const range=maxV-minV||1;
+  const barW=Math.max(2, iW/data.length-2);
+  const y0=pad.t+iH-((0-minV)/range)*iH;
+  values.forEach((v,i)=>{
+    const x=pad.l+(i/data.length)*iW+1;
+    const bH=Math.max(1,Math.abs((v/range)*iH));
+    const y=v>=0 ? y0-bH : y0;
+    ctx.fillStyle = v>=0 ? cssVar('--accent-g')+'cc' : cssVar('--accent-r')+'cc';
+    ctx.beginPath(); ctx.roundRect(x,y,barW,bH,2); ctx.fill();
+  });
+  ctx.strokeStyle=cssVar('--border-hi'); ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad.l,y0); ctx.lineTo(pad.l+iW,y0); ctx.stroke();
+}
+
+function drawDonut(canvasId, segments) {
+  const canvas=document.getElementById(canvasId);
+  if(!canvas||!segments.length) return;
+  const ctx=canvas.getContext('2d');
+  const cx=70,cy=70,r=52,inner=34;
+  ctx.clearRect(0,0,140,140);
+  const total=segments.reduce((s,g)=>s+g.val,0)||1;
+  let angle=-Math.PI/2;
+  segments.forEach(seg=>{
+    const sweep=(seg.val/total)*2*Math.PI;
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,r,angle,angle+sweep); ctx.closePath();
+    ctx.fillStyle=seg.color; ctx.fill();
+    angle+=sweep;
+  });
+  ctx.beginPath(); ctx.arc(cx,cy,inner,0,Math.PI*2);
+  ctx.fillStyle=cssVar('--bg-card'); ctx.fill();
+  ctx.fillStyle=cssVar('--text-1');
+  ctx.font='bold 15px Space Mono,monospace'; ctx.textAlign='center';
+  ctx.fillText(segments.reduce((s,g)=>s+g.val,0), cx, cy+6);
+}
+
+function drawRing(pct) {
+  const circ=339.3;
+  const fill=document.getElementById('ring-fill');
+  fill.setAttribute('stroke-dashoffset', circ*(1-pct/100));
+  fill.setAttribute('stroke',
+    pct>=60 ? cssVar('--accent-g') : pct>=40 ? cssVar('--accent-y') : cssVar('--accent-r')
+  );
+}
+
+let _allTrades = [];
+
+function redrawCharts() {
+  if (!_allTrades.length) return;
+  let cum=0;
+  const cumData = _allTrades.map(t=>{ cum+=t.real_pl; return +cum.toFixed(2); });
+  drawLineChart('pl-chart', cumData);
+  drawBarChart('bar-chart', _allTrades.slice(-20));
+  const typeMap={};
+  const colors=[
+    cssVar('--accent-g'), cssVar('--accent-r'),
+    cssVar('--accent-b'), cssVar('--accent-y'), cssVar('--accent-p'),
+  ];
+  _allTrades.forEach(t=>{ typeMap[t.signal_type]=(typeMap[t.signal_type]||0)+1; });
+  const segs=Object.entries(typeMap).map(([k,v],i)=>({val:v, color:colors[i%colors.length], label:k}));
+  drawDonut('donut-chart', segs);
+  document.getElementById('donut-legend').innerHTML = segs.map(s=>
+    `<div class="legend-item"><span class="legend-dot" style="background:${s.color}"></span><span>${s.label} <b>(${s.val})</b></span></div>`
+  ).join('');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RENDER UI
+══════════════════════════════════════════════════════════════ */
+function fmt(n, dec=2) { const v=parseFloat(n); return isNaN(v)?'—':v.toFixed(dec); }
+
+function renderKPIs(s) {
+  document.getElementById('kpi-total').textContent = s.total||0;
+  document.getElementById('kpi-sub-total').textContent = `${s.wins||0}W · ${s.losses||0}L`;
+  const wr = s.win_rate||0;
+  const wrEl = document.getElementById('kpi-winrate');
+  wrEl.textContent = wr.toFixed(1)+'%';
+  wrEl.className = 'stat-value '+(wr>=50?'positive':'negative');
+  const plEl = document.getElementById('kpi-pl');
+  const pl = parseFloat(s.total_pl||0);
+  plEl.textContent = (pl>=0?'+':'')+pl.toFixed(2);
+  plEl.className = 'stat-value '+(pl>=0?'positive':'negative');
+  document.getElementById('kpi-best').textContent  = '+'+fmt(s.best);
+  document.getElementById('kpi-worst').textContent = fmt(s.worst);
+  document.getElementById('ring-pct').textContent = wr.toFixed(0)+'%';
+  document.getElementById('ring-pct-big').textContent = wr.toFixed(1)+'%';
+  document.getElementById('ring-sub').textContent = `${s.wins||0} / ${s.total||0} trades`;
+  document.getElementById('ring-wins').textContent   = s.wins||0;
+  document.getElementById('ring-losses').textContent = s.losses||0;
+  drawRing(wr);
+}
+
+function renderPosition(p) {
+  const card  = document.getElementById('pos-card');
+  const badge = document.getElementById('pos-badge');
+  const plEl  = document.getElementById('pos-pl');
+  const stageEl = document.getElementById('kpi-stage');
+  if (!p || !p.entry_price) {
+    card.className  = 'card position-card none';
+    badge.className = 'pos-badge none';
+    badge.textContent = '⬛ NO POSITION';
+    plEl.className = 'pos-pl neutral'; plEl.textContent = '+0.00 USDT';
+    document.getElementById('pos-entry').textContent = '—';
+    document.getElementById('pos-sl').textContent    = '—';
+    document.getElementById('pos-tp').textContent    = '—';
+    document.getElementById('pos-atr').textContent   = '—';
+    document.getElementById('trail-label').textContent = 'Trail Stage: —';
+    stageEl.textContent = '—';
+    document.querySelectorAll('.trail-stage-pip').forEach(el=>el.className='trail-stage-pip');
+    return;
+  }
+  const isLong = p.is_long;
+  card.className  = 'card position-card '+(isLong?'long':'short');
+  badge.className = 'pos-badge '+(isLong?'long':'short');
+  badge.textContent = isLong ? '▲ LONG' : '▼ SHORT';
+  document.getElementById('pos-entry').textContent = fmt(p.entry_price,1);
+  document.getElementById('pos-sl').textContent    = fmt(p.current_sl||p.sl,1);
+  document.getElementById('pos-tp').textContent    = fmt(p.tp,1);
+  document.getElementById('pos-atr').textContent   = fmt(p.atr,1);
+  const stage = p.trail_stage||0;
+  document.getElementById('trail-label').textContent = `Trail Stage: ${stage}/5`;
+  stageEl.textContent = stage;
+  document.querySelectorAll('.trail-stage-pip').forEach(el=>{
+    const s=parseInt(el.getAttribute('data-s'));
+    el.className='trail-stage-pip '+(s<stage?'done':s===stage?'active':'');
+  });
+  plEl.className = 'pos-pl neutral'; plEl.textContent = 'Position Open';
+}
+
+function renderTable(trades) {
+  const tbody = document.getElementById('trade-table-body');
+  if (!trades||!trades.length) {
+    tbody.innerHTML = `<tr><td colspan="11"><div class="empty"><div class="empty-icon">📭</div><div class="empty-text">No trades yet</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = [...trades].reverse().slice(0,50).map((t,i)=>{
+    const win = t.real_pl > 0;
+    const ts  = new Date(t.ts).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'short',timeStyle:'short'});
+    return `<tr>
+      <td class="mono">${trades.length-i}</td>
+      <td style="color:var(--text-2)">${ts}</td>
+      <td>${t.signal_type}</td>
+      <td class="${t.is_long?'dir-long':'dir-short'}">${t.is_long?'▲ L':'▼ S'}</td>
+      <td class="mono">${fmt(t.entry_price,1)}</td>
+      <td class="mono ${win?'win':'loss'}">${fmt(t.exit_price,1)}</td>
+      <td class="mono" style="color:var(--accent-r)">${fmt(t.sl,1)}</td>
+      <td class="mono" style="color:var(--accent-g)">${fmt(t.tp,1)}</td>
+      <td class="mono">${t.trail_stage||0}</td>
+      <td style="color:var(--text-2)">${t.exit_reason}</td>
+      <td class="mono ${win?'win':'loss'}">${t.real_pl>0?'+':''}${fmt(t.real_pl)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderStatus(st) {
+  const badge = document.getElementById('bot-status');
+  const text  = document.getElementById('status-text');
+  if (st && st.status === 'live') {
+    badge.className = 'status-badge live';
+    badge.style=''; text.textContent='LIVE';
+  } else {
+    badge.className='status-badge';
+    badge.style.background='rgba(255,77,109,0.1)';
+    badge.style.borderColor='rgba(255,77,109,0.3)';
+    badge.style.color='var(--accent-r)';
+    text.textContent='OFFLINE';
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MAIN REFRESH LOOP
+══════════════════════════════════════════════════════════════ */
+async function refresh() {
+  const data = await fetchData();
+  renderStatus(data.bot_status);
+  renderKPIs(data.summary);
+  renderPosition(data.open_trade);
+  renderTable(data.trades);
+  _allTrades = data.trades || [];
+  redrawCharts();
+}
+
+refresh();
+setInterval(refresh, 5000);
+
+let _resizeTimer;
+window.addEventListener('resize', ()=>{
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(redrawCharts, 150);
+});
+</script>
+</body>
+</html>
