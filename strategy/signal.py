@@ -2,11 +2,38 @@
 strategy/signal.py
 Entry signal engine — exact replica of Shiva Sniper v6.5 Pine Script logic.
 
-Signal priority (mirrors Pine):
-  1. Trend Long  — ADX trending, price > EMA200, close > EMA50, +DI > -DI, filters pass, RSI not OB
-  2. Trend Short — ADX trending, price < EMA200, close < EMA50, -DI > +DI, filters pass, RSI not OS
-  3. Range Long  — ADX ranging, +DI > -DI, RSI oversold, filters pass
-  4. Range Short — ADX ranging, -DI > +DI, RSI overbought, filters pass
+FIXES vs previous version:
+───────────────────────────────────────────────────────────────────────────────
+FIX-S1 | Trend Long EMA condition was wrong.
+          Pine:  emaFast > emaTrend  (EMA crossover — fast above slow)
+          Old:   close > ema_trend AND close > ema_fast  (price vs both EMAs)
+          Fixed: snap.ema_fast > snap.ema_trend
+
+FIX-S2 | Trend Long breakout condition was missing.
+          Pine:  close > high[1]  (close breaks above prior bar high)
+          Old:   not present
+          Fixed: snap.close > snap.prev_high
+
+FIX-S3 | Trend Short EMA condition was wrong (same mirror bug as S1).
+          Pine:  emaFast < emaTrend
+          Old:   close < ema_trend AND close < ema_fast
+          Fixed: snap.ema_fast < snap.ema_trend
+
+FIX-S4 | Trend Short breakdown condition was missing.
+          Pine:  close < low[1]
+          Old:   not present
+          Fixed: snap.close < snap.prev_low
+
+Range signals (rangeLong, rangeShort) were already correct — no changes.
+───────────────────────────────────────────────────────────────────────────────
+
+Signal priority (mirrors Pine exactly):
+  1. Trend Long  — ADX trending, emaFast > emaTrend, close > prev_high,
+                   +DI > -DI, filters pass
+  2. Trend Short — ADX trending, emaFast < emaTrend, close < prev_low,
+                   -DI > +DI, filters pass
+  3. Range Long  — ADX ranging, RSI oversold, filters pass
+  4. Range Short — ADX ranging, RSI overbought, filters pass
 
 No position check: only evaluate when has_position=False.
 Returns SignalType.NONE when no conditions are met.
@@ -59,22 +86,29 @@ def evaluate(snap: IndicatorSnapshot, has_position: bool) -> Signal:
 
     # ── TREND SIGNALS ─────────────────────────────────────────────────────────
     if snap.trend_regime:
-        # Trend Long: price above both EMAs, momentum aligned (+DI > -DI), not overbought
-        if (snap.close > snap.ema_trend
-                and snap.close > snap.ema_fast
+
+        # Trend Long:
+        #   Pine: emaFast > emaTrend        ← FIX-S1: EMA crossover not price vs EMA
+        #         and dip > dim             ← momentum aligned bullish
+        #         and close > high[1]       ← FIX-S2: breakout above prior bar high
+        #         and filters               ← ATR / volume / body filters
+        if (snap.ema_fast > snap.ema_trend
                 and snap.dip > snap.dim
-                and snap.rsi < RSI_OB):
+                and snap.close > snap.prev_high):
             return Signal(
                 signal_type=SignalType.TREND_LONG,
                 is_long=True,
                 regime="trend",
             )
 
-        # Trend Short: price below both EMAs, momentum aligned (-DI > +DI), not oversold
-        if (snap.close < snap.ema_trend
-                and snap.close < snap.ema_fast
+        # Trend Short:
+        #   Pine: emaFast < emaTrend        ← FIX-S3: EMA crossover
+        #         and dim > dip             ← momentum aligned bearish
+        #         and close < low[1]        ← FIX-S4: breakdown below prior bar low
+        #         and filters
+        if (snap.ema_fast < snap.ema_trend
                 and snap.dim > snap.dip
-                and snap.rsi > RSI_OS):
+                and snap.close < snap.prev_low):
             return Signal(
                 signal_type=SignalType.TREND_SHORT,
                 is_long=False,
@@ -82,17 +116,19 @@ def evaluate(snap: IndicatorSnapshot, has_position: bool) -> Signal:
             )
 
     # ── RANGE SIGNALS ─────────────────────────────────────────────────────────
+    # These matched Pine already — no changes.
     if snap.range_regime:
-        # Range Long: oversold reversal, momentum shows buyers (+DI > -DI)
-        if snap.dip > snap.dim and snap.rsi < RSI_OS:
+
+        # Range Long: oversold RSI reversal
+        if snap.rsi < RSI_OS:
             return Signal(
                 signal_type=SignalType.RANGE_LONG,
                 is_long=True,
                 regime="range",
             )
 
-        # Range Short: overbought reversal, momentum shows sellers (-DI > +DI)
-        if snap.dim > snap.dip and snap.rsi > RSI_OB:
+        # Range Short: overbought RSI reversal
+        if snap.rsi > RSI_OB:
             return Signal(
                 signal_type=SignalType.RANGE_SHORT,
                 is_long=False,
