@@ -4,19 +4,28 @@ Delta Exchange India order execution via ccxt.
 Handles: entry, OCO bracket, SL modify, emergency close.
 All with retry + exponential backoff.
 
-FIX 3 ── ATR-DYNAMIC BRACKET SL BUFFER
-────────────────────────────────────────
-OLD: modify_sl() computed sl_limit with a flat hardcoded buffer:
-         sl_limit = new_sl - BRACKET_SL_BUFFER   (always 10 pts)
-     This caused mismatches vs Pine's dynamic trail_offset (atr * tXOff).
-     During volatile wicks the flat 10-pt gap was too narrow → limit order
-     not filled → position remained open past the intended stop.
+FIX-INDIA-1 ── Force Delta India API endpoint
+────────────────────────────────────────────────
+OLD: ccxt.delta() uses https://api.delta.exchange (International)
+     → India-issued API keys rejected with invalid_api_key
+NEW: Explicitly override urls.api to https://api.india.delta.exchange
+     DELTA_TESTNET=true still routes to India testnet correctly.
 
-NEW: modify_sl(new_sl, sl_limit_buf) accepts the buffer as a parameter.
-     trail_loop.py passes atr * trail_off (the same offset Pine uses) so
-     the limit order distance matches TradingView exactly.
-     place_entry() still uses BRACKET_SL_BUFFER for the initial bracket
-     (no trail stage active yet at entry time).
+FIX-INDIA-2 ── ALERT_QTY fully controlled from .env
+────────────────────────────────────────────────────
+OLD: ALERT_QTY was imported from config but config defaulted to 30
+     (hardcoded fallback). No clear single source of truth.
+NEW: config.py reads ALERT_QTY from .env (already done).
+     This file imports it from config — change qty in .env only.
+     .env example: ALERT_QTY=1
+
+FIX 3 ── ATR-DYNAMIC BRACKET SL BUFFER (preserved from previous version)
+────────────────────────────────────────
+modify_sl(new_sl, sl_limit_buf) accepts the buffer as a parameter.
+trail_loop.py passes atr * trail_off (the same offset Pine uses) so
+the limit order distance matches TradingView exactly.
+place_entry() still uses BRACKET_SL_BUFFER for the initial bracket
+(no trail stage active yet at entry time).
 
 All other fixes from the previous version are preserved:
   FIX #1: Bracket SL order ID correctly extracted / scanned.
@@ -34,16 +43,32 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+# ── Delta India API endpoints ──────────────────────────────────────────────────
+_INDIA_LIVE    = "https://api.india.delta.exchange"
+_INDIA_TESTNET = "https://testnet-api.india.delta.exchange"
+
 
 def build_exchange() -> ccxt.delta:
+    # FIX-INDIA-1: choose India live vs India testnet based on DELTA_TESTNET flag
+    base_url = _INDIA_TESTNET if DELTA_TESTNET else _INDIA_LIVE
+
     params = {
         "apiKey"         : DELTA_API_KEY,
         "secret"         : DELTA_API_SECRET,
         "enableRateLimit": True,
+        # Override ALL ccxt endpoint groups to point at India
+        "urls": {
+            "api": {
+                "public" : base_url,
+                "private": base_url,
+            }
+        },
     }
     exchange = ccxt.delta(params)
-    if DELTA_TESTNET:
-        exchange.set_sandbox_mode(True)
+    logger.info(
+        f"Exchange built → {'TESTNET' if DELTA_TESTNET else 'LIVE'} | "
+        f"endpoint={base_url} | qty={ALERT_QTY}"
+    )
     return exchange
 
 
@@ -73,20 +98,20 @@ class OrderManager:
         Market entry + OCO bracket (TP limit + SL stop).
         Uses flat BRACKET_SL_BUFFER for the initial bracket limit gap
         (no trail stage is active at entry, so ATR-dynamic offset not yet known).
+        Qty is read from ALERT_QTY which is set in .env → ALERT_QTY=<value>
         """
         side     = "buy" if is_long else "sell"
-        # Initial bracket: flat buffer (ATR-dynamic kicks in once trail starts)
         sl_limit = sl - BRACKET_SL_BUFFER if is_long else sl + BRACKET_SL_BUFFER
         logger.info(
             f"Placing {side.upper()} entry | "
-            f"SL={sl:.2f} SL_limit={sl_limit:.2f} TP={tp:.2f}"
+            f"SL={sl:.2f} SL_limit={sl_limit:.2f} TP={tp:.2f} Qty={ALERT_QTY}"
         )
 
         order = await _retry(lambda: self.exchange.create_order(
             symbol = SYMBOL,
             type   = "market",
             side   = side,
-            amount = ALERT_QTY,
+            amount = ALERT_QTY,   # FIX-INDIA-2: from .env via config.ALERT_QTY
             params = {
                 "bracket_stop_loss_price"       : sl,
                 "bracket_stop_loss_limit_price" : sl_limit,
@@ -151,7 +176,7 @@ class OrderManager:
     async def modify_sl(self, new_sl: float,
                         sl_limit_buf: Optional[float] = None) -> None:
         """
-        Modify the bracket stop loss on Delta Exchange.
+        Modify the bracket stop loss on Delta Exchange India.
 
         FIX 3: sl_limit_buf is now a parameter, not hardcoded.
           - trail_loop.py passes atr * trail_off (ATR-dynamic, matches Pine)
@@ -167,7 +192,6 @@ class OrderManager:
 
         is_long = self.position["is_long"]
 
-        # FIX 3: use caller-supplied buffer (ATR-dynamic) or flat fallback
         buf      = sl_limit_buf if sl_limit_buf is not None else BRACKET_SL_BUFFER
         sl_limit = new_sl - buf if is_long else new_sl + buf
         sl_side  = "sell" if is_long else "buy"
@@ -183,7 +207,7 @@ class OrderManager:
                 symbol = SYMBOL,
                 type   = "stop",
                 side   = sl_side,
-                amount = ALERT_QTY,
+                amount = ALERT_QTY,   # FIX-INDIA-2: from .env
                 price  = sl_limit,
                 params = {
                     "stopPrice"  : new_sl,
@@ -205,13 +229,13 @@ class OrderManager:
 
         is_long = self.position["is_long"]
         side    = "sell" if is_long else "buy"
-        logger.info(f"Emergency close ({reason}) | side={side}")
+        logger.info(f"Emergency close ({reason}) | side={side} qty={ALERT_QTY}")
 
         order = await _retry(lambda: self.exchange.create_order(
             symbol = SYMBOL,
             type   = "market",
             side   = side,
-            amount = ALERT_QTY,
+            amount = ALERT_QTY,   # FIX-INDIA-2: from .env
             params = {"reduce_only": True}
         ))
 
