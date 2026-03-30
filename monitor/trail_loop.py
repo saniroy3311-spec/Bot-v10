@@ -115,14 +115,24 @@ class TrailMonitor:
         (Delta WS `/v2/trades` or mark-price feed) without changing
         any other code — just call `await self._on_tick(mark_price)`.
         """
+        # FIX-INDIA: Force Delta India endpoint (same fix as orders/manager.py)
+        # ccxt.delta() defaults to International (api.delta.exchange).
+        # India keys are rejected there with invalid_api_key.
+        _base_url = ("https://testnet-api.india.delta.exchange"
+                     if DELTA_TESTNET else
+                     "https://api.india.delta.exchange")
         params = {
             "apiKey"         : DELTA_API_KEY,
             "secret"         : DELTA_API_SECRET,
             "enableRateLimit": True,
+            "urls": {
+                "api": {
+                    "public" : _base_url,
+                    "private": _base_url,
+                }
+            },
         }
         self._exchange = ccxt.delta(params)
-        if DELTA_TESTNET:
-            self._exchange.set_sandbox_mode(True)
 
         logger.info(f"Trail ticker polling every {TRAIL_LOOP_SEC}s for {SYMBOL}")
 
