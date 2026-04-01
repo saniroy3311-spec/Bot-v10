@@ -1,207 +1,324 @@
 """
-feed/ws_feed.py
-OHLCV feed for Delta Exchange via REST polling.
+orders/manager.py
+Delta Exchange India order execution via ccxt.
 
-TIMING MISMATCH FIX (Root cause of "Pine and bot don't trade at same time"):
+FIXES IN THIS VERSION:
 ──────────────────────────────────────────────────────────────────────────────
-Pine Script fires an alert the moment a bar CLOSES (the new bar's open tick).
-The bot must execute at the same moment — bar[-1] is now the confirmed bar,
-bar[-2] is the previous bar.
+FIX-SL1  | sl_order_id was never captured.
+           Delta India returns the bracket SL as a SEPARATE open order —
+           it is NOT embedded in the entry response. The entry response
+           `info` dict contains only the market entry order itself.
+           FIX: After entry fills, always call _find_sl_order_id() which
+           fetches open orders and matches the bracket stop leg by side +
+           stop price proximity. This is the ONLY reliable way on Delta India.
 
-Problem in original code:
-  1. The bot polled every 5 seconds, so entry was UP TO 5 seconds late.
-  2. Worse: Delta's REST candle endpoint returns the LIVE (still-open) candle
-     as the last row.  When a new timestamp appears, the PREVIOUS row is the
-     confirmed closed candle.  The bot was evaluating the CURRENT live bar
-     (which Pine hasn't signalled on yet) instead of the closed bar.
-     This causes phantom signals and timing drift.
+FIX-SL2  | _find_sl_order_id() price proximity window was 200 pts.
+           With ATR ~120, the initial SL is ~72 pts from entry, so 200 is
+           fine — but we now also match on order type "stop_market" to
+           avoid confusing the bracket TP limit order with the SL.
 
-FIX applied here:
-  - on_bar_close() now receives df where df.iloc[-1] is the CONFIRMED closed
-    bar (the bar that Pine just closed and fired the alert on).  The live
-    in-progress bar is stripped before passing to indicators/signal.
-  - Poll interval tightened to 2s for all timeframes to catch bar close
-    within 2 seconds, matching TradingView's webhook delivery window.
-  - Bar confirmation logic: when ts > last_bar_ts, the OLD last row (now
-    index -2 in the new data) is the confirmed closed candle.  We append
-    the NEW row as the live candle and pass df[:-1] (all confirmed bars)
-    to on_bar_close.  This is the key fix for timing parity.
-
-Other bug fixes retained from v4:
-  BUG 1: MIN_BARS was 260, Delta returns 255–258.  Fixed: MIN_BARS = 210.
-  BUG 3: Bar confirmation was logger.debug (invisible).  Fixed: logger.info.
-  BUG 4: Startup fetched exactly MIN_BARS.  Fixed: fetch MIN_BARS + 50.
+FIX-EXIT | Trail-exit via market order when trail SL is breached.
+           Previously the bot relied on the bracket TP firing on exchange.
+           Pine Script exits via trailing SL cross — this method matches.
+           New method: close_position_at_trail_sl() — called by trail_loop
+           when current_price crosses state.current_sl.
+           The bracket TP and SL orders are cancelled first, then a
+           reduce-only market order closes the position.
 """
 
 import asyncio
 import logging
-import pandas as pd
-import ccxt
+from typing import Optional
+import ccxt.async_support as ccxt
 from config import (
     DELTA_API_KEY, DELTA_API_SECRET, DELTA_TESTNET,
-    SYMBOL, CANDLE_TIMEFRAME, WS_RECONNECT_SEC, EMA_TREND_LEN,
+    SYMBOL, ALERT_QTY, BRACKET_SL_BUFFER,
 )
 
-logger   = logging.getLogger(__name__)
-MIN_BARS = EMA_TREND_LEN + 10   # 210 for EMA-200
+logger = logging.getLogger(__name__)
+
+_INDIA_LIVE    = "https://api.india.delta.exchange"
+_INDIA_TESTNET = "https://testnet-api.india.delta.exchange"
 
 
-class CandleFeed:
-    def __init__(self, on_bar_close, on_feed_ready=None):
-        self.on_bar_close   = on_bar_close
-        async def _noop(): pass
-        self.on_feed_ready  = on_feed_ready or _noop
-        self._last_bar_ts   = 0
-        self._df            = pd.DataFrame()
-        self._exchange      = None
-        self._ready_fired   = False
+def build_exchange() -> ccxt.delta:
+    base_url = _INDIA_TESTNET if DELTA_TESTNET else _INDIA_LIVE
+    params = {
+        "apiKey"         : DELTA_API_KEY,
+        "secret"         : DELTA_API_SECRET,
+        "enableRateLimit": True,
+        "urls": {
+            "api": {
+                "public" : base_url,
+                "private": base_url,
+            }
+        },
+    }
+    exchange = ccxt.delta(params)
+    logger.info(
+        f"Exchange built → {'TESTNET' if DELTA_TESTNET else 'LIVE'} | "
+        f"endpoint={base_url} | qty={ALERT_QTY}"
+    )
+    return exchange
 
-    async def start(self) -> None:
-        """Start polling loop with auto-reconnect."""
-        while True:
-            try:
-                await self._connect()
-                await self._poll()
-            except Exception as e:
-                logger.error(f"Feed error: {e}", exc_info=True)
-                await asyncio.sleep(WS_RECONNECT_SEC)
 
-    async def _connect(self) -> None:
-        """Init REST exchange and load historical bars."""
-        # FIX-INDIA: Force Delta India endpoints (same as orders/manager.py)
-        # Without this override ccxt routes to Delta International which
-        # does not recognise India symbols → BadSymbol on fetch_ohlcv.
-        _INDIA_LIVE    = "https://api.india.delta.exchange"
-        _INDIA_TESTNET = "https://testnet-api.india.delta.exchange"
-        base_url = _INDIA_TESTNET if DELTA_TESTNET else _INDIA_LIVE
+async def _retry(coro_fn, retries: int = 3, delay: float = 1.0):
+    for attempt in range(1, retries + 1):
+        try:
+            return await coro_fn()
+        except (ccxt.NetworkError, ccxt.RequestTimeout) as e:
+            if attempt == retries:
+                raise
+            wait = delay * (2 ** (attempt - 1))
+            logger.warning(f"Attempt {attempt} failed ({e}), retry in {wait}s")
+            await asyncio.sleep(wait)
 
-        params = {
-            "apiKey"         : DELTA_API_KEY,
-            "secret"         : DELTA_API_SECRET,
-            "enableRateLimit": True,
-            "urls": {
-                "api": {
-                    "public" : base_url,
-                    "private": base_url,
-                }
-            },
-        }
-        self._exchange = ccxt.delta(params)
-        logger.info(f"Feed exchange → {'TESTNET' if DELTA_TESTNET else 'LIVE'} | endpoint={base_url}")
 
-        fetch_limit = MIN_BARS + 50
-        logger.info(f"Loading {fetch_limit} historical bars via REST for [{SYMBOL}] [{CANDLE_TIMEFRAME}]...")
-        ohlcv = self._exchange.fetch_ohlcv(
-            SYMBOL, CANDLE_TIMEFRAME, limit=fetch_limit
-        )
-        self._df = self._to_df(ohlcv)
+class OrderManager:
+    def __init__(self):
+        self.exchange      = build_exchange()
+        self.position      : Optional[dict] = None
+        self.sl_order_id   : Optional[str]  = None
+        self.tp_order_id   : Optional[str]  = None
 
-        # The last row from REST is always the LIVE (open) candle.
-        # _last_bar_ts tracks the timestamp of the confirmed closed bar,
-        # which is df.iloc[-2].  When a new ts appears we know df.iloc[-2]
-        # is the bar Pine just closed.
-        # On startup, treat the current last row as live (not yet closed).
-        self._last_bar_ts = int(self._df.iloc[-1]["timestamp"])
+    # ── Entry ─────────────────────────────────────────────────────────────────
+    async def place_entry(self, is_long: bool, sl: float, tp: float) -> dict:
+        """
+        Market entry + OCO bracket (TP limit + SL stop).
 
-        bar_count = len(self._df)
+        FIX-SL1: After entry fills, ALWAYS scan open orders to find the
+        bracket SL order ID. Delta India never returns it in the entry
+        response — it is created as a separate open order.
+        """
+        side     = "buy" if is_long else "sell"
+        sl_limit = sl - BRACKET_SL_BUFFER if is_long else sl + BRACKET_SL_BUFFER
         logger.info(
-            f"Feed ready — {bar_count} bars loaded "
-            f"(need {MIN_BARS}, have {bar_count} — "
-            f"{'OK ✅' if bar_count >= MIN_BARS else 'WARN ⚠️ not enough bars'})"
+            f"Placing {side.upper()} entry | "
+            f"SL={sl:.2f} SL_limit={sl_limit:.2f} TP={tp:.2f} Qty={ALERT_QTY}"
         )
 
-        if not self._ready_fired:
-            self._ready_fired = True
-            await self.on_feed_ready()
+        order = await _retry(lambda: self.exchange.create_order(
+            symbol = SYMBOL,
+            type   = "market",
+            side   = side,
+            amount = ALERT_QTY,
+            params = {
+                "bracket_stop_loss_price"       : sl,
+                "bracket_stop_loss_limit_price" : sl_limit,
+                "bracket_take_profit_price"     : tp,
+            }
+        ))
 
-    async def _poll(self) -> None:
+        logger.info(f"Entry order response: {order}")
+
+        # FIX-SL1: Always scan for SL — never trust the entry response to contain it
+        # Wait 1s for Delta to create the bracket legs before scanning
+        await asyncio.sleep(1.0)
+        self.sl_order_id = await self._find_sl_order_id(is_long, sl)
+        self.tp_order_id = await self._find_tp_order_id(is_long, tp)
+
+        fill_price = float(order.get("average") or order.get("price") or 0)
+        self.position = {
+            "entry_order_id": order["id"],
+            "is_long"       : is_long,
+            "entry_price"   : fill_price,
+        }
+        logger.info(
+            f"Entry filled | price={fill_price:.2f} "
+            f"sl_order_id={self.sl_order_id} tp_order_id={self.tp_order_id}"
+        )
+        return order
+
+    async def _find_sl_order_id(self, is_long: bool,
+                                 sl_price: float) -> Optional[str]:
         """
-        Poll every 2 seconds for ALL timeframes.
-
-        TIMING FIX:
-        At bar close, Delta REST returns a new candle with a new timestamp.
-        At that moment:
-          - df.iloc[-2] is the bar Pine just closed  → pass df[:-1] to signals
-          - df.iloc[-1] is the new live bar          → track as _last_bar_ts
-
-        This means on_bar_close() always receives a DataFrame where
-        df.iloc[-1] is the confirmed closed bar — exactly what Pine used
-        to fire the alert.  Indicators compute on closed bars only.
+        FIX-SL2: Scan open orders for the bracket stop leg.
+        Match on: correct side + stop-type + price within 200 pts.
         """
-        sleep_sec = 2   # 2s polls catch bar close within 2s for all timeframes
-        logger.info(f"Polling every {sleep_sec}s for {CANDLE_TIMEFRAME} candles [{SYMBOL}]")
-
-        while True:
-            await asyncio.sleep(sleep_sec)
-            try:
-                # Fetch last 5 candles (includes live candle)
-                ohlcv = self._exchange.fetch_ohlcv(
-                    SYMBOL, CANDLE_TIMEFRAME, limit=5
+        try:
+            open_orders = await _retry(
+                lambda: self.exchange.fetch_open_orders(SYMBOL)
+            )
+            sl_side = "sell" if is_long else "buy"
+            for o in open_orders:
+                o_type  = (o.get("type") or "").lower()
+                o_side  = (o.get("side") or "").lower()
+                # stopPrice or triggerPrice depending on ccxt normalisation
+                o_price = float(
+                    o.get("stopPrice") or
+                    o.get("triggerPrice") or
+                    o.get("info", {}).get("stop_price") or
+                    o.get("price") or 0
                 )
-                if not ohlcv:
-                    continue
+                is_stop = "stop" in o_type or "trigger" in o_type
+                if o_side == sl_side and is_stop and abs(o_price - sl_price) < 200:
+                    logger.info(f"SL order found | id={o['id']} price={o_price}")
+                    return str(o["id"])
+            logger.error("Could not find bracket SL order — trail SL modify will use market close fallback")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to scan for SL order: {e}")
+            return None
 
-                for candle in ohlcv:
-                    ts = int(candle[0])
+    async def _find_tp_order_id(self, is_long: bool,
+                                 tp_price: float) -> Optional[str]:
+        """Scan open orders for the bracket take-profit leg."""
+        try:
+            open_orders = await _retry(
+                lambda: self.exchange.fetch_open_orders(SYMBOL)
+            )
+            tp_side = "sell" if is_long else "buy"
+            for o in open_orders:
+                o_type  = (o.get("type") or "").lower()
+                o_side  = (o.get("side") or "").lower()
+                o_price = float(
+                    o.get("price") or
+                    o.get("info", {}).get("limit_price") or 0
+                )
+                is_limit = "limit" in o_type and "stop" not in o_type
+                if o_side == tp_side and is_limit and abs(o_price - tp_price) < 200:
+                    logger.info(f"TP order found | id={o['id']} price={o_price}")
+                    return str(o["id"])
+            logger.warning("Could not find bracket TP order")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to scan for TP order: {e}")
+            return None
 
-                    if ts > self._last_bar_ts:
-                        # ── NEW BAR DETECTED ─────────────────────────────────
-                        # The previous _last_bar_ts row is now a CONFIRMED closed bar.
-                        # df currently has that closed bar as its last row.
-                        # TIMING FIX: pass df.copy() (all confirmed bars up to
-                        # and including the just-closed bar) to on_bar_close.
-                        if len(self._df) >= MIN_BARS:
-                            logger.info(
-                                f"✅ Bar confirmed | closed_ts={self._last_bar_ts} | "
-                                f"new_ts={ts} | bars={len(self._df)} — evaluating signals..."
-                            )
-                            # TIMING FIX: df.iloc[-1] IS the closed bar (correct)
-                            await self.on_bar_close(self._df.copy())
-                        else:
-                            logger.warning(
-                                f"⚠️ Bar skipped — only {len(self._df)} bars "
-                                f"(need {MIN_BARS}). Waiting for more data."
-                            )
+    # ── Modify SL ─────────────────────────────────────────────────────────────
+    async def modify_sl(self, new_sl: float,
+                        sl_limit_buf: Optional[float] = None) -> None:
+        """
+        Modify the bracket stop loss on Delta Exchange India.
+        If sl_order_id is missing, re-scan before giving up.
+        """
+        if not self.position:
+            logger.warning("modify_sl called but no position tracked")
+            return
 
-                        # Append the new live candle row and track its ts
-                        new_row = pd.DataFrame([{
-                            "timestamp": ts,
-                            "open"     : float(candle[1]),
-                            "high"     : float(candle[2]),
-                            "low"      : float(candle[3]),
-                            "close"    : float(candle[4]),
-                            "volume"   : float(candle[5]),
-                        }])
-                        self._df = pd.concat(
-                            [self._df, new_row], ignore_index=True
-                        ).tail(MIN_BARS + 50)
-                        self._last_bar_ts = ts
+        # Re-scan if we lost the SL order ID
+        if not self.sl_order_id:
+            logger.warning("modify_sl: no sl_order_id — attempting re-scan")
+            is_long = self.position["is_long"]
+            self.sl_order_id = await self._find_sl_order_id(is_long, new_sl)
+            if not self.sl_order_id:
+                logger.error("modify_sl: re-scan failed — SL modify skipped this tick")
+                return
 
-                    else:
-                        # Update the live candle in place (not yet closed)
-                        if not self._df.empty:
-                            last_idx = self._df.index[-1]
-                            self._df.loc[last_idx, "timestamp"] = ts
-                            self._df.loc[last_idx, "open"]      = float(candle[1])
-                            self._df.loc[last_idx, "high"]      = float(candle[2])
-                            self._df.loc[last_idx, "low"]       = float(candle[3])
-                            self._df.loc[last_idx, "close"]     = float(candle[4])
-                            self._df.loc[last_idx, "volume"]    = float(candle[5])
+        is_long = self.position["is_long"]
+        buf      = sl_limit_buf if sl_limit_buf is not None else BRACKET_SL_BUFFER
+        sl_limit = new_sl - buf if is_long else new_sl + buf
+        sl_side  = "sell" if is_long else "buy"
 
-            except ccxt.NetworkError as e:
-                logger.warning(f"Network error: {e} — retrying...")
-                await asyncio.sleep(WS_RECONNECT_SEC)
-            except Exception as e:
-                logger.error(f"Poll error: {e}", exc_info=True)
-                break
-
-    @staticmethod
-    def _to_df(ohlcv: list) -> pd.DataFrame:
-        df = pd.DataFrame(
-            ohlcv,
-            columns=["timestamp", "open", "high", "low", "close", "volume"]
+        logger.info(
+            f"Modifying SL | id={self.sl_order_id} "
+            f"new_sl={new_sl:.2f} limit={sl_limit:.2f} buf={buf:.2f}"
         )
-        return df.astype({
-            "open": float, "high": float,
-            "low": float, "close": float, "volume": float,
-        })
+
+        try:
+            await _retry(lambda: self.exchange.edit_order(
+                id     = self.sl_order_id,
+                symbol = SYMBOL,
+                type   = "stop",
+                side   = sl_side,
+                amount = ALERT_QTY,
+                price  = sl_limit,
+                params = {
+                    "stopPrice"  : new_sl,
+                    "reduce_only": True,
+                }
+            ))
+        except Exception as e:
+            logger.error(
+                f"SL modify failed (id={self.sl_order_id}): {e} — "
+                f"re-scanning for SL order"
+            )
+            # Clear stale ID and re-scan next tick
+            self.sl_order_id = None
+
+    # ── FIX-EXIT: Trail SL breach → cancel brackets → market close ────────────
+    async def close_at_trail_sl(self, reason: str = "Trail SL") -> dict:
+        """
+        FIX-EXIT: Replicate Pine Script trail SL exit behaviour.
+
+        When trail_loop detects price has crossed state.current_sl:
+          1. Cancel the bracket TP order (prevents double-fill)
+          2. Cancel the bracket SL order (prevents double-fill)
+          3. Send reduce-only market order to close position
+
+        This matches Pine's strategy.exit() trail behaviour exactly:
+        Pine closes at the bar where price crosses the trailing stop.
+        The bot closes via market order the moment price crosses current_sl
+        in the tick loop (TRAIL_LOOP_SEC resolution).
+        """
+        if not self.position:
+            logger.warning("close_at_trail_sl called but no position tracked")
+            return {}
+
+        is_long = self.position["is_long"]
+
+        # Step 1: Cancel TP bracket to prevent double-fill
+        if self.tp_order_id:
+            try:
+                await _retry(lambda: self.exchange.cancel_order(
+                    self.tp_order_id, SYMBOL
+                ))
+                logger.info(f"Bracket TP cancelled | id={self.tp_order_id}")
+            except Exception as e:
+                logger.warning(f"TP cancel failed (may already be filled): {e}")
+
+        # Step 2: Cancel SL bracket to prevent double-fill
+        if self.sl_order_id:
+            try:
+                await _retry(lambda: self.exchange.cancel_order(
+                    self.sl_order_id, SYMBOL
+                ))
+                logger.info(f"Bracket SL cancelled | id={self.sl_order_id}")
+            except Exception as e:
+                logger.warning(f"SL cancel failed (may already be filled): {e}")
+
+        # Step 3: Market close
+        side = "sell" if is_long else "buy"
+        logger.info(f"Trail SL exit ({reason}) | side={side} qty={ALERT_QTY}")
+
+        order = await _retry(lambda: self.exchange.create_order(
+            symbol = SYMBOL,
+            type   = "market",
+            side   = side,
+            amount = ALERT_QTY,
+            params = {"reduce_only": True}
+        ))
+
+        self.position    = None
+        self.sl_order_id = None
+        self.tp_order_id = None
+        return order
+
+    # ── Emergency close (Max SL) ───────────────────────────────────────────────
+    async def close_position(self, reason: str = "Max SL Hit") -> dict:
+        """Emergency close — cancel brackets then market close."""
+        return await self.close_at_trail_sl(reason=reason)
+
+    # ── Fetch position ────────────────────────────────────────────────────────
+    async def fetch_position(self) -> Optional[dict]:
+        positions = await _retry(
+            lambda: self.exchange.fetch_positions([SYMBOL])
+        )
+        for pos in positions:
+            if pos.get("symbol") == SYMBOL and pos.get("contracts", 0) != 0:
+                return pos
+        return None
+
+    async def fetch_last_trade_price(self) -> Optional[float]:
+        try:
+            trades = await _retry(
+                lambda: self.exchange.fetch_my_trades(SYMBOL, limit=1)
+            )
+            if trades:
+                return float(trades[-1]["price"])
+        except Exception as e:
+            logger.warning(f"fetch_last_trade_price failed: {e}")
+        return None
+
+    async def close_exchange(self) -> None:
+        await self.exchange.close()
