@@ -1,23 +1,27 @@
 """
-monitor/trail_loop.py  — FIXED (bugs B1, B2, B3)
+monitor/trail_loop.py
 
-FIXES APPLIED:
+FIXES IN THIS VERSION:
 ──────────────────────────────────────────────────────────────────────────────
-B1: _loop_ws() was a `pass` stub — the task returned instantly, _on_tick
-    was never called, position was never monitored.
-    FIX: Replaced with _loop_rest() — polls Delta ticker every TRAIL_LOOP_SEC.
-    A WebSocket variant is wired in as a drop-in upgrade path below.
+FIX-EXIT | Pine Script exits when price CROSSES the trailing SL.
+           Old bot relied on bracket TP firing on exchange → exit at fixed TP.
+           New: _on_tick() checks if current_price has crossed state.current_sl.
+           If yes: calls order_mgr.close_at_trail_sl() → cancel brackets →
+           market close. This replicates Pine's strategy.exit() trail exactly.
 
-B2: SL distance used trail_off (limit buffer) instead of trail_pts (SL distance).
-    FIX: candidate_sl = peak_price - trail_pts (long) / + trail_pts (short).
-    Also: modify_sl() now receives trail_off as sl_limit_buf (ATR-dynamic),
-    matching the intent documented in orders/manager.py FIX-3.
+FIX-BE   | Breakeven SL is now tracked in state.current_sl AND enforced
+           as a trail-exit floor: if price drops back to entry after BE,
+           the trail-exit check fires and closes at breakeven (matching Pine).
 
-B3: should_trigger_be() and max_sl_hit() were imported but never called.
-    FIX: Both are called inside _on_tick() at the correct priority:
-      1. Max SL check  (highest — hard floor)
-      2. Breakeven     (one-shot, only if not done)
-      3. Trail ratchet (ongoing)
+FIX-TP   | Bracket TP on exchange acts as a safety net only. The primary
+           exit path is trail SL breach detected in this loop. If bracket TP
+           fires first (price gapped to TP without trail SL breach being
+           detected), _on_position_closed() in main.py handles cleanup.
+
+PRESERVED FIXES (from previous version):
+  B1: REST ticker poll loop (replaces dead pass stub)
+  B2: trail_pts used for SL distance (not trail_off)
+  B3: max_sl_hit() and should_trigger_be() actually called
 ──────────────────────────────────────────────────────────────────────────────
 """
 
@@ -52,10 +56,11 @@ class TrailMonitor:
     """
     Monitor an open position every TRAIL_LOOP_SEC seconds via REST ticker.
 
-    Priority inside each tick (mirrors Pine Script exit priority):
-        1. Max SL   — emergency close if loss exceeds hard cap
-        2. Breakeven — move SL to entry once profit threshold crossed (once only)
-        3. Trail     — ratchet SL toward peak as profit grows
+    Exit priority (mirrors Pine Script strategy.exit() exactly):
+        1. Max SL       — hard loss cap → emergency market close
+        2. Trail SL     — price crossed current_sl → market close  ← FIX-EXIT
+        3. Breakeven    — move SL to entry once (one-shot)
+        4. Trail ratchet — advance current_sl as peak moves
     """
 
     def __init__(self, order_manager, telegram, journal):
@@ -67,14 +72,17 @@ class TrailMonitor:
         self._running   = False
         self._task: Optional[asyncio.Task] = None
         self._exchange: Optional[ccxt.delta] = None
+        # Callback set by main.py so trail_loop can signal position close
+        self.on_trail_exit = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    def start(self, risk_levels: RiskLevels, trail_state: TrailState) -> None:
+    def start(self, risk_levels: RiskLevels, trail_state: TrailState,
+              on_trail_exit=None) -> None:
         """Called by main.py after a confirmed entry fill."""
         self.risk  = risk_levels
         self.state = trail_state
-        # Initialise peak to entry price (will update on first tick)
+        self.on_trail_exit = on_trail_exit  # FIX-EXIT: callback to main.py
         if self.state.peak_price == 0.0:
             self.state.peak_price = risk_levels.entry_price
         self._running = True
@@ -95,7 +103,6 @@ class TrailMonitor:
     # ── Internal run loop ─────────────────────────────────────────────────────
 
     async def _run(self) -> None:
-        """Entry point for the monitoring task."""
         try:
             await self._loop_rest()
         except asyncio.CancelledError:
@@ -104,20 +111,6 @@ class TrailMonitor:
             logger.error(f"TrailMonitor crashed: {e}", exc_info=True)
 
     async def _loop_rest(self) -> None:
-        """
-        B1 FIX: REST ticker poll loop.
-        Replaces the dead `pass` stub that was here before.
-
-        Polls Delta Exchange ticker every TRAIL_LOOP_SEC seconds.
-        Uses a shared ccxt exchange instance (lazy-created, closed on stop).
-
-        Upgrade path: swap this method for a WebSocket subscriber
-        (Delta WS `/v2/trades` or mark-price feed) without changing
-        any other code — just call `await self._on_tick(mark_price)`.
-        """
-        # FIX-INDIA: Force Delta India endpoint (same fix as orders/manager.py)
-        # ccxt.delta() defaults to International (api.delta.exchange).
-        # India keys are rejected there with invalid_api_key.
         _base_url = ("https://testnet-api.india.delta.exchange"
                      if DELTA_TESTNET else
                      "https://api.india.delta.exchange")
@@ -133,25 +126,21 @@ class TrailMonitor:
             },
         }
         self._exchange = ccxt.delta(params)
-
         logger.info(f"Trail ticker polling every {TRAIL_LOOP_SEC}s for {SYMBOL}")
 
         try:
             while self._running:
                 await asyncio.sleep(TRAIL_LOOP_SEC)
-
                 try:
                     ticker = await self._exchange.fetch_ticker(SYMBOL)
                     mark_price = float(
                         ticker.get("info", {}).get("mark_price") or
-                        ticker.get("last") or
-                        0
+                        ticker.get("last") or 0
                     )
                     if mark_price > 0:
                         await self._on_tick(mark_price)
                     else:
-                        logger.warning("Ticker returned zero/null price — skipping tick")
-
+                        logger.warning("Ticker returned zero price — skipping tick")
                 except (ccxt.NetworkError, ccxt.RequestTimeout) as e:
                     logger.warning(f"Ticker fetch failed (network): {e}")
                 except Exception as e:
@@ -164,37 +153,44 @@ class TrailMonitor:
 
     async def _on_tick(self, current_price: float) -> None:
         """
-        Process one price tick.
+        Process one price tick — matches Pine Script exit priority exactly.
 
-        Priority (matches Pine Script):
-          1. Max SL   → emergency close, return
-          2. Breakeven → move SL to entry (once)
-          3. Trail     → ratchet SL toward peak
+        Pine Script strategy.exit() evaluation order:
+          1. stop= (SL)    → checked first
+          2. limit= (TP)   → checked second
+          3. trail_points= → trailing stop, tightens SL
+        
+        We replicate:
+          1. Max SL        → hard cap, market close
+          2. Trail SL cross → current_sl breached, market close  ← FIX-EXIT
+          3. Breakeven     → move current_sl to entry (one-shot)
+          4. Trail ratchet → advance current_sl toward peak
         """
         if not self._running or self.risk is None or self.state is None:
             return
 
         risk  = self.risk
         state = self.state
-
         is_long     = risk.is_long
         entry_price = risk.entry_price
-        atr         = risk.atr  # entry-bar ATR — matches Pine Script
+        atr         = risk.atr
 
         # ── 1. Max SL ─────────────────────────────────────────────────────────
-        # B3 FIX: was never called before
         if not state.max_sl_fired and max_sl_hit(current_price, entry_price, atr, is_long):
             logger.warning(
-                f"MAX SL HIT | price={current_price:.2f} entry={entry_price:.2f} "
-                f"atr={atr:.2f} long={is_long}"
+                f"MAX SL HIT | price={current_price:.2f} entry={entry_price:.2f}"
             )
             state.max_sl_fired = True
             self._running = False
-            await self.telegram.notify_max_sl(current_price, entry_price) # Added notify
+            await self.telegram.notify_max_sl(current_price, entry_price)
             try:
-                await self.order_mgr.close_position(reason="Max SL Hit")
+                exit_order = await self.order_mgr.close_position(reason="Max SL Hit")
+                exit_price = float(exit_order.get("average") or exit_order.get("price") or current_price)
             except Exception as e:
                 logger.error(f"Emergency close failed: {e}", exc_info=True)
+                exit_price = current_price
+            if self.on_trail_exit:
+                await self.on_trail_exit(exit_price, "Max SL Hit")
             return
 
         # ── Update peak price ─────────────────────────────────────────────────
@@ -205,40 +201,70 @@ class TrailMonitor:
 
         profit_dist = abs(state.peak_price - entry_price)
 
-        # ── 2. Breakeven ──────────────────────────────────────────────────────
-        # B3 FIX: was never called before
+        # ── 2. FIX-EXIT: Trail SL breach → market close ───────────────────────
+        # Mirrors Pine: strategy.exit() closes when price crosses trailing stop.
+        # Only active once trail or BE has moved current_sl off initial SL.
+        sl_is_active = state.be_done or state.stage > 0
+        if sl_is_active and state.current_sl > 0:
+            sl_breached = (
+                (is_long  and current_price <= state.current_sl) or
+                (not is_long and current_price >= state.current_sl)
+            )
+            if sl_breached:
+                logger.info(
+                    f"TRAIL SL BREACHED | price={current_price:.2f} "
+                    f"sl={state.current_sl:.2f} stage={state.stage}"
+                )
+                self._running = False
+                reason = f"Trail S{state.stage}" if state.stage > 0 else "Breakeven SL"
+                try:
+                    exit_order = await self.order_mgr.close_at_trail_sl(reason=reason)
+                    exit_price = float(
+                        exit_order.get("average") or
+                        exit_order.get("price") or
+                        current_price
+                    )
+                except Exception as e:
+                    logger.error(f"Trail SL close failed: {e}", exc_info=True)
+                    exit_price = current_price
+                real_pl = calc_real_pl(entry_price, exit_price, is_long, ALERT_QTY)
+                await self.telegram.notify_exit(reason, entry_price, exit_price, real_pl)
+                if self.on_trail_exit:
+                    await self.on_trail_exit(exit_price, reason)
+                return
+
+        # ── 3. Breakeven ──────────────────────────────────────────────────────
         if not state.be_done and should_trigger_be(profit_dist, atr):
             logger.info(
                 f"BREAKEVEN triggered | profit={profit_dist:.2f} "
                 f"threshold={atr * 0.6:.2f} | SL → entry={entry_price:.2f}"
             )
-            state.be_done     = True
-            state.current_sl  = entry_price
-            await self.telegram.notify_breakeven(entry_price) # Added notify
+            state.be_done    = True
+            state.current_sl = entry_price
+            await self.telegram.notify_breakeven(entry_price)
             try:
-                # Use flat buffer for BE (ATR-dynamic not yet critical at this stage)
                 from config import BRACKET_SL_BUFFER
                 await self.order_mgr.modify_sl(entry_price, BRACKET_SL_BUFFER)
             except Exception as e:
                 logger.error(f"Breakeven SL modify failed: {e}", exc_info=True)
 
-        # ── 3. Trail ratchet ──────────────────────────────────────────────────
+        # ── 4. Trail ratchet ──────────────────────────────────────────────────
         new_stage = calc_trail_stage(profit_dist, atr)
         if new_stage > state.stage:
             logger.info(f"TRAIL stage {state.stage} → {new_stage}")
-            await self.telegram.notify_trail_stage(state.stage, new_stage, current_price, state.current_sl) # Added notify
+            await self.telegram.notify_trail_stage(
+                state.stage, new_stage, current_price, state.current_sl
+            )
             state.stage = new_stage
 
         if state.stage > 0:
-            # B2 FIX: trail_pts is the SL distance from peak (not trail_off)
             trail_pts, trail_off = get_trail_params(state.stage, atr)
 
-            # Activation gate: only ratchet once profit exceeds trail_pts
             if profit_dist >= trail_pts:
                 if is_long:
-                    candidate_sl = state.peak_price - trail_pts  # FIX: was trail_off
+                    candidate_sl = state.peak_price - trail_pts
                 else:
-                    candidate_sl = state.peak_price + trail_pts  # FIX: was trail_off
+                    candidate_sl = state.peak_price + trail_pts
 
                 if self._sl_improved(candidate_sl):
                     logger.info(
@@ -248,8 +274,6 @@ class TrailMonitor:
                     )
                     state.current_sl = candidate_sl
                     try:
-                        # B2 FIX: pass trail_off as ATR-dynamic limit buffer
-                        # (matches Pine Script bracket logic; FIX-3 in orders/manager.py)
                         await self.order_mgr.modify_sl(candidate_sl, trail_off)
                     except Exception as e:
                         logger.error(f"Trail SL modify failed: {e}", exc_info=True)
@@ -267,7 +291,6 @@ class TrailMonitor:
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _sl_improved(self, new_sl: float) -> bool:
-        """True if new_sl is strictly better than current (monotonic ratchet)."""
         if self.risk is None or self.state is None:
             return False
         if self.risk.is_long:
