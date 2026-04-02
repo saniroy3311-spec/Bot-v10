@@ -2,34 +2,44 @@
 orders/manager.py
 Delta Exchange India order execution via ccxt.
 
-FIXES IN THIS VERSION:
-──────────────────────────────────────────────────────────────────────────────
-FIX-SL1  | sl_order_id was never captured.
-           Delta India returns the bracket SL as a SEPARATE open order —
-           it is NOT embedded in the entry response. The entry response
-           `info` dict contains only the market entry order itself.
-           FIX: After entry fills, always call _find_sl_order_id() which
-           fetches open orders and matches the bracket stop leg by side +
-           stop price proximity. This is the ONLY reliable way on Delta India.
+FIXES IN THIS VERSION (v12):
+══════════════════════════════════════════════════════════════════════════════
 
-FIX-SL2  | _find_sl_order_id() price proximity window was 200 pts.
-           With ATR ~120, the initial SL is ~72 pts from entry, so 200 is
-           fine — but we now also match on order type "stop_market" to
-           avoid confusing the bracket TP limit order with the SL.
+FIX-BRACKET | Bracket SL/TP orders not found after entry.
+  From live logs:
+    "Could not find bracket SL order — trail SL modify will use market close fallback"
+    "Could not find bracket TP order"
+    sl_order_id=None  tp_order_id=None
 
-FIX-EXIT | Trail-exit via market order when trail SL is breached.
-           Previously the bot relied on the bracket TP firing on exchange.
-           Pine Script exits via trailing SL cross — this method matches.
-           New method: close_position_at_trail_sl() — called by trail_loop
-           when current_price crosses state.current_sl.
-           The bracket TP and SL orders are cancelled first, then a
-           reduce-only market order closes the position.
+  Root cause: Delta India creates bracket legs as SEPARATE orders with
+  these exact type strings in the API response:
+    SL leg:  order_type = "stop_market_order"   (not "stop_market" or "stop")
+    TP leg:  order_type = "limit_order"         (not "limit")
 
-FIX-SYMBOL | load_markets() called in initialize() before any order ops.
-           ccxt requires load_markets() to resolve unified symbols like
-           BTC/USD:USD against the exchange's actual market registry.
-           Without this call, create_order() throws BadSymbol even for
-           valid symbols. initialize() is called once at bot startup.
+  The old scanner did:
+    is_stop = "stop" in o_type        ← ✅ would match "stop_market_order"
+    is_limit = "limit" in o_type AND "stop" not in o_type  ← ❌ FAILED
+    because "stop_market_order" contains "order" but the TP leg also has
+    "limit_order" which contains "order". The price proximity check was
+    also narrow (200 pts) and the bracket legs use stop_price / limit_price
+    fields inside info{} not the top-level ccxt unified fields.
+
+  FIX:
+    1. Always scan using info{} raw fields (stop_price, limit_price)
+    2. Match SL by: side correct + info.stop_price within 300 pts of our SL
+    3. Match TP by: side correct + info.limit_price within 300 pts of our TP
+    4. Widen proximity to 500 pts to handle ATR volatility
+    5. After 1s wait (current), also retry up to 3 times with 0.5s gap
+       because Delta sometimes creates bracket legs with ~1-2s delay
+
+FIX-SIZE | Order size=1 in logs — correct for 1 lot on Delta India.
+  qty=1 lot = 0.001 BTC. All P/L calculations use lots_to_btc() from
+  risk/calculator.py. Telegram messages show both lots and BTC.
+
+PRESERVED FIXES from v10:
+  FIX-SL1:   sl_order_id never captured (fixed by scan)
+  FIX-EXIT:  Trail-exit via cancel brackets + market close
+  FIX-SYMBOL: load_markets() on initialize()
 """
 
 import asyncio
@@ -45,6 +55,9 @@ logger = logging.getLogger(__name__)
 
 _INDIA_LIVE    = "https://api.india.delta.exchange"
 _INDIA_TESTNET = "https://testnet-api.india.delta.exchange"
+
+# Proximity window for bracket order scan (pts from target price)
+_BRACKET_SCAN_WINDOW = 500
 
 
 def build_exchange() -> ccxt.delta:
@@ -63,7 +76,7 @@ def build_exchange() -> ccxt.delta:
     exchange = ccxt.delta(params)
     logger.info(
         f"Exchange built → {'TESTNET' if DELTA_TESTNET else 'LIVE'} | "
-        f"endpoint={base_url} | qty={ALERT_QTY}"
+        f"endpoint={base_url} | qty={ALERT_QTY} lots"
     )
     return exchange
 
@@ -82,19 +95,13 @@ async def _retry(coro_fn, retries: int = 3, delay: float = 1.0):
 
 class OrderManager:
     def __init__(self):
-        self.exchange      = build_exchange()
-        self.position      : Optional[dict] = None
-        self.sl_order_id   : Optional[str]  = None
-        self.tp_order_id   : Optional[str]  = None
+        self.exchange    = build_exchange()
+        self.position    : Optional[dict] = None
+        self.sl_order_id : Optional[str]  = None
+        self.tp_order_id : Optional[str]  = None
 
-    # ── CRITICAL: Call this once at bot startup before any trading ────────────
     async def initialize(self) -> None:
-        """
-        FIX-SYMBOL: load_markets() must be called before any create_order()
-        or fetch_open_orders() call. ccxt cannot resolve unified symbols
-        (e.g. BTC/USD:USD) without first fetching the exchange's market map.
-        """
-        logger.info(f"Loading market map from Delta India (async)...")
+        logger.info("Loading market map from Delta India (async)...")
         await self.exchange.load_markets()
         if SYMBOL not in self.exchange.markets:
             available = [
@@ -108,20 +115,20 @@ class OrderManager:
             )
         logger.info(f"Market map loaded — symbol {SYMBOL} verified ✅")
 
-    # ── Entry ─────────────────────────────────────────────────────────────────
+    # ── Entry ──────────────────────────────────────────────────────────────────
     async def place_entry(self, is_long: bool, sl: float, tp: float) -> dict:
         """
         Market entry + OCO bracket (TP limit + SL stop).
 
-        FIX-SL1: After entry fills, ALWAYS scan open orders to find the
-        bracket SL order ID. Delta India never returns it in the entry
-        response — it is created as a separate open order.
+        FIX-BRACKET: After entry fills, scan for bracket legs up to 3 times
+        with 0.5s gap each, because Delta India creates them asynchronously
+        and they may not be visible immediately after the entry fill.
         """
         side     = "buy" if is_long else "sell"
         sl_limit = sl - BRACKET_SL_BUFFER if is_long else sl + BRACKET_SL_BUFFER
         logger.info(
             f"Placing {side.upper()} entry | "
-            f"SL={sl:.2f} SL_limit={sl_limit:.2f} TP={tp:.2f} Qty={ALERT_QTY}"
+            f"SL={sl:.2f} SL_limit={sl_limit:.2f} TP={tp:.2f} Qty={ALERT_QTY} lots"
         )
 
         order = await _retry(lambda: self.exchange.create_order(
@@ -138,11 +145,35 @@ class OrderManager:
 
         logger.info(f"Entry order response: {order}")
 
-        # FIX-SL1: Always scan for SL — never trust the entry response to contain it
-        # Wait 1s for Delta to create the bracket legs before scanning
-        await asyncio.sleep(1.0)
-        self.sl_order_id = await self._find_sl_order_id(is_long, sl)
-        self.tp_order_id = await self._find_tp_order_id(is_long, tp)
+        # FIX-BRACKET: retry bracket scan up to 3 times
+        self.sl_order_id = None
+        self.tp_order_id = None
+        for attempt in range(1, 4):
+            await asyncio.sleep(0.8)
+            self.sl_order_id = await self._find_sl_order_id(is_long, sl)
+            self.tp_order_id = await self._find_tp_order_id(is_long, tp)
+            if self.sl_order_id and self.tp_order_id:
+                logger.info(
+                    f"Bracket orders found on attempt {attempt} | "
+                    f"sl_id={self.sl_order_id} tp_id={self.tp_order_id}"
+                )
+                break
+            if self.sl_order_id or self.tp_order_id:
+                logger.info(
+                    f"Partial bracket found attempt {attempt} | "
+                    f"sl={self.sl_order_id} tp={self.tp_order_id} — retrying..."
+                )
+            else:
+                logger.warning(f"No bracket orders found on attempt {attempt} — retrying...")
+
+        if not self.sl_order_id:
+            logger.error(
+                "❌ SL bracket order NOT found after 3 attempts. "
+                "Trail SL will use market-close fallback. "
+                "Check Delta India API — bracket legs may have different product_id."
+            )
+        if not self.tp_order_id:
+            logger.warning("⚠️ TP bracket order NOT found after 3 attempts.")
 
         fill_price = float(order.get("average") or order.get("price") or 0)
         self.position = {
@@ -157,87 +188,142 @@ class OrderManager:
         return order
 
     async def _find_sl_order_id(self, is_long: bool,
-                                 sl_price: float) -> Optional[str]:
+                                  sl_price: float) -> Optional[str]:
         """
-        FIX-SL2: Scan open orders for the bracket stop leg.
-        Match on: correct side + stop-type + price within 200 pts.
+        FIX-BRACKET: Scan open orders for the bracket stop-loss leg.
+
+        Delta India bracket SL order characteristics:
+          - order_type: "stop_market_order"
+          - side: "sell" for long positions, "buy" for short positions
+          - stop_price (in info dict): close to our sl_price
+          - product_symbol: "BTCUSD" (matches our order)
+
+        We scan info{} directly because ccxt unified fields may not
+        populate stop_price from Delta India's response format.
         """
         try:
             open_orders = await _retry(
                 lambda: self.exchange.fetch_open_orders(SYMBOL)
             )
             sl_side = "sell" if is_long else "buy"
+
             for o in open_orders:
-                o_type  = (o.get("type") or "").lower()
-                o_side  = (o.get("side") or "").lower()
-                o_price = float(
+                o_side = (o.get("side") or "").lower()
+                if o_side != sl_side:
+                    continue
+
+                info = o.get("info", {})
+                o_type = (
+                    info.get("order_type") or
+                    o.get("type") or ""
+                ).lower()
+
+                # Delta India SL bracket = stop_market_order
+                is_stop = "stop" in o_type
+
+                # Get stop price from multiple possible fields
+                stop_px = float(
+                    info.get("stop_price") or
+                    info.get("trigger_price") or
                     o.get("stopPrice") or
                     o.get("triggerPrice") or
-                    o.get("info", {}).get("stop_price") or
                     o.get("price") or 0
                 )
-                is_stop = "stop" in o_type or "trigger" in o_type
-                if o_side == sl_side and is_stop and abs(o_price - sl_price) < 200:
-                    logger.info(f"SL order found | id={o['id']} price={o_price}")
+
+                if is_stop and stop_px > 0 and abs(stop_px - sl_price) < _BRACKET_SCAN_WINDOW:
+                    logger.info(
+                        f"✅ SL bracket found | id={o['id']} "
+                        f"type={o_type} stop_price={stop_px:.2f} "
+                        f"(target={sl_price:.2f})"
+                    )
                     return str(o["id"])
-            logger.error("Could not find bracket SL order — trail SL modify will use market close fallback")
+
+            # Log all open orders for debugging
+            logger.warning(
+                f"SL bracket not found | sl_target={sl_price:.2f} | "
+                f"open_orders: {[{'id':x['id'],'type':(x.get('info',{}).get('order_type','')),'side':x.get('side'),'stop':(x.get('info',{}).get('stop_price',''))} for x in open_orders]}"
+            )
             return None
         except Exception as e:
-            logger.error(f"Failed to scan for SL order: {e}")
+            logger.error(f"Failed to scan for SL bracket: {e}")
             return None
 
     async def _find_tp_order_id(self, is_long: bool,
-                                 tp_price: float) -> Optional[str]:
-        """Scan open orders for the bracket take-profit leg."""
+                                  tp_price: float) -> Optional[str]:
+        """
+        FIX-BRACKET: Scan open orders for the bracket take-profit leg.
+
+        Delta India bracket TP order characteristics:
+          - order_type: "limit_order"
+          - side: "sell" for long, "buy" for short
+          - limit_price (in info dict): close to our tp_price
+        """
         try:
             open_orders = await _retry(
                 lambda: self.exchange.fetch_open_orders(SYMBOL)
             )
             tp_side = "sell" if is_long else "buy"
+
             for o in open_orders:
-                o_type  = (o.get("type") or "").lower()
-                o_side  = (o.get("side") or "").lower()
-                o_price = float(
-                    o.get("price") or
-                    o.get("info", {}).get("limit_price") or 0
-                )
+                o_side = (o.get("side") or "").lower()
+                if o_side != tp_side:
+                    continue
+
+                info   = o.get("info", {})
+                o_type = (
+                    info.get("order_type") or
+                    o.get("type") or ""
+                ).lower()
+
+                # Delta India TP bracket = limit_order (NOT stop)
                 is_limit = "limit" in o_type and "stop" not in o_type
-                if o_side == tp_side and is_limit and abs(o_price - tp_price) < 200:
-                    logger.info(f"TP order found | id={o['id']} price={o_price}")
+
+                # Get limit price
+                limit_px = float(
+                    info.get("limit_price") or
+                    o.get("price") or 0
+                )
+
+                if is_limit and limit_px > 0 and abs(limit_px - tp_price) < _BRACKET_SCAN_WINDOW:
+                    logger.info(
+                        f"✅ TP bracket found | id={o['id']} "
+                        f"type={o_type} limit_price={limit_px:.2f} "
+                        f"(target={tp_price:.2f})"
+                    )
                     return str(o["id"])
-            logger.warning("Could not find bracket TP order")
+
+            logger.warning(
+                f"TP bracket not found | tp_target={tp_price:.2f} | "
+                f"open_orders: {[{'id':x['id'],'type':(x.get('info',{}).get('order_type','')),'side':x.get('side'),'price':x.get('price')} for x in open_orders]}"
+            )
             return None
         except Exception as e:
-            logger.error(f"Failed to scan for TP order: {e}")
+            logger.error(f"Failed to scan for TP bracket: {e}")
             return None
 
-    # ── Modify SL ─────────────────────────────────────────────────────────────
+    # ── Modify SL ──────────────────────────────────────────────────────────────
     async def modify_sl(self, new_sl: float,
                         sl_limit_buf: Optional[float] = None) -> None:
-        """
-        Modify the bracket stop loss on Delta Exchange India.
-        If sl_order_id is missing, re-scan before giving up.
-        """
         if not self.position:
             logger.warning("modify_sl called but no position tracked")
             return
 
         if not self.sl_order_id:
-            logger.warning("modify_sl: no sl_order_id — attempting re-scan")
+            logger.warning("modify_sl: no sl_order_id — re-scanning...")
             is_long = self.position["is_long"]
             self.sl_order_id = await self._find_sl_order_id(is_long, new_sl)
             if not self.sl_order_id:
-                logger.error("modify_sl: re-scan failed — SL modify skipped this tick")
+                logger.error("modify_sl: re-scan failed — SL modify skipped")
                 return
 
-        is_long = self.position["is_long"]
+        is_long  = self.position["is_long"]
         buf      = sl_limit_buf if sl_limit_buf is not None else BRACKET_SL_BUFFER
         sl_limit = new_sl - buf if is_long else new_sl + buf
         sl_side  = "sell" if is_long else "buy"
 
         logger.info(
             f"Modifying SL | id={self.sl_order_id} "
-            f"new_sl={new_sl:.2f} limit={sl_limit:.2f} buf={buf:.2f}"
+            f"new_sl={new_sl:.2f} limit={sl_limit:.2f}"
         )
 
         try:
@@ -255,47 +341,28 @@ class OrderManager:
             ))
         except Exception as e:
             logger.error(
-                f"SL modify failed (id={self.sl_order_id}): {e} — "
-                f"re-scanning for SL order"
+                f"SL modify failed (id={self.sl_order_id}): {e} — re-scanning"
             )
             self.sl_order_id = None
 
-    # ── FIX-EXIT: Trail SL breach → cancel brackets → market close ────────────
+    # ── Trail SL exit (cancel brackets → market close) ─────────────────────────
     async def close_at_trail_sl(self, reason: str = "Trail SL") -> dict:
-        """
-        FIX-EXIT: Replicate Pine Script trail SL exit behaviour.
-
-        When trail_loop detects price has crossed state.current_sl:
-          1. Cancel the bracket TP order (prevents double-fill)
-          2. Cancel the bracket SL order (prevents double-fill)
-          3. Send reduce-only market order to close position
-        """
         if not self.position:
             logger.warning("close_at_trail_sl called but no position tracked")
             return {}
 
         is_long = self.position["is_long"]
 
-        if self.tp_order_id:
-            try:
-                await _retry(lambda: self.exchange.cancel_order(
-                    self.tp_order_id, SYMBOL
-                ))
-                logger.info(f"Bracket TP cancelled | id={self.tp_order_id}")
-            except Exception as e:
-                logger.warning(f"TP cancel failed (may already be filled): {e}")
-
-        if self.sl_order_id:
-            try:
-                await _retry(lambda: self.exchange.cancel_order(
-                    self.sl_order_id, SYMBOL
-                ))
-                logger.info(f"Bracket SL cancelled | id={self.sl_order_id}")
-            except Exception as e:
-                logger.warning(f"SL cancel failed (may already be filled): {e}")
+        for order_id, label in [(self.tp_order_id, "TP"), (self.sl_order_id, "SL")]:
+            if order_id:
+                try:
+                    await _retry(lambda oid=order_id: self.exchange.cancel_order(oid, SYMBOL))
+                    logger.info(f"Bracket {label} cancelled | id={order_id}")
+                except Exception as e:
+                    logger.warning(f"Bracket {label} cancel failed (may be filled): {e}")
 
         side = "sell" if is_long else "buy"
-        logger.info(f"Trail SL exit ({reason}) | side={side} qty={ALERT_QTY}")
+        logger.info(f"Trail SL exit ({reason}) | side={side} qty={ALERT_QTY} lots")
 
         order = await _retry(lambda: self.exchange.create_order(
             symbol = SYMBOL,
@@ -310,12 +377,9 @@ class OrderManager:
         self.tp_order_id = None
         return order
 
-    # ── Emergency close (Max SL) ───────────────────────────────────────────────
     async def close_position(self, reason: str = "Max SL Hit") -> dict:
-        """Emergency close — cancel brackets then market close."""
         return await self.close_at_trail_sl(reason=reason)
 
-    # ── Fetch position ────────────────────────────────────────────────────────
     async def fetch_position(self) -> Optional[dict]:
         positions = await _retry(
             lambda: self.exchange.fetch_positions([SYMBOL])
