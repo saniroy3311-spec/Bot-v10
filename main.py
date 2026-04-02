@@ -336,6 +336,7 @@ class SniperBot:
         )
 
     async def run(self) -> None:
+        await self.order_mgr.initialize()
         await self.telegram.notify_start()
         self.journal.log_event("start", "Shiva Sniper v6.5 started")
         await self.feed.start()
