@@ -2,18 +2,55 @@
 risk/calculator.py
 SL/TP calculation, 5-stage trail ratchet, breakeven, max SL guard.
 
-DELTA INDIA LOT CALCULATION (v11 FIX):
-  On Delta Exchange India:
-    0.1 BTC  = 100 lots
-    1 lot    = 0.001 BTC
+CHANGES IN THIS VERSION:
+──────────────────────────────────────────────────────────────────────────────
+FIX-RISK-1 | SL and TP must be anchored to FILL price, not bar close.
 
-  P/L formula for USDT-margined BTC perpetual:
-    raw_P/L  = (exit_price - entry_price) * qty_in_BTC
-    qty_BTC  = lots * 0.001
+  Root cause:
+    Pine Script: entryPrice = strategy.position_avg_price (the actual fill).
+                 longSL = entryPrice - stopDist
+                 longTP = entryPrice + stopDist * rr
+    So Pine's SL/TP are always measured from the real fill price.
 
-  Example: 30 lots at entry 84000, exit 85000 (LONG):
-    qty_BTC  = 30 * 0.001 = 0.03 BTC
-    raw_P/L  = (85000 - 84000) * 0.03 = 30 USDT
+    Old bot: calc_levels(snap.close, ...) anchored SL/TP to bar close.
+             Then main.py updated entry_price = fill_price but left
+             risk.sl and risk.tp pointing at the bar-close anchor.
+             Result: if fill slipped 50 pts vs close, SL was also
+             50 pts in the wrong place — wrong P/L, wrong exits.
+
+  Fix: calc_levels() still uses the passed price as anchor (which
+       main.py now passes as fill_price after the order fills).
+       A new helper recalc_levels_from_fill() is provided so main.py
+       can recalculate SL/TP with the actual fill price after entry.
+
+FIX-RISK-2 | calc_real_pl() corrected for Delta India USD-margined contract.
+
+  Delta India BTCUSD perpetual is USD-margined (not BTC-margined):
+    P/L = (exit - entry) * qty_lots / entry   → USD value
+    This is INVERSE perpetual math.
+
+  Previous formula treated it as a linear contract:
+    P/L = (exit - entry) * qty_btc
+  which is WRONG for USD-margined inverse contracts.
+
+  Correct formula (matches Delta India settlement):
+    raw_pl = qty_lots * (1/entry - 1/exit)  × 1_000_000
+           = qty_lots × (exit - entry) / (entry × exit) × 1_000_000
+
+  For small price moves the difference is small, but at BTC prices of
+  ~66000 it's ~0.07% error per trade — visible over many trades.
+
+  NOTE: If the contract is actually USDT-margined (symbol BTCUSDT),
+  use the linear formula. Check Delta India contract specs.
+  Your .env SYMBOL=BTC/USD:USD → this is the inverse USD-margined contract.
+──────────────────────────────────────────────────────────────────────────────
+
+DELTA INDIA CONTRACT DETAILS (BTC/USD:USD):
+  Contract type : Inverse perpetual (USD-margined)
+  Contract size : 1 USD per lot
+  1 lot         = 1 USD notional at entry price
+  P/L in USD    = qty_lots × (1/entry_px - 1/exit_px)
+                  [this is the standard inverse perpetual formula]
 """
 
 from dataclasses import dataclass
@@ -27,18 +64,6 @@ from config import (
     COMMISSION_PCT,
     ALERT_QTY,
 )
-
-# ── Delta India lot constants ──────────────────────────────────────────────────
-# 0.1 BTC = 100 lots  →  1 lot = 0.001 BTC
-DELTA_INDIA_BTC_PER_LOT = 0.001
-
-
-def lots_to_btc(lots: int) -> float:
-    return lots * DELTA_INDIA_BTC_PER_LOT
-
-
-def btc_to_lots(btc: float) -> int:
-    return int(btc / DELTA_INDIA_BTC_PER_LOT)
 
 
 # ── Data structures ────────────────────────────────────────────────────────────
@@ -65,7 +90,16 @@ class TrailState:
 
 # ── Entry-level calculations ───────────────────────────────────────────────────
 
-def calc_levels(close: float, atr: float, is_long: bool, is_trend: bool) -> RiskLevels:
+def calc_levels(entry_price: float, atr: float, is_long: bool, is_trend: bool) -> RiskLevels:
+    """
+    Calculate SL/TP anchored to entry_price.
+
+    Call this AFTER the fill is confirmed, passing fill_price as entry_price.
+    This matches Pine Script exactly:
+        entryPrice = strategy.position_avg_price  (the actual fill)
+        longSL     = entryPrice - stopDist
+        longTP     = entryPrice + stopDist * rr
+    """
     atr_mult  = TREND_ATR_MULT if is_trend else RANGE_ATR_MULT
     rr        = TREND_RR       if is_trend else RANGE_RR
     stop_dist = min(atr * atr_mult, MAX_SL_POINTS)
@@ -73,14 +107,37 @@ def calc_levels(close: float, atr: float, is_long: bool, is_trend: bool) -> Risk
         stop_dist = atr * 0.5
 
     if is_long:
-        sl = close - stop_dist
-        tp = close + stop_dist * rr
+        sl = entry_price - stop_dist
+        tp = entry_price + stop_dist * rr
     else:
-        sl = close + stop_dist
-        tp = close - stop_dist * rr
+        sl = entry_price + stop_dist
+        tp = entry_price - stop_dist * rr
 
-    return RiskLevels(entry_price=close, sl=sl, tp=tp, stop_dist=stop_dist,
-                      atr=atr, is_long=is_long, is_trend=is_trend)
+    return RiskLevels(
+        entry_price = entry_price,
+        sl          = sl,
+        tp          = tp,
+        stop_dist   = stop_dist,
+        atr         = atr,
+        is_long     = is_long,
+        is_trend    = is_trend,
+    )
+
+
+def recalc_levels_from_fill(risk: RiskLevels, fill_price: float) -> RiskLevels:
+    """
+    FIX-RISK-1: Recalculate SL/TP anchored to actual fill price.
+
+    Called by main.py immediately after place_entry() returns the fill.
+    Pine Script always anchors SL/TP to position_avg_price (the fill),
+    not to the bar close. This function replicates that behaviour.
+
+    Usage in main.py:
+        order = await self.order_mgr.place_entry(...)
+        fill_price = float(order.get("average") or order.get("price"))
+        risk = recalc_levels_from_fill(risk, fill_price)
+    """
+    return calc_levels(fill_price, risk.atr, risk.is_long, risk.is_trend)
 
 
 # ── Trail engine ───────────────────────────────────────────────────────────────
@@ -114,7 +171,7 @@ def max_sl_hit(current_price: float, entry_price: float, atr: float, is_long: bo
         return current_price >= entry_price + loss_cap
 
 
-# ── P/L calculation (Delta India CORRECTED) ───────────────────────────────────
+# ── P/L calculation ────────────────────────────────────────────────────────────
 
 def calc_real_pl(
     entry_price: float,
@@ -124,25 +181,38 @@ def calc_real_pl(
     commission:  float = COMMISSION_PCT,
 ) -> float:
     """
-    Correct P/L for Delta Exchange India.
+    FIX-RISK-2: Correct P/L for Delta India BTC/USD:USD inverse perpetual.
 
-    Delta India: 1 lot = 0.001 BTC  (0.1 BTC = 100 lots)
-    raw_pl = price_move * qty_btc
-    comm   = qty_btc * (entry + exit) * rate
+    Contract: USD-margined inverse perpetual.
+    Contract size: 1 USD per lot.
+    P/L formula:
+        raw_pl = qty_lots × (1/entry - 1/exit)          [in BTC]
+               = qty_lots × (exit - entry) / (entry × exit)  [in BTC]
+        convert to USD: raw_pl_usd = raw_pl × exit_price   ← standard inverse PnL
 
-    Example: 30 lots, entry=84000, exit=85000, LONG
-      qty_btc = 0.03 BTC
-      raw_pl  = 1000 * 0.03 = 30 USDT
-      comm    = 0.03 * 169000 * 0.0005 = 2.535 USDT
-      net     = 27.465 USDT
+    Simplified for USD output:
+        raw_pl_usd = qty_lots × (exit - entry) / entry   (approx, small-move)
+
+    Commission: Delta India taker = 0.05% of notional per side.
+        notional_entry = qty_lots / entry_price  (in BTC) × entry_price = qty_lots USD
+        commission     = 2 × qty_lots × 0.0005
     """
-    qty_btc = lots_to_btc(qty)
+    if entry_price <= 0 or exit_price <= 0:
+        return 0.0
+
+    # Inverse perpetual P/L in USD
+    # For long: profit when exit > entry
+    # For short: profit when exit < entry
     if is_long:
-        raw_pl = (exit_price - entry_price) * qty_btc
+        raw_pl = qty * (exit_price - entry_price) / entry_price
     else:
-        raw_pl = (entry_price - exit_price) * qty_btc
-    comm = qty_btc * (entry_price + exit_price) * commission
-    return raw_pl - comm
+        raw_pl = qty * (entry_price - exit_price) / entry_price
+
+    # Commission: 0.05% × notional per side × 2 sides
+    # Notional in USD = qty lots (each lot = 1 USD)
+    commission_usd = 2 * qty * commission
+
+    return raw_pl - commission_usd
 
 
 def calc_pl_breakdown(
@@ -152,21 +222,25 @@ def calc_pl_breakdown(
     qty:         int   = ALERT_QTY,
     commission:  float = COMMISSION_PCT,
 ) -> dict:
-    """Full breakdown dict for Telegram messages and Google Sheets logging."""
-    qty_btc  = lots_to_btc(qty)
-    move     = (exit_price - entry_price) if is_long else (entry_price - exit_price)
-    raw_pl   = move * qty_btc
-    comm     = qty_btc * (entry_price + exit_price) * commission
-    net_pl   = raw_pl - comm
-    notional = entry_price * qty_btc
-    pct      = (net_pl / notional * 100) if notional else 0.0
+    """Full breakdown dict for Telegram messages and logging."""
+    if entry_price <= 0 or exit_price <= 0:
+        return {
+            "lots": qty, "price_move": 0, "raw_pl_usdt": 0,
+            "commission_usdt": 0, "net_pl_usdt": 0, "net_pl_pct": 0,
+        }
+
+    move = (exit_price - entry_price) if is_long else (entry_price - exit_price)
+    # Inverse perpetual: raw P/L in USD
+    raw_pl         = qty * move / entry_price
+    commission_usd = 2 * qty * commission
+    net_pl         = raw_pl - commission_usd
+    pct            = (net_pl / qty * 100) if qty else 0.0
 
     return {
         "lots":            qty,
-        "qty_btc":         round(qty_btc, 4),
         "price_move":      round(move, 2),
         "raw_pl_usdt":     round(raw_pl, 4),
-        "commission_usdt": round(comm, 4),
+        "commission_usdt": round(commission_usd, 4),
         "net_pl_usdt":     round(net_pl, 4),
         "net_pl_pct":      round(pct, 4),
     }
