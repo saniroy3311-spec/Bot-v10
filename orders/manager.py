@@ -24,6 +24,12 @@ FIX-EXIT | Trail-exit via market order when trail SL is breached.
            when current_price crosses state.current_sl.
            The bracket TP and SL orders are cancelled first, then a
            reduce-only market order closes the position.
+
+FIX-SYMBOL | load_markets() called in initialize() before any order ops.
+           ccxt requires load_markets() to resolve unified symbols like
+           BTC/USD:USD against the exchange's actual market registry.
+           Without this call, create_order() throws BadSymbol even for
+           valid symbols. initialize() is called once at bot startup.
 """
 
 import asyncio
@@ -80,6 +86,27 @@ class OrderManager:
         self.position      : Optional[dict] = None
         self.sl_order_id   : Optional[str]  = None
         self.tp_order_id   : Optional[str]  = None
+
+    # ── CRITICAL: Call this once at bot startup before any trading ────────────
+    async def initialize(self) -> None:
+        """
+        FIX-SYMBOL: load_markets() must be called before any create_order()
+        or fetch_open_orders() call. ccxt cannot resolve unified symbols
+        (e.g. BTC/USD:USD) without first fetching the exchange's market map.
+        """
+        logger.info(f"Loading market map from Delta India (async)...")
+        await self.exchange.load_markets()
+        if SYMBOL not in self.exchange.markets:
+            available = [
+                s for s in self.exchange.markets
+                if "BTC" in s and "USD" in s and ":" in s and len(s) < 15
+            ]
+            raise ValueError(
+                f"SYMBOL '{SYMBOL}' not found on Delta India.\n"
+                f"Available BTC perpetuals: {available}\n"
+                f"Fix: update SYMBOL= in your .env"
+            )
+        logger.info(f"Market map loaded — symbol {SYMBOL} verified ✅")
 
     # ── Entry ─────────────────────────────────────────────────────────────────
     async def place_entry(self, is_long: bool, sl: float, tp: float) -> dict:
@@ -143,7 +170,6 @@ class OrderManager:
             for o in open_orders:
                 o_type  = (o.get("type") or "").lower()
                 o_side  = (o.get("side") or "").lower()
-                # stopPrice or triggerPrice depending on ccxt normalisation
                 o_price = float(
                     o.get("stopPrice") or
                     o.get("triggerPrice") or
@@ -196,7 +222,6 @@ class OrderManager:
             logger.warning("modify_sl called but no position tracked")
             return
 
-        # Re-scan if we lost the SL order ID
         if not self.sl_order_id:
             logger.warning("modify_sl: no sl_order_id — attempting re-scan")
             is_long = self.position["is_long"]
@@ -233,7 +258,6 @@ class OrderManager:
                 f"SL modify failed (id={self.sl_order_id}): {e} — "
                 f"re-scanning for SL order"
             )
-            # Clear stale ID and re-scan next tick
             self.sl_order_id = None
 
     # ── FIX-EXIT: Trail SL breach → cancel brackets → market close ────────────
@@ -245,11 +269,6 @@ class OrderManager:
           1. Cancel the bracket TP order (prevents double-fill)
           2. Cancel the bracket SL order (prevents double-fill)
           3. Send reduce-only market order to close position
-
-        This matches Pine's strategy.exit() trail behaviour exactly:
-        Pine closes at the bar where price crosses the trailing stop.
-        The bot closes via market order the moment price crosses current_sl
-        in the tick loop (TRAIL_LOOP_SEC resolution).
         """
         if not self.position:
             logger.warning("close_at_trail_sl called but no position tracked")
@@ -257,7 +276,6 @@ class OrderManager:
 
         is_long = self.position["is_long"]
 
-        # Step 1: Cancel TP bracket to prevent double-fill
         if self.tp_order_id:
             try:
                 await _retry(lambda: self.exchange.cancel_order(
@@ -267,7 +285,6 @@ class OrderManager:
             except Exception as e:
                 logger.warning(f"TP cancel failed (may already be filled): {e}")
 
-        # Step 2: Cancel SL bracket to prevent double-fill
         if self.sl_order_id:
             try:
                 await _retry(lambda: self.exchange.cancel_order(
@@ -277,7 +294,6 @@ class OrderManager:
             except Exception as e:
                 logger.warning(f"SL cancel failed (may already be filled): {e}")
 
-        # Step 3: Market close
         side = "sell" if is_long else "buy"
         logger.info(f"Trail SL exit ({reason}) | side={side} qty={ALERT_QTY}")
 
