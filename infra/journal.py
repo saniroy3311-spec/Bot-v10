@@ -1,23 +1,25 @@
 """
 infra/journal.py
-Persistent trade journal for Shiva Sniper v6.5.
+Persistent trade journal for Shiva Sniper v11.
 
-UPGRADE: Now supports PostgreSQL (Supabase / any Postgres provider) as the
-primary store, with SQLite as a local fallback when DATABASE_URL is not set.
+BACKENDS:
+  1. PostgreSQL (Supabase) — primary when DATABASE_URL is set
+  2. SQLite — local fallback
 
-WHY: SQLite at /app/journal.db on Render is wiped on every deploy — all trade
-history is lost. PostgreSQL is external and persists forever.
+ALSO CALLS:
+  infra/gsheet.py — every completed trade is appended to Google Sheets
 
-SETUP (one-time):
-  1. Create a free Supabase project at https://supabase.com
-  2. Go to Settings -> Database -> Connection string (URI mode)
-  3. Copy the URI: postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres
-  4. Add to Render env vars: DATABASE_URL=<that URI>
+SUPABASE SETUP:
+  1. Create free project at https://supabase.com
+  2. Settings → Database → Connection string (URI mode)
+  3. Copy:  postgresql://postgres:[password]@db.[ref].supabase.co:5432/postgres
+  4. Add to Hostinger .env:  DATABASE_URL=<that URI>
 
-Tables created automatically on first run:
-  - trades      : one row per completed trade
-  - open_trades : current live position (max 1 row at a time)
-  - bot_events  : start / stop / error events for uptime tracking
+GOOGLE SHEETS SETUP:
+  See infra/gsheet.py header for full instructions.
+  Add to Hostinger .env:
+    GSHEET_CREDENTIALS_JSON=<service account JSON, one line>
+    GSHEET_SPREADSHEET_ID=<sheet ID from URL>
 """
 
 import os
@@ -25,21 +27,18 @@ import logging
 import sqlite3
 from datetime import datetime, timezone
 from config import LOG_FILE
+from infra.gsheet import GSheet
 
 logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 
-# ── Driver selection ──────────────────────────────────────────────────────────
 def _get_driver():
-    """Return 'postgres' if DATABASE_URL is set, else 'sqlite'."""
     return "postgres" if DATABASE_URL else "sqlite"
 
 
-# ── SQL statements (paramstyle differs: %s for psycopg2, ? for sqlite3) ──────
 def _ph(driver: str) -> str:
-    """Return the correct placeholder char for the active driver."""
     return "%s" if driver == "postgres" else "?"
 
 
@@ -134,27 +133,24 @@ CREATE TABLE IF NOT EXISTS bot_events (
 
 
 class Journal:
-    """
-    Unified trade journal.
-    Connects to PostgreSQL if DATABASE_URL is set, SQLite otherwise.
-    All public methods are identical regardless of backend.
-    """
-
     def __init__(self):
         self._driver = _get_driver()
         self._conn   = None
+        self._gsheet = GSheet()
         self._connect()
         self._init_db()
-        logger.info(f"Journal initialised [{self._driver}]")
+        logger.info(
+            f"Journal initialised [{self._driver}] | "
+            f"GSheet={'enabled' if self._gsheet.enabled else 'disabled'}"
+        )
 
-    # ── Connection ────────────────────────────────────────────────────
     def _connect(self) -> None:
         if self._driver == "postgres":
             try:
                 import psycopg2
                 self._conn = psycopg2.connect(DATABASE_URL)
                 self._conn.autocommit = False
-                logger.info("Connected to PostgreSQL")
+                logger.info("Connected to PostgreSQL (Supabase)")
             except Exception as e:
                 logger.error(
                     f"PostgreSQL connection failed: {e} "
@@ -177,7 +173,6 @@ class Journal:
         cur.execute(sql, params)
         self._commit()
 
-    # ── Schema ────────────────────────────────────────────────────────
     def _init_db(self) -> None:
         if self._driver == "postgres":
             for ddl in [DDL_TRADES, DDL_OPEN_TRADES, DDL_BOT_EVENTS]:
@@ -186,21 +181,20 @@ class Journal:
             for ddl in [DDL_TRADES_SQLITE, DDL_OPEN_TRADES_SQLITE, DDL_BOT_EVENTS_SQLITE]:
                 self._execute(ddl)
 
-    # ── Helpers ───────────────────────────────────────────────────────
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
 
     def _ph(self) -> str:
         return _ph(self._driver)
 
-    # ── Public API ────────────────────────────────────────────────────
+    # ── Public API ────────────────────────────────────────────────────────────
 
     def log_trade(self, signal_type: str, is_long: bool,
                   entry_price: float, exit_price: float,
                   sl: float, tp: float, atr: float,
                   qty: int, real_pl: float,
                   exit_reason: str, trail_stage: int) -> None:
-        """Log a completed trade to the trades table."""
+        """Log completed trade to DB and Google Sheets."""
         p = self._ph()
         sql = f"""
             INSERT INTO trades
@@ -218,19 +212,30 @@ class Journal:
                 f"Trade logged [{self._driver}] | "
                 f"{signal_type} {'LONG' if is_long else 'SHORT'} "
                 f"entry={entry_price:.2f} exit={exit_price:.2f} "
-                f"P/L={real_pl:+.2f} USDT reason={exit_reason}"
+                f"P/L={real_pl:+.4f} USDT reason={exit_reason}"
             )
         except Exception as e:
             logger.error(f"log_trade failed: {e}")
 
+        # ── Google Sheets sync (non-blocking — failure doesn't break DB) ──────
+        try:
+            self._gsheet.log_trade(
+                signal_type=signal_type,
+                is_long=is_long,
+                entry_price=entry_price,
+                exit_price=exit_price,
+                sl=sl, tp=tp, atr=atr,
+                qty=qty,
+                real_pl=real_pl,
+                exit_reason=exit_reason,
+                trail_stage=trail_stage,
+            )
+        except Exception as e:
+            logger.error(f"GSheet sync failed (trade still saved to DB): {e}")
+
     def open_trade(self, signal_type: str, is_long: bool,
                    entry_price: float, sl: float, tp: float,
                    atr: float, qty: int) -> None:
-        """
-        Record that a position was just opened.
-        Clears any stale open_trades rows first (should be max 1).
-        peak_price initialised to entry_price — updated each trail tick.
-        """
         p = self._ph()
         try:
             self._execute("DELETE FROM open_trades")
@@ -242,7 +247,7 @@ class Journal:
             """
             self._execute(sql, (
                 self._now(), signal_type, bool(is_long),
-                entry_price, sl, tp, atr, qty, sl, entry_price,  # FIX R3: peak_price = entry_price at open
+                entry_price, sl, tp, atr, qty, sl, entry_price,
             ))
             logger.info(f"Open trade recorded | {signal_type} entry={entry_price:.2f}")
         except Exception as e:
@@ -250,11 +255,9 @@ class Journal:
 
     def update_open_trade(self, trail_stage: int, current_sl: float,
                           peak_price: float = None) -> None:
-        """Update trail stage, current SL, and peak_price on the live open trade."""
         p = self._ph()
         try:
             if peak_price is not None:
-                # FIX R3: persist peak_price so recovery restores correct trail stage
                 self._execute(
                     f"UPDATE open_trades SET trail_stage={p}, current_sl={p}, peak_price={p}",
                     (trail_stage, current_sl, peak_price),
@@ -268,7 +271,6 @@ class Journal:
             logger.error(f"update_open_trade failed: {e}")
 
     def close_open_trade(self) -> None:
-        """Remove the open trade row when position is closed."""
         try:
             self._execute("DELETE FROM open_trades")
             logger.info("Open trade cleared from DB")
@@ -276,7 +278,6 @@ class Journal:
             logger.error(f"close_open_trade failed: {e}")
 
     def log_event(self, event: str, detail: str = "") -> None:
-        """Log a bot lifecycle event (start / stop / error)."""
         p = self._ph()
         try:
             self._execute(
@@ -287,7 +288,6 @@ class Journal:
             logger.error(f"log_event failed: {e}")
 
     def get_summary(self) -> dict:
-        """Return quick P/L summary — used for Telegram /stats command."""
         try:
             cur = self._cursor()
             cur.execute("""
@@ -316,14 +316,6 @@ class Journal:
             return {}
 
     def get_open_trade(self) -> dict | None:
-        """
-        Return the current open position from DB, or None if no open trade.
-        Used by main.py on startup to recover position after a redeploy.
-
-        Returns dict with keys:
-            signal_type, is_long, entry_price, sl, tp, atr, qty,
-            trail_stage, current_sl
-        """
         try:
             cur = self._cursor()
             cur.execute("""
@@ -336,14 +328,13 @@ class Journal:
             if not row:
                 return None
             keys = ["signal_type", "is_long", "entry_price", "sl", "tp",
-                    "atr", "qty", "trail_stage", "current_sl", "peak_price"]  # FIX R3
+                    "atr", "qty", "trail_stage", "current_sl", "peak_price"]
             return dict(zip(keys, row))
         except Exception as e:
             logger.error(f"get_open_trade failed: {e}")
             return None
 
     def get_trades(self, limit: int = 50) -> list:
-        """Return recent trades for the dashboard."""
         try:
             cur = self._cursor()
             cur.execute(f"""
