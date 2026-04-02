@@ -4,6 +4,9 @@
 # Exchange connectivity
 ccxt==4.4.57
 
+# WebSocket candle feed (replaces REST polling — reduces bar-close lag from 60s to <2s)
+websockets>=12.0
+
 # Async HTTP (aiohttp for dashboard server + Telegram)
 aiohttp==3.11.11
 
