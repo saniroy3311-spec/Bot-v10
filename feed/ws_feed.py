@@ -310,14 +310,13 @@ class CandleFeed:
                 f"new_ts={new_ts} | bars={len(self._df)} — evaluating signals..."
             )
 
-            # Finalise the closing bar with last WS values before firing
-            if not self._df.empty:
-                idx = self._df.index[-1]
-                self._df.at[idx, "open"]   = o
-                self._df.at[idx, "high"]   = h
-                self._df.at[idx, "low"]    = l
-                self._df.at[idx, "close"]  = c
-                self._df.at[idx, "volume"] = v
+            # ── BUG FIX: Do NOT overwrite the closing bar with new bar values.
+            # When a new bar timestamp arrives, o/h/l/c/v belong to the NEW bar
+            # (its very first tick). Writing them onto df.iloc[-1] corrupts the
+            # closed bar: body shrinks to ~0, volume drops to near-zero →
+            # body_ok=False and vol_ok=False → signal never fires.
+            # The closing bar was already kept current by same-bar updates below.
+            # Just fire on_bar_close with the df as-is, then append the new bar.
 
             if len(self._df) >= MIN_BARS:
                 await self.on_bar_close(self._df.copy())
