@@ -27,8 +27,13 @@ FIX applied here:
     the NEW row as the live candle and pass df[:-1] (all confirmed bars)
     to on_bar_close.  This is the key fix for timing parity.
 
+SYMBOL FIX:
+  - load_markets() is now called on startup so ccxt resolves BTC/USD:USD
+    correctly against Delta India's market map.
+  - URLs explicitly overridden to Delta India endpoint (not global Delta).
+
 Other bug fixes retained from v4:
-  BUG 1: MIN_BARS was 260, Delta returns 255–258.  Fixed: MIN_BARS = 210.
+  BUG 1: MIN_BARS was 260, Delta returns 255-258.  Fixed: MIN_BARS = 210.
   BUG 3: Bar confirmation was logger.debug (invisible).  Fixed: logger.info.
   BUG 4: Startup fetched exactly MIN_BARS.  Fixed: fetch MIN_BARS + 50.
 """
@@ -44,6 +49,9 @@ from config import (
 
 logger   = logging.getLogger(__name__)
 MIN_BARS = EMA_TREND_LEN + 10   # 210 for EMA-200
+
+_INDIA_LIVE    = "https://api.india.delta.exchange"
+_INDIA_TESTNET = "https://testnet-api.india.delta.exchange"
 
 
 class CandleFeed:
@@ -68,14 +76,27 @@ class CandleFeed:
 
     async def _connect(self) -> None:
         """Init REST exchange and load historical bars."""
+        base_url = _INDIA_TESTNET if DELTA_TESTNET else _INDIA_LIVE
         params = {
             "apiKey"         : DELTA_API_KEY,
             "secret"         : DELTA_API_SECRET,
             "enableRateLimit": True,
+            "urls": {
+                "api": {
+                    "public" : base_url,
+                    "private": base_url,
+                }
+            },
         }
         self._exchange = ccxt.delta(params)
-        if DELTA_TESTNET:
-            self._exchange.set_sandbox_mode(True)
+
+        # CRITICAL FIX: load_markets() so ccxt can resolve BTC/USD:USD
+        logger.info(f"Loading market map from Delta India ({base_url})...")
+        self._exchange.load_markets()
+        if SYMBOL not in self._exchange.markets:
+            available = [s for s in self._exchange.markets if "BTC" in s and "USD" in s and ":" in s and len(s) < 15]
+            raise ValueError(f"SYMBOL '{SYMBOL}' not found on Delta India. Perpetuals available: {available}")
+        logger.info(f"Symbol {SYMBOL} verified ✅")
 
         fetch_limit = MIN_BARS + 50
         logger.info(f"Loading {fetch_limit} historical bars via REST for [{SYMBOL}] [{CANDLE_TIMEFRAME}]...")
