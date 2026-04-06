@@ -66,6 +66,7 @@ from typing import Optional
 
 import pandas as pd
 import ccxt
+import ccxt.async_support as ccxt_async
 import websockets
 import websockets.exceptions
 
@@ -176,6 +177,11 @@ class CandleFeed:
     # ── Historical load ───────────────────────────────────────────────────────
 
     async def _load_history(self) -> None:
+        # FIX-WS-ASYNC: Use ccxt.async_support so load_markets() and
+        # fetch_ohlcv() are awaited and never block the event loop.
+        # Old code used sync ccxt.delta — the blocking load_markets() call
+        # (up to 60s on Delta India) starved the event loop, caused PM2's
+        # health-check to time out, and killed the process every startup.
         base_url = _INDIA_TESTNET if DELTA_TESTNET else _INDIA_LIVE
         params = {
             "apiKey"         : DELTA_API_KEY,
@@ -183,29 +189,43 @@ class CandleFeed:
             "enableRateLimit": True,
             "urls": {"api": {"public": base_url, "private": base_url}},
         }
-        self._exchange = ccxt.delta(params)
-        logger.info(f"Loading market map from Delta India ({base_url})...")
-        self._exchange.load_markets()
+        exchange = ccxt_async.delta(params)
+        try:
+            logger.info(f"Loading market map from Delta India ({base_url})...")
+            await exchange.load_markets()
 
-        if SYMBOL not in self._exchange.markets:
-            available = [
-                s for s in self._exchange.markets
-                if "BTC" in s and "USD" in s and ":" in s and len(s) < 15
-            ]
-            raise ValueError(
-                f"SYMBOL '{SYMBOL}' not found on Delta India.\n"
-                f"Available BTC perpetuals: {available}\n"
-                f"Fix: update SYMBOL= in your .env"
+            if SYMBOL not in exchange.markets:
+                available = [
+                    s for s in exchange.markets
+                    if "BTC" in s and "USD" in s and ":" in s and len(s) < 15
+                ]
+                raise ValueError(
+                    f"SYMBOL '{SYMBOL}' not found on Delta India.\n"
+                    f"Available BTC perpetuals: {available}\n"
+                    f"Fix: update SYMBOL= in your .env"
+                )
+            logger.info(f"Symbol {SYMBOL} verified ✅")
+
+            fetch_limit = MIN_BARS + 50
+            logger.info(
+                f"Loading {fetch_limit} historical bars via REST "
+                f"for [{SYMBOL}] [{CANDLE_TIMEFRAME}]..."
             )
-        logger.info(f"Symbol {SYMBOL} verified ✅")
+            ohlcv    = await exchange.fetch_ohlcv(SYMBOL, CANDLE_TIMEFRAME, limit=fetch_limit)
+            self._df = self._to_df(ohlcv)
+            fetched_markets = dict(exchange.markets)
+        finally:
+            await exchange.close()
 
-        fetch_limit = MIN_BARS + 50
-        logger.info(
-            f"Loading {fetch_limit} historical bars via REST "
-            f"for [{SYMBOL}] [{CANDLE_TIMEFRAME}]..."
-        )
-        ohlcv    = self._exchange.fetch_ohlcv(SYMBOL, CANDLE_TIMEFRAME, limit=fetch_limit)
-        self._df = self._to_df(ohlcv)
+        # Store a sync exchange for the REST fallback polling loop.
+        # Inject the already-fetched market map so it never blocks on load_markets() again.
+        self._exchange = ccxt.delta({
+            "apiKey"         : DELTA_API_KEY,
+            "secret"         : DELTA_API_SECRET,
+            "enableRateLimit": True,
+            "urls": {"api": {"public": base_url, "private": base_url}},
+        })
+        self._exchange.markets = fetched_markets
 
         # FIX-WS-3b: set boundary from iloc[-2] (LAST CLOSED bar, not live bar).
         # ohlcv[-1] = live (open) bar, ohlcv[-2] = last confirmed closed bar.
