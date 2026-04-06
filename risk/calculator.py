@@ -1,6 +1,12 @@
 """
 risk/calculator.py - Shiva Sniper v6.5
 SL/TP calculation, 5-stage trail ratchet, breakeven, and P/L math.
+
+FIX — Trail activation mismatch (ROOT CAUSE of bot vs PineScript divergence):
+  calc_trail_stage() previously activated Stage 1 at trail1Trigger (1.0×ATR).
+  PineScript's strategy.exit() trail activates at trail_offset (0.55×ATR).
+  Fixed: Stage 1 now activates at TRAIL_STAGES[0][2] = 0.55×ATR.
+  Stages 2-5 still advance at their trigger values (2, 3, 5, 8 × ATR).
 """
 
 from dataclasses import dataclass
@@ -75,8 +81,39 @@ def recalc_levels_from_fill(risk: RiskLevels, fill_price: float) -> RiskLevels:
 # ── Trail engine ───────────────────────────────────────────────────────────────
 
 def calc_trail_stage(profit_dist: float, atr: float) -> int:
-    stage = 0
-    for i, (trigger_mult, _, _) in enumerate(TRAIL_STAGES):
+    """
+    Return the active trail stage (0 = trail not yet active).
+
+    ROOT-CAUSE FIX — PineScript trail_offset mismatch:
+    ─────────────────────────────────────────────────────────────────────────
+    PineScript calls strategy.exit() every bar with:
+        trail_points = activePts   (distance behind peak)
+        trail_offset = activeOff   (activation offset from entry)
+
+    Before any "stage" milestone is reached (trailStage==0 in Pine), the
+    ternary chain falls through to trail1Pts / trail1Off, so the trail is
+    ALREADY active with those parameters from the very first tick.
+
+    Pine trail activates when:   profit >= trail1Off = 0.55 × ATR
+    Old bot trail activated at:  profit >= trail1Trigger = 1.00 × ATR   ← BUG
+
+    This gap (0.55→1.00 ATR) meant the bot never set a trailing SL on any
+    move smaller than 1.0 ATR, held through a full reversal, and was stopped
+    out at Max SL — while Pine had already exited via trail at ~0.70 ATR.
+
+    Fix: activate Stage 1 at trail1Off (TRAIL_STAGES[0][2] = 0.55 ATR).
+    Stages 2-5 still advance at their respective trigger values (2,3,5,8 ATR).
+    ─────────────────────────────────────────────────────────────────────────
+    """
+    trail1_off = TRAIL_STAGES[0][2]          # 0.55 — Pine trail_offset for S1
+    if profit_dist < atr * trail1_off:
+        return 0                             # trail not active yet
+
+    # Trail is active — at least Stage 1.
+    # Check whether higher-stage triggers have been reached (stages 2-5).
+    stage = 1
+    for i in range(1, len(TRAIL_STAGES)):   # i = 1,2,3,4 → stages 2,3,4,5
+        trigger_mult = TRAIL_STAGES[i][0]
         if profit_dist >= atr * trigger_mult:
             stage = i + 1
         else:
