@@ -238,7 +238,7 @@ class CandleFeed:
         # Setting boundary to the closed bar means the NEXT boundary (when the
         # next candle opens) will be strictly greater → first signal fires.
         # If we set it from ohlcv[-1] (live bar) we'd skip the next close.
-        last_closed_ts = int(self._df.iloc[-2]["timestamp"])
+        last_closed_ts = int(self._df.iloc[-1]["timestamp"])
         self._last_candle_boundary = _candle_boundary(last_closed_ts, self._period_ms)
 
         bar_count = len(self._df)
