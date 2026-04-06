@@ -3,25 +3,30 @@ monitor/trail_loop.py
 
 FIXES IN THIS VERSION:
 ──────────────────────────────────────────────────────────────────────────────
-FIX-EXIT | Pine Script exits when price CROSSES the trailing SL.
-           Old bot relied on bracket TP firing on exchange → exit at fixed TP.
-           New: _on_tick() checks if current_price has crossed state.current_sl.
-           If yes: calls order_mgr.close_at_trail_sl() → cancel brackets →
-           market close. This replicates Pine's strategy.exit() trail exactly.
+FIX-TRAIL-OFFSET | calc_trail_stage() now activates at trail1Off (0.55×ATR)
+                   not trail1Trigger (1.0×ATR), exactly matching PineScript's
+                   trail_offset parameter in strategy.exit().
 
-FIX-BE   | Breakeven SL is now tracked in state.current_sl AND enforced
-           as a trail-exit floor: if price drops back to entry after BE,
-           the trail-exit check fires and closes at breakeven (matching Pine).
+                   Root cause of trade mismatch:
+                   • Pine trail activates when profit ≥ 0.55×ATR
+                   • Old bot trail activated when profit ≥ 1.00×ATR
+                   • In trade 2 (15:00 entry), price only reached ~0.73×ATR
+                     profit before reversing → Pine exited via trail at ~69935,
+                     bot never set a trail SL and held to Max SL at 69239.
 
-FIX-TP   | Bracket TP on exchange acts as a safety net only. The primary
-           exit path is trail SL breach detected in this loop. If bracket TP
-           fires first (price gapped to TP without trail SL breach being
-           detected), _on_position_closed() in main.py handles cleanup.
+FIX-TRAIL-GATE   | Removed `profit_dist >= trail_pts` gate in the trail ratchet.
+                   PineScript places the trailing stop at peak - trail_points
+                   immediately when trail activates — no second condition.
+                   The gate was blocking SL updates in the 0.55→0.70 ATR range.
+
+FIX-BE-LOG       | Hardcoded `atr * 0.6` in the BE log message replaced with
+                   `atr * BE_MULT` (reads from config, currently 1.0).
 
 PRESERVED FIXES (from previous version):
-  B1: REST ticker poll loop (replaces dead pass stub)
-  B2: trail_pts used for SL distance (not trail_off)
-  B3: max_sl_hit() and should_trigger_be() actually called
+  FIX-EXIT | Trail SL breach → market close (mirrors Pine strategy.exit trail)
+  FIX-BE   | Breakeven SL tracked in state.current_sl
+  FIX-TP   | Bracket TP is safety-net; primary exit is trail SL breach
+  B1-B3    | REST ticker poll, trail_pts for SL distance, max_sl + BE calls
 ──────────────────────────────────────────────────────────────────────────────
 """
 
@@ -47,6 +52,7 @@ from config import (
     DELTA_API_KEY,
     DELTA_API_SECRET,
     DELTA_TESTNET,
+    BE_MULT,
 )
 
 logger = logging.getLogger(__name__)
@@ -237,7 +243,7 @@ class TrailMonitor:
         if not state.be_done and should_trigger_be(profit_dist, atr):
             logger.info(
                 f"BREAKEVEN triggered | profit={profit_dist:.2f} "
-                f"threshold={atr * 0.6:.2f} | SL → entry={entry_price:.2f}"
+                f"threshold={atr * BE_MULT:.2f} | SL → entry={entry_price:.2f}"
             )
             state.be_done    = True
             state.current_sl = entry_price
@@ -260,23 +266,32 @@ class TrailMonitor:
         if state.stage > 0:
             trail_pts, trail_off = get_trail_params(state.stage, atr)
 
-            if profit_dist >= trail_pts:
-                if is_long:
-                    candidate_sl = state.peak_price - trail_pts
-                else:
-                    candidate_sl = state.peak_price + trail_pts
+            # FIX — remove old `profit_dist >= trail_pts` gate.
+            #
+            # PineScript places the trail stop at `peak - trail_points` the
+            # moment the trail activates (profit >= trail_offset = 0.55 ATR).
+            # There is NO second requirement that profit also exceed trail_pts.
+            # The old gate caused the bot to skip trail updates when
+            # 0.55*ATR <= profit < 0.70*ATR — a range where Pine was already
+            # trailing and would close the trade on a reversal.
+            #
+            # Correct behaviour: once stage > 0, always set SL = peak - trail_pts.
+            if is_long:
+                candidate_sl = state.peak_price - trail_pts
+            else:
+                candidate_sl = state.peak_price + trail_pts
 
-                if self._sl_improved(candidate_sl):
-                    logger.info(
-                        f"TRAIL SL update | stage={state.stage} "
-                        f"peak={state.peak_price:.2f} pts={trail_pts:.2f} "
-                        f"new_sl={candidate_sl:.2f}"
-                    )
-                    state.current_sl = candidate_sl
-                    try:
-                        await self.order_mgr.modify_sl(candidate_sl, trail_off)
-                    except Exception as e:
-                        logger.error(f"Trail SL modify failed: {e}", exc_info=True)
+            if self._sl_improved(candidate_sl):
+                logger.info(
+                    f"TRAIL SL update | stage={state.stage} "
+                    f"peak={state.peak_price:.2f} pts={trail_pts:.2f} "
+                    f"new_sl={candidate_sl:.2f}"
+                )
+                state.current_sl = candidate_sl
+                try:
+                    await self.order_mgr.modify_sl(candidate_sl, trail_off)
+                except Exception as e:
+                    logger.error(f"Trail SL modify failed: {e}", exc_info=True)
 
         # ── Dashboard sync ────────────────────────────────────────────────────
         try:
