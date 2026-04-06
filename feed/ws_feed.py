@@ -114,10 +114,16 @@ def _timeframe_to_channel(timeframe: str) -> str:
 
 
 def _ts_to_ms(ts) -> int:
+    # FIX-TS: Delta India WS sends microseconds (16 digits).
+    # Must divide by 1000 to get milliseconds for boundary math.
+    # Without this, boundaries increment by ~1800ms instead of 1,800,000ms
+    # causing bars to fire every tick instead of every 30 minutes.
     ts = int(ts)
-    if ts < 1_000_000_000_000:
-        return ts * 1000
-    return ts
+    if ts > 1_000_000_000_000_000:   # microseconds (16 digits)
+        return ts // 1000
+    if ts > 1_000_000_000_000:        # milliseconds (13 digits)
+        return ts
+    return ts * 1000                  # seconds (10 digits)
 
 
 class CandleFeed:
