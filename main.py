@@ -45,7 +45,7 @@ import json
 from aiohttp import web
 from feed.ws_feed       import CandleFeed
 from indicators.engine  import compute
-from strategy.signal    import evaluate, SignalType
+from strategy.signal    import evaluate, evaluate_exit, SignalType, ExitSignal
 from risk.calculator    import (
     calc_levels, recalc_levels_from_fill,   # FIX-MAIN-1: import recalc helper
     TrailState, calc_real_pl, RiskLevels,
@@ -269,9 +269,75 @@ class SniperBot:
                 )
 
         else:
-            # FIX-M7: NO fetch_position() on every bar.
+            # ── FIX-EXIT: Evaluate bar-close exit signal (Pine parity) ────────
+            # Pine Script strategy.exit("Exit TL", ...) fires at bar close when
+            # the trend conditions that opened the position are no longer valid.
+            # The bot previously had NO bar-close exit — it only closed via the
+            # trail tick-loop or bracket orders — causing multi-hour divergence
+            # from TradingView exits.
+            #
+            # Priority:
+            #   1. Bar-close exit signal (Pine parity) — closes immediately
+            #   2. Bracket TP/SL fallback — detects exchange fills at bar close
+            try:
+                exit_sig_type = SignalType(self._last_signal_type)
+            except ValueError:
+                exit_sig_type = SignalType.NONE
+
+            if exit_sig_type != SignalType.NONE:
+                exit_sig = evaluate_exit(snap, exit_sig_type)
+                if exit_sig.should_exit:
+                    logger.info(
+                        f"Bar-close exit | reason={exit_sig.reason} "
+                        f"signal={self._last_signal_type} close={snap.close:.2f}"
+                    )
+                    try:
+                        exit_order = await self.order_mgr.close_position(
+                            reason=exit_sig.reason
+                        )
+                        exit_price = float(
+                            exit_order.get("average") or
+                            exit_order.get("price") or
+                            snap.close
+                        )
+                    except Exception as e:
+                        logger.error(f"Bar-close exit order failed: {e}", exc_info=True)
+                        exit_price = snap.close
+
+                    real_pl = calc_real_pl(
+                        self.risk.entry_price, exit_price,
+                        self.risk.is_long, ALERT_QTY,
+                    ) if self.risk else 0.0
+
+                    self.trail_mon.stop()
+                    self.journal.log_trade(
+                        signal_type = self._last_signal_type,
+                        is_long     = self.risk.is_long if self.risk else True,
+                        entry_price = self.risk.entry_price if self.risk else 0.0,
+                        exit_price  = exit_price,
+                        sl          = self.risk.sl if self.risk else 0.0,
+                        tp          = self.risk.tp if self.risk else 0.0,
+                        atr         = self.risk.atr if self.risk else 0.0,
+                        qty         = ALERT_QTY,
+                        real_pl     = real_pl,
+                        exit_reason = exit_sig.reason,
+                        trail_stage = self.trail_state.stage if self.trail_state else 0,
+                    )
+                    self.journal.close_open_trade()
+                    self.in_position = False
+                    self.risk        = None
+                    self.trail_state = None
+                    logger.info(
+                        f"Position closed (bar-close) | exit={exit_price:.2f} "
+                        f"reason={exit_sig.reason} pl={real_pl:+.4f}"
+                    )
+                    await self.telegram.notify_exit(
+                        exit_sig.reason, 0.0, exit_price, real_pl
+                    )
+                    return
+
+            # FIX-M7: Bracket TP/SL fallback — detects exchange fills at bar close.
             # Trail exits handled by trail_loop callback at tick resolution.
-            # Bracket TP/SL fills detected here at next bar close as fallback.
             pos = await self.order_mgr.fetch_position()
             if pos is None or pos.get("contracts", 0) == 0:
                 await self._on_position_closed_by_bracket()
