@@ -1,15 +1,6 @@
 """
-monitor/trail_loop.py
-
-FIXES IN THIS VERSION:
-──────────────────────────────────────────────────────────────────────────────
-FIX-TP           | Added Target Profit (TP) checks. Bot now correctly takes
-                   profit exactly where TradingView does.
-FIX-INITIAL-SL   | Removed the `stage > 0` gate that was blocking the initial SL.
-                   The bot now respects the initial Stop Loss right from entry.
-FIX-TRAIL-OFFSET | calc_trail_stage() activates at trail1Off (0.55×ATR) matching Pine.
-FIX-TRAIL-GATE   | Removed `profit_dist >= trail_pts` gate in the trail ratchet.
-──────────────────────────────────────────────────────────────────────────────
+monitor/trail_loop.py - Shiva Sniper v6.5
+Final Sync Version: 0.5s Polling + Last Price + TP/SL Fixes
 """
 
 import asyncio
@@ -28,7 +19,6 @@ from risk.calculator import (
     calc_real_pl,
 )
 from config import (
-    TRAIL_LOOP_SEC,
     ALERT_QTY,
     SYMBOL,
     DELTA_API_KEY,
@@ -39,19 +29,10 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+# User requested 0.5s delay to replace the default 2.0s
+FIXED_TRAIL_LOOP_SEC = 0.5
 
 class TrailMonitor:
-    """
-    Monitor an open position every TRAIL_LOOP_SEC seconds via REST ticker.
-
-    Exit priority (mirrors Pine Script strategy.exit() exactly):
-        1. Max SL       — hard loss cap → emergency market close
-        2. Take Profit  — target profit hit → market close
-        3. Stop Loss    — initial or trailing SL breached → market close
-        4. Breakeven    — move SL to entry once (one-shot)
-        5. Trail ratchet — advance current_sl as peak moves
-    """
-
     def __init__(self, order_manager, telegram, journal):
         self.order_mgr  = order_manager
         self.telegram   = telegram
@@ -100,33 +81,23 @@ class TrailMonitor:
             "apiKey"         : DELTA_API_KEY,
             "secret"         : DELTA_API_SECRET,
             "enableRateLimit": True,
-            "urls": {
-                "api": {
-                    "public" : _base_url,
-                    "private": _base_url,
-                }
-            },
+            "urls": {"api": {"public" : _base_url, "private": _base_url}},
         }
         self._exchange = ccxt.delta(params)
-        logger.info(f"Trail ticker polling every {TRAIL_LOOP_SEC}s for {SYMBOL}")
+        logger.info(f"Trail ticker polling every {FIXED_TRAIL_LOOP_SEC}s for {SYMBOL}")
 
         try:
             while self._running:
-                await asyncio.sleep(TRAIL_LOOP_SEC)
+                await asyncio.sleep(FIXED_TRAIL_LOOP_SEC)
                 try:
                     ticker = await self._exchange.fetch_ticker(SYMBOL)
-                    mark_price = float(
-                        ticker.get("info", {}).get("mark_price") or
-                        ticker.get("last") or 0
-                    )
-                    if mark_price > 0:
-                        await self._on_tick(mark_price)
-                    else:
-                        logger.warning("Ticker returned zero price — skipping tick")
-                except (ccxt.NetworkError, ccxt.RequestTimeout) as e:
-                    logger.warning(f"Ticker fetch failed (network): {e}")
+                    # FIX: Prioritize 'last' price to match TradingView charts exactly
+                    current_price = float(ticker.get("last") or ticker.get("info", {}).get("mark_price") or 0)
+                    
+                    if current_price > 0:
+                        await self._on_tick(current_price)
                 except Exception as e:
-                    logger.error(f"Tick processing error: {e}", exc_info=True)
+                    logger.error(f"Tick processing error: {e}")
         finally:
             if self._exchange:
                 await self._exchange.close()
@@ -141,129 +112,74 @@ class TrailMonitor:
         entry_price = risk.entry_price
         atr         = risk.atr
 
-        # ── 1. Max SL ─────────────────────────────────────────────────────────
-        if not state.max_sl_fired and max_sl_hit(current_price, entry_price, atr, is_long):
-            logger.warning(
-                f"MAX SL HIT | price={current_price:.2f} entry={entry_price:.2f}"
-            )
-            state.max_sl_fired = True
-            self._running = False
-            await self.telegram.notify_max_sl(current_price, entry_price)
-            try:
-                exit_order = await self.order_mgr.close_position(reason="Max SL Hit")
-                exit_price = float(exit_order.get("average") or exit_order.get("price") or current_price)
-            except Exception as e:
-                logger.error(f"Emergency close failed: {e}", exc_info=True)
-                exit_price = current_price
-            if self.on_trail_exit:
-                await self.on_trail_exit(exit_price, "Max SL Hit")
-            return
-
-        # ── Update peak price ─────────────────────────────────────────────────
+        # ── 1. Update peak price (High/Low tracker) ──────────────────────────
         if is_long:
             state.peak_price = max(state.peak_price, current_price)
         else:
             state.peak_price = min(state.peak_price, current_price)
 
-        profit_dist = abs(state.peak_price - entry_price)
+        # ── 2. Calculate Distances ───────────────────────────────────────────
+        # Pine Stage triggers use 'close' (current_price)
+        profit_dist_for_triggers = abs(current_price - entry_price)
+        # Trail SL placement uses 'peak_price'
+        profit_dist_for_peak = abs(state.peak_price - entry_price)
 
-        # ── 1.5 FIX: TARGET PROFIT (TP) CHECK ─────────────────────────────────
+        # ── 3. Target Profit (TP) Check ──────────────────────────────────────
         tp_hit = (is_long and current_price >= risk.tp) or (not is_long and current_price <= risk.tp)
         if tp_hit:
-            logger.info(f"TARGET PROFIT HIT | price={current_price:.2f} tp={risk.tp:.2f}")
-            self._running = False
-            try:
-                exit_order = await self.order_mgr.close_at_trail_sl(reason="Target Profit")
-                exit_price = float(exit_order.get("average") or exit_order.get("price") or current_price)
-            except Exception as e:
-                logger.error(f"TP close failed: {e}", exc_info=True)
-                exit_price = current_price
-            real_pl = calc_real_pl(entry_price, exit_price, is_long, ALERT_QTY)
-            await self.telegram.notify_exit("Target Profit", entry_price, exit_price, real_pl)
-            if self.on_trail_exit:
-                await self.on_trail_exit(exit_price, "Target Profit")
+            await self._execute_exit(current_price, "Target Profit")
             return
 
-        # ── 2. FIX-EXIT: Stop Loss Breach (Initial OR Trailing) ───────────────
+        # ── 4. Stop Loss Check (Initial + Trailing) ──────────────────────────
+        # Fixed: Removed the 'stage > 0' gate so the initial SL is always active
         if state.current_sl > 0:
-            sl_breached = (
-                (is_long  and current_price <= state.current_sl) or
-                (not is_long and current_price >= state.current_sl)
-            )
+            sl_breached = (is_long and current_price <= state.current_sl) or (not is_long and current_price >= state.current_sl)
             if sl_breached:
-                reason = "Initial SL" if (state.stage == 0 and not state.be_done) else f"Trail S{state.stage}/BE"
-                logger.info(f"SL BREACHED | price={current_price:.2f} sl={state.current_sl:.2f} reason={reason}")
-                self._running = False
-                try:
-                    exit_order = await self.order_mgr.close_at_trail_sl(reason=reason)
-                    exit_price = float(exit_order.get("average") or exit_order.get("price") or current_price)
-                except Exception as e:
-                    logger.error(f"SL close failed: {e}", exc_info=True)
-                    exit_price = current_price
-                real_pl = calc_real_pl(entry_price, exit_price, is_long, ALERT_QTY)
-                await self.telegram.notify_exit(reason, entry_price, exit_price, real_pl)
-                if self.on_trail_exit:
-                    await self.on_trail_exit(exit_price, reason)
+                reason = "Initial SL" if (state.stage == 0 and not state.be_done) else f"Trail S{state.stage}"
+                await self._execute_exit(current_price, reason)
                 return
 
-        # ── 3. Breakeven ──────────────────────────────────────────────────────
-        if not state.be_done and should_trigger_be(profit_dist, atr):
-            logger.info(
-                f"BREAKEVEN triggered | profit={profit_dist:.2f} "
-                f"threshold={atr * BE_MULT:.2f} | SL → entry={entry_price:.2f}"
-            )
+        # ── 5. Max SL (Emergency) ────────────────────────────────────────────
+        if not state.max_sl_fired and max_sl_hit(current_price, entry_price, atr, is_long):
+            state.max_sl_fired = True
+            await self._execute_exit(current_price, "Max SL Hit")
+            return
+
+        # ── 6. Breakeven ──────────────────────────────────────────────────────
+        if not state.be_done and should_trigger_be(profit_dist_for_triggers, atr):
             state.be_done    = True
             state.current_sl = entry_price
             await self.telegram.notify_breakeven(entry_price)
-            try:
-                from config import BRACKET_SL_BUFFER
-                await self.order_mgr.modify_sl(entry_price, BRACKET_SL_BUFFER)
-            except Exception as e:
-                logger.error(f"Breakeven SL modify failed: {e}", exc_info=True)
 
-        # ── 4. Trail ratchet ──────────────────────────────────────────────────
-        new_stage = calc_trail_stage(profit_dist, atr)
+        # ── 7. Trail Ratchet ──────────────────────────────────────────────────
+        new_stage = calc_trail_stage(profit_dist_for_triggers, atr)
         if new_stage > state.stage:
-            logger.info(f"TRAIL stage {state.stage} → {new_stage}")
-            await self.telegram.notify_trail_stage(
-                state.stage, new_stage, current_price, state.current_sl
-            )
             state.stage = new_stage
+            await self.telegram.notify_trail_stage(state.stage - 1, state.stage, current_price, state.current_sl)
 
         if state.stage > 0:
-            trail_pts, trail_off = get_trail_params(state.stage, atr)
-
-            if is_long:
-                candidate_sl = state.peak_price - trail_pts
-            else:
-                candidate_sl = state.peak_price + trail_pts
+            trail_pts, _ = get_trail_params(state.stage, atr)
+            candidate_sl = (state.peak_price - trail_pts) if is_long else (state.peak_price + trail_pts)
 
             if self._sl_improved(candidate_sl):
-                logger.info(
-                    f"TRAIL SL update | stage={state.stage} "
-                    f"peak={state.peak_price:.2f} pts={trail_pts:.2f} "
-                    f"new_sl={candidate_sl:.2f}"
-                )
                 state.current_sl = candidate_sl
-                try:
-                    await self.order_mgr.modify_sl(candidate_sl, trail_off)
-                except Exception as e:
-                    logger.error(f"Trail SL modify failed: {e}", exc_info=True)
+                # Journal sync for dashboard
+                self.journal.update_open_trade(trail_stage=state.stage, current_sl=state.current_sl, peak_price=state.peak_price)
 
-        # ── Dashboard sync ────────────────────────────────────────────────────
+    async def _execute_exit(self, price: float, reason: str):
+        self._running = False
         try:
-            self.journal.update_open_trade(
-                trail_stage = state.stage,
-                current_sl  = state.current_sl,
-                peak_price  = state.peak_price,
-            )
+            exit_order = await self.order_mgr.close_at_trail_sl(reason=reason)
+            exit_price = float(exit_order.get("average") or exit_order.get("price") or price)
         except Exception as e:
-            logger.debug(f"Dashboard sync skipped: {e}")
+            logger.error(f"Exit failed: {e}")
+            exit_price = price
+        
+        real_pl = calc_real_pl(self.risk.entry_price, exit_price, self.risk.is_long, ALERT_QTY)
+        await self.telegram.notify_exit(reason, self.risk.entry_price, exit_price, real_pl)
+        if self.on_trail_exit:
+            await self.on_trail_exit(exit_price, reason)
 
     def _sl_improved(self, new_sl: float) -> bool:
-        if self.risk is None or self.state is None:
-            return False
-        if self.risk.is_long:
-            return new_sl > self.state.current_sl
-        else:
-            return new_sl < self.state.current_sl
+        if not self.risk or not self.state: return False
+        return new_sl > self.state.current_sl if self.risk.is_long else new_sl < self.state.current_sl
