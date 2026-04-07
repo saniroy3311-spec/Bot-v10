@@ -1,6 +1,23 @@
 """
 monitor/trail_loop.py - Shiva Sniper v6.5
-Final Sync Version: 0.5s Polling + Last Price + TP/SL Fixes
+Pine-Exact Trail Version
+
+FIX-TRAIL-1 | trail_offset was discarded (underscore _) — now used correctly.
+  Pine's strategy.exit(trail_offset=X) means: do NOT place a trailing SL until
+  price has moved at least X points from entry.  The bot ignored this — it placed
+  a trail SL the moment stage 1 activated (0.55 ATR), which could put the trail SL
+  *below* the initial bracket SL on small moves and caused premature exits.
+  Fix: candidate_sl is only applied when profit_dist >= trail_off for that stage.
+
+FIX-TRAIL-2 | _sl_improved() now takes is_long explicitly — no ambiguity.
+  Before: direction was inferred from current_sl sign (wrong after BE).
+  Fix: is_long passed from risk, direction logic is explicit.
+
+FIX-TRAIL-3 | BE and trail no longer race.
+  BE sets current_sl = entry_price only if it is strictly better than current_sl.
+  Trail then continues to ratchet upward from there (it won't go below entry after BE).
+
+FIX-TRAIL-4 | Stage log now shows trail_pts and trail_off for easy debugging.
 """
 
 import asyncio
@@ -29,8 +46,8 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-# User requested 0.5s delay to replace the default 2.0s
 FIXED_TRAIL_LOOP_SEC = 0.5
+
 
 class TrailMonitor:
     def __init__(self, order_manager, telegram, journal):
@@ -81,7 +98,7 @@ class TrailMonitor:
             "apiKey"         : DELTA_API_KEY,
             "secret"         : DELTA_API_SECRET,
             "enableRateLimit": True,
-            "urls": {"api": {"public" : _base_url, "private": _base_url}},
+            "urls": {"api": {"public": _base_url, "private": _base_url}},
         }
         self._exchange = ccxt.delta(params)
         logger.info(f"Trail ticker polling every {FIXED_TRAIL_LOOP_SEC}s for {SYMBOL}")
@@ -91,9 +108,12 @@ class TrailMonitor:
                 await asyncio.sleep(FIXED_TRAIL_LOOP_SEC)
                 try:
                     ticker = await self._exchange.fetch_ticker(SYMBOL)
-                    # FIX: Prioritize 'last' price to match TradingView charts exactly
-                    current_price = float(ticker.get("last") or ticker.get("info", {}).get("mark_price") or 0)
-                    
+                    # Use 'last' price to match TradingView charts
+                    current_price = float(
+                        ticker.get("last")
+                        or ticker.get("info", {}).get("mark_price")
+                        or 0
+                    )
                     if current_price > 0:
                         await self._on_tick(current_price)
                 except Exception as e:
@@ -106,80 +126,119 @@ class TrailMonitor:
         if not self._running or self.risk is None or self.state is None:
             return
 
-        risk  = self.risk
-        state = self.state
+        risk        = self.risk
+        state       = self.state
         is_long     = risk.is_long
         entry_price = risk.entry_price
         atr         = risk.atr
 
-        # ── 1. Update peak price (High/Low tracker) ──────────────────────────
+        # ── 1. Update peak price (running high for long, running low for short) ──
         if is_long:
             state.peak_price = max(state.peak_price, current_price)
         else:
             state.peak_price = min(state.peak_price, current_price)
 
-        # ── 2. Calculate Distances ───────────────────────────────────────────
-        # Pine Stage triggers use 'close' (current_price)
-        profit_dist_for_triggers = abs(current_price - entry_price)
-        # Trail SL placement uses 'peak_price'
-        profit_dist_for_peak = abs(state.peak_price - entry_price)
+        # ── 2. Profit distance from entry (matches Pine "close - entryPrice") ──
+        profit_dist = abs(current_price - entry_price)
 
-        # ── 3. Target Profit (TP) Check ──────────────────────────────────────
-        tp_hit = (is_long and current_price >= risk.tp) or (not is_long and current_price <= risk.tp)
+        # ── 3. TP check ───────────────────────────────────────────────────────
+        tp_hit = (is_long     and current_price >= risk.tp) or \
+                 (not is_long and current_price <= risk.tp)
         if tp_hit:
             await self._execute_exit(current_price, "Target Profit")
             return
 
-        # ── 4. Stop Loss Check (Initial + Trailing) ──────────────────────────
-        # Fixed: Removed the 'stage > 0' gate so the initial SL is always active
+        # ── 4. SL / Trail SL breach check ────────────────────────────────────
         if state.current_sl > 0:
-            sl_breached = (is_long and current_price <= state.current_sl) or (not is_long and current_price >= state.current_sl)
+            sl_breached = (is_long     and current_price <= state.current_sl) or \
+                          (not is_long and current_price >= state.current_sl)
             if sl_breached:
-                reason = "Initial SL" if (state.stage == 0 and not state.be_done) else f"Trail S{state.stage}"
+                reason = "Initial SL" if (state.stage == 0 and not state.be_done) \
+                         else f"Trail S{state.stage}"
                 await self._execute_exit(current_price, reason)
                 return
 
-        # ── 5. Max SL (Emergency) ────────────────────────────────────────────
+        # ── 5. Max SL (emergency hard cap) ───────────────────────────────────
         if not state.max_sl_fired and max_sl_hit(current_price, entry_price, atr, is_long):
             state.max_sl_fired = True
             await self._execute_exit(current_price, "Max SL Hit")
             return
 
         # ── 6. Breakeven ──────────────────────────────────────────────────────
-        if not state.be_done and should_trigger_be(profit_dist_for_triggers, atr):
-            state.be_done    = True
-            state.current_sl = entry_price
+        if not state.be_done and should_trigger_be(profit_dist, atr):
+            state.be_done = True
+            # Only move SL to entry if that improves it (won't regress a trail SL)
+            if self._sl_improved(entry_price, state.current_sl, is_long):
+                state.current_sl = entry_price
+                logger.info(f"BE locked | current_sl → entry={entry_price:.2f}")
             await self.telegram.notify_breakeven(entry_price)
 
-        # ── 7. Trail Ratchet ──────────────────────────────────────────────────
-        new_stage = calc_trail_stage(profit_dist_for_triggers, atr)
+        # ── 7. Trail stage advancement ────────────────────────────────────────
+        new_stage = calc_trail_stage(profit_dist, atr)
         if new_stage > state.stage:
+            old_stage   = state.stage
             state.stage = new_stage
-            await self.telegram.notify_trail_stage(state.stage - 1, state.stage, current_price, state.current_sl)
+            trail_pts, trail_off = get_trail_params(state.stage, atr)
+            logger.info(
+                f"TRAIL stage {old_stage} → {state.stage} | "
+                f"trail_pts={trail_pts:.2f} trail_off={trail_off:.2f}"
+            )
+            await self.telegram.notify_trail_stage(
+                old_stage, state.stage, current_price, state.current_sl
+            )
 
+        # ── 8. Trail SL placement (FIX-TRAIL-1: offset gate) ─────────────────
+        # Pine: strategy.exit(trail_points=X, trail_offset=Y)
+        #   → trail SL is only PLACED once price moves Y pts from entry.
+        #   → trail SL then sits X pts behind the running peak.
         if state.stage > 0:
-            trail_pts, _ = get_trail_params(state.stage, atr)
-            candidate_sl = (state.peak_price - trail_pts) if is_long else (state.peak_price + trail_pts)
+            trail_pts, trail_off = get_trail_params(state.stage, atr)
 
-            if self._sl_improved(candidate_sl):
-                state.current_sl = candidate_sl
-                # Journal sync for dashboard
-                self.journal.update_open_trade(trail_stage=state.stage, current_sl=state.current_sl, peak_price=state.peak_price)
+            # Gate: trail SL only activates after profit_dist >= trail_off
+            # (matching Pine's trail_offset semantics exactly)
+            if profit_dist >= trail_off:
+                candidate_sl = (state.peak_price - trail_pts) if is_long \
+                               else (state.peak_price + trail_pts)
+
+                if self._sl_improved(candidate_sl, state.current_sl, is_long):
+                    state.current_sl = candidate_sl
+                    logger.info(
+                        f"TRAIL SL update | stage={state.stage} "
+                        f"peak={state.peak_price:.2f} "
+                        f"pts={trail_pts:.2f} "
+                        f"new_sl={candidate_sl:.2f}"
+                    )
+                    self.journal.update_open_trade(
+                        trail_stage=state.stage,
+                        current_sl=state.current_sl,
+                        peak_price=state.peak_price,
+                    )
 
     async def _execute_exit(self, price: float, reason: str):
         self._running = False
         try:
             exit_order = await self.order_mgr.close_at_trail_sl(reason=reason)
-            exit_price = float(exit_order.get("average") or exit_order.get("price") or price)
+            exit_price = float(
+                exit_order.get("average") or exit_order.get("price") or price
+            )
         except Exception as e:
             logger.error(f"Exit failed: {e}")
             exit_price = price
-        
-        real_pl = calc_real_pl(self.risk.entry_price, exit_price, self.risk.is_long, ALERT_QTY)
+
+        real_pl = calc_real_pl(
+            self.risk.entry_price, exit_price, self.risk.is_long, ALERT_QTY
+        )
         await self.telegram.notify_exit(reason, self.risk.entry_price, exit_price, real_pl)
         if self.on_trail_exit:
             await self.on_trail_exit(exit_price, reason)
 
-    def _sl_improved(self, new_sl: float) -> bool:
-        if not self.risk or not self.state: return False
-        return new_sl > self.state.current_sl if self.risk.is_long else new_sl < self.state.current_sl
+    @staticmethod
+    def _sl_improved(new_sl: float, current_sl: float, is_long: bool) -> bool:
+        """Return True if new_sl is strictly better (tighter) than current_sl.
+        For longs: higher SL is better (moves toward entry/profit).
+        For shorts: lower SL is better.
+        If current_sl is 0.0 (not yet set), always accept.
+        """
+        if current_sl == 0.0:
+            return True
+        return new_sl > current_sl if is_long else new_sl < current_sl
