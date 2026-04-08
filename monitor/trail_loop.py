@@ -42,6 +42,7 @@ from config import (
     DELTA_API_SECRET,
     DELTA_TESTNET,
     BE_MULT,
+    TRAIL_SL_PRE_FIRE_BUFFER,
 )
 
 logger = logging.getLogger(__name__)
@@ -138,8 +139,14 @@ class TrailMonitor:
         else:
             state.peak_price = min(state.peak_price, current_price)
 
-        # ── 2. Profit distance from entry (matches Pine "close - entryPrice") ──
-        profit_dist = abs(current_price - entry_price)
+        # ── 2. Profit distance from entry ─────────────────────────────────────
+        # FIX-TRAIL-PARITY: two distances serve different purposes:
+        #   peak_profit_dist  → for STAGE ADVANCEMENT (peak-based, never regresses;
+        #                        matches Pine's trailStage which only moves up)
+        #   current_profit_dist → for trail_offset GATE and BE trigger
+        #                         (current tick distance, matches Pine trail_offset)
+        peak_profit_dist    = abs(state.peak_price - entry_price)
+        current_profit_dist = abs(current_price    - entry_price)
 
         # ── 3. TP check ───────────────────────────────────────────────────────
         tp_hit = (is_long     and current_price >= risk.tp) or \
@@ -148,10 +155,16 @@ class TrailMonitor:
             await self._execute_exit(current_price, "Target Profit")
             return
 
-        # ── 4. SL / Trail SL breach check ────────────────────────────────────
+        # ── 4. SL / Trail SL breach check ─────────────────────────────────────
+        # PRE-FIRE: trigger TRAIL_SL_PRE_FIRE_BUFFER pts BEFORE the SL is
+        # actually breached. The market exit order then fills near the intended
+        # SL price instead of after a gap. On BTC 30m, prices can gap 50-100 pts
+        # in one 0.5s tick — firing 8 pts early closes that slippage.
         if state.current_sl > 0:
-            sl_breached = (is_long     and current_price <= state.current_sl) or \
-                          (not is_long and current_price >= state.current_sl)
+            sl_breached = (
+                (is_long     and current_price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER) or
+                (not is_long and current_price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
+            )
             if sl_breached:
                 reason = "Initial SL" if (state.stage == 0 and not state.be_done) \
                          else f"Trail S{state.stage}"
@@ -165,7 +178,7 @@ class TrailMonitor:
             return
 
         # ── 6. Breakeven ──────────────────────────────────────────────────────
-        if not state.be_done and should_trigger_be(profit_dist, atr):
+        if not state.be_done and should_trigger_be(current_profit_dist, atr):
             state.be_done = True
             # Only move SL to entry if that improves it (won't regress a trail SL)
             if self._sl_improved(entry_price, state.current_sl, is_long):
@@ -173,8 +186,11 @@ class TrailMonitor:
                 logger.info(f"BE locked | current_sl → entry={entry_price:.2f}")
             await self.telegram.notify_breakeven(entry_price)
 
-        # ── 7. Trail stage advancement ────────────────────────────────────────
-        new_stage = calc_trail_stage(profit_dist, atr)
+        # ── 7. Trail stage advancement (peak-based — Pine parity) ─────────────
+        # Pine: trailStage var only moves forward (never resets on pullback).
+        # Using peak_profit_dist ensures that if price hit e.g. 2.1×ATR and
+        # pulled back to 1.5×ATR, stage 2 stays active — same as Pine's var.
+        new_stage = calc_trail_stage(peak_profit_dist, atr)
         if new_stage > state.stage:
             old_stage   = state.stage
             state.stage = new_stage
@@ -194,9 +210,9 @@ class TrailMonitor:
         if state.stage > 0:
             trail_pts, trail_off = get_trail_params(state.stage, atr)
 
-            # Gate: trail SL only activates after profit_dist >= trail_off
-            # (matching Pine's trail_offset semantics exactly)
-            if profit_dist >= trail_off:
+            # Gate: trail SL only activates after current_profit_dist >= trail_off
+            # (matching Pine's trail_offset semantics: activation from fill price)
+            if current_profit_dist >= trail_off:
                 candidate_sl = (state.peak_price - trail_pts) if is_long \
                                else (state.peak_price + trail_pts)
 
