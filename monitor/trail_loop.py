@@ -19,11 +19,11 @@ import ccxt.async_support as ccxt
 
 from risk.calculator import (
     RiskLevels, TrailState, calc_trail_stage, get_trail_params,
-    should_trigger_be, max_sl_hit, calc_real_pl, TRAIL_STAGES
+    should_trigger_be, max_sl_hit, calc_real_pl
 )
 from config import (
     SYMBOL, DELTA_API_KEY, DELTA_API_SECRET, DELTA_TESTNET,
-    ALERT_QTY, BE_MULT, TRAIL_SL_PRE_FIRE_BUFFER, TRAIL_LOOP_SEC,
+    ALERT_QTY, TRAIL_SL_PRE_FIRE_BUFFER, TRAIL_LOOP_SEC,
 )
 
 logger = logging.getLogger(__name__)
@@ -147,8 +147,13 @@ class TrailMonitor:
         else:
             state.peak_price = min(state.peak_price, current_price)
 
-        peak_profit_dist = abs(state.peak_price - entry_price)
-        current_profit_dist = abs(current_price - entry_price)
+        # Directional profit distances — matches Pine Script
+        if is_long:
+            peak_profit_dist = max(0.0, state.peak_price - entry_price)
+            current_profit_dist = current_price - entry_price
+        else:
+            peak_profit_dist = max(0.0, entry_price - state.peak_price)
+            current_profit_dist = entry_price - current_price
 
         # 1. Target Profit
         tp_hit = (
@@ -190,42 +195,42 @@ class TrailMonitor:
                 old_stage, state.stage, current_price, state.current_sl
             )
 
-        # 5. Trailing SL calculation (Pine: peak - trail_points)
-        if state.stage > 0:
-            pts, off = get_trail_params(state.stage, atr)
-            activation_threshold = TRAIL_STAGES[max(0, state.stage - 1)][0] * atr
+        # 5. Trailing SL calculation (Pine: peak - trail_points, active from off threshold)
+        trail_param_stage = state.stage if state.stage > 0 else 1
+        pts, off = get_trail_params(trail_param_stage, atr)
+        trail_active = peak_profit_dist >= off
 
-            if peak_profit_dist >= activation_threshold:
-                candidate_sl = (
-                    state.peak_price - pts if is_long else state.peak_price + pts
+        if trail_active:
+            candidate_sl = (
+                state.peak_price - pts if is_long else state.peak_price + pts
+            )
+            if self._sl_improves(candidate_sl, state.current_sl, is_long):
+                old_sl = state.current_sl
+                state.current_sl = candidate_sl
+                logger.info(
+                    f"TRAIL SL update | stage={max(state.stage, 1)} "
+                    f"peak={state.peak_price:.2f} pts={pts:.2f} "
+                    f"SL {old_sl:.2f} → {candidate_sl:.2f}"
                 )
-                if self._sl_improves(candidate_sl, state.current_sl, is_long):
-                    old_sl = state.current_sl
-                    state.current_sl = candidate_sl
-                    logger.info(
-                        f"TRAIL SL update | stage={state.stage} "
-                        f"peak={state.peak_price:.2f} pts={pts:.2f} "
-                        f"SL {old_sl:.2f} → {candidate_sl:.2f}"
-                    )
 
-        # 6. Trail SL hit → EXIT IMMEDIATELY (FIX-TV-001)
-        if state.current_sl > 0 and state.stage > 0:
+        # 6. Unified stop check: initial / breakeven / trail — matches Pine Script
+        if state.current_sl > 0:
             sl_hit = (
                 (is_long and current_price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER)
                 or (not is_long and current_price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
             )
             if sl_hit:
-                await self._execute_exit(current_price, f"Trail S{state.stage}")
-                return
-
-        # 7. Initial SL hit → EXIT IMMEDIATELY (FIX-TV-001)
-        if state.stage == 0:
-            initial_sl_hit = (
-                (is_long and current_price <= risk.sl + TRAIL_SL_PRE_FIRE_BUFFER)
-                or (not is_long and current_price >= risk.sl - TRAIL_SL_PRE_FIRE_BUFFER)
-            )
-            if initial_sl_hit:
-                await self._execute_exit(current_price, "Initial SL")
+                trail_has_improved = (
+                    (is_long and state.current_sl > risk.sl)
+                    or (not is_long and state.current_sl < risk.sl)
+                )
+                if trail_has_improved:
+                    reason = f"Trail S{max(state.stage, 1)}"
+                elif state.be_done and abs(state.current_sl - entry_price) <= max(1e-9, atr * 1e-6):
+                    reason = "Breakeven SL"
+                else:
+                    reason = "Initial SL"
+                await self._execute_exit(current_price, reason)
                 return
 
     # ──────────────────────────────────────────────
