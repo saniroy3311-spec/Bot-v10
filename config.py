@@ -87,7 +87,3 @@ WS_RECONNECT_SEC = 5
 
 LOG_FILE = os.environ.get("LOG_FILE", "/root/Bot-v10/journal.db")
 
-# ──────────────────────────────────────────────
-# TV SYNC MODE
-# ──────────────────────────────────────────────
-TV_SYNC_MODE = os.environ.get("TV_SYNC_MODE", "true").lower() == "true"
