@@ -79,7 +79,7 @@ RSI_OS  = int(os.environ.get("RSI_OS", "30"))
 
 COMMISSION_PCT    = 0.05 / 100
 BRACKET_SL_BUFFER = float(os.environ.get("BRACKET_SL_BUFFER", "10.0"))
-TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "8.0"))
+TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "0.0"))
 
 CANDLE_TIMEFRAME = os.environ.get("CANDLE_TIMEFRAME", "30m")
 TRAIL_LOOP_SEC   = float(os.environ.get("TRAIL_LOOP_SEC", "2.0"))
