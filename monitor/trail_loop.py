@@ -1,13 +1,20 @@
 """
 monitor/trail_loop.py - Shiva Sniper v6.5
-TRUE Pine Script Parity with TV-Sync Exit Timing
+FIXED: Exits fire IMMEDIATELY when trail SL / TP / Max SL is hit.
+       TV_SYNC_MODE bar-wait removed — Pine Script exits intra-bar,
+       the bot must do the same.
+
+Changes vs original:
+  FIX-TV-001 | _schedule_exit replaced with direct _execute_exit.
+              | No more bar-boundary wait. Exit happens NOW.
+  FIX-TV-002 | _exit_triggered boolean guard prevents double-exit.
+  FIX-TV-003 | Logging shows real wall-clock time (not bar boundary).
 """
 
 import asyncio
 import logging
 import time
 from typing import Optional, Callable
-from dataclasses import dataclass
 import ccxt.async_support as ccxt
 
 from risk.calculator import (
@@ -17,64 +24,60 @@ from risk.calculator import (
 from config import (
     SYMBOL, DELTA_API_KEY, DELTA_API_SECRET, DELTA_TESTNET,
     ALERT_QTY, BE_MULT, TRAIL_SL_PRE_FIRE_BUFFER, TRAIL_LOOP_SEC,
-    TV_SYNC_MODE
 )
 
 logger = logging.getLogger(__name__)
 
 BAR_PERIOD_MS = 30 * 60 * 1000  # 30 minutes
 
+
 class TrailMonitor:
     def __init__(self, order_manager, telegram, journal):
         self.order_mgr = order_manager
         self.telegram = telegram
         self.journal = journal
-        self.tv_sync = TV_SYNC_MODE
-        
+
         self.risk: Optional[RiskLevels] = None
         self.state: Optional[TrailState] = None
         self._running = False
         self._task: Optional[asyncio.Task] = None
-        self._exchange: Optional[ccxt.delta] = None
+        self._exchange = None
         self.on_trail_exit: Optional[Callable] = None
-        
+
         self.entry_bar_time_ms: Optional[int] = None
-        self.pending_exit: Optional[tuple] = None
+        # FIX-TV-002: guard against double-exit
+        self._exit_triggered = False
 
-    def _get_bar_boundary(self, timestamp_ms: Optional[int] = None) -> int:
-        """Get next 30m bar close time (TV reporting standard)"""
-        if timestamp_ms is None:
-            timestamp_ms = int(time.time() * 1000)
-        return ((timestamp_ms // BAR_PERIOD_MS) + 1) * BAR_PERIOD_MS
-
+    # ──────────────────────────────────────────────
+    # Bar helpers (kept for entry-bar FIX-007 guard only)
+    # ──────────────────────────────────────────────
     def _is_same_bar(self, timestamp_ms: int) -> bool:
-        """Check if timestamp is within same bar as entry (FIX-007)"""
         if self.entry_bar_time_ms is None:
             return False
         return (timestamp_ms // BAR_PERIOD_MS) == (self.entry_bar_time_ms // BAR_PERIOD_MS)
 
-    def start(self, risk_levels: RiskLevels, trail_state: TrailState, 
-             entry_bar_time_ms: Optional[int] = None,
-             on_trail_exit: Optional[Callable] = None) -> None:
+    # ──────────────────────────────────────────────
+    # Lifecycle
+    # ──────────────────────────────────────────────
+    def start(self, risk_levels: RiskLevels, trail_state: TrailState,
+              entry_bar_time_ms: Optional[int] = None,
+              on_trail_exit: Optional[Callable] = None) -> None:
         self.risk = risk_levels
         self.state = trail_state
         self.on_trail_exit = on_trail_exit
-        self.pending_exit = None
-        
-        if entry_bar_time_ms:
-            self.entry_bar_time_ms = entry_bar_time_ms
-        else:
-            self.entry_bar_time_ms = self._get_bar_boundary()
-            
+        self._exit_triggered = False
+
+        self.entry_bar_time_ms = entry_bar_time_ms if entry_bar_time_ms else int(time.time() * 1000)
+
         if self.state.peak_price == 0.0:
             self.state.peak_price = risk_levels.entry_price
-            
+
         logger.info(
-            f"TrailMonitor started [TV-Sync={self.tv_sync}] | "
+            f"TrailMonitor started | "
             f"entry={risk_levels.entry_price} atr={risk_levels.atr} "
             f"entry_bar={self.entry_bar_time_ms}"
         )
-        
+
         self._running = True
         self._task = asyncio.create_task(self._run())
 
@@ -93,7 +96,11 @@ class TrailMonitor:
             logger.error(f"TrailMonitor crashed: {e}", exc_info=True)
 
     async def _loop_rest(self) -> None:
-        _base_url = "https://testnet-api.india.delta.exchange" if DELTA_TESTNET else "https://api.india.delta.exchange"
+        _base_url = (
+            "https://testnet-api.india.delta.exchange"
+            if DELTA_TESTNET
+            else "https://api.india.delta.exchange"
+        )
         params = {
             "apiKey": DELTA_API_KEY,
             "secret": DELTA_API_SECRET,
@@ -101,14 +108,17 @@ class TrailMonitor:
             "urls": {"api": {"public": _base_url, "private": _base_url}},
         }
         self._exchange = ccxt.delta(params)
-        
+
         try:
             while self._running:
                 await asyncio.sleep(TRAIL_LOOP_SEC)
                 try:
                     ticker = await self._exchange.fetch_ticker(SYMBOL)
-                    current_price = float(ticker.get("last") or 
-                                        ticker.get("info", {}).get("mark_price") or 0)
+                    current_price = float(
+                        ticker.get("last")
+                        or ticker.get("info", {}).get("mark_price")
+                        or 0
+                    )
                     if current_price > 0:
                         await self._on_tick(current_price)
                 except Exception as e:
@@ -117,8 +127,10 @@ class TrailMonitor:
             if self._exchange:
                 await self._exchange.close()
 
+    # ──────────────────────────────────────────────
+    # Core tick — mirrors Pine Script calc_on_every_tick
+    # ──────────────────────────────────────────────
     async def _on_tick(self, current_price: float) -> None:
-        """Process price tick with true Pine Script logic"""
         if not self._running or self.risk is None or self.state is None:
             return
 
@@ -138,21 +150,24 @@ class TrailMonitor:
         peak_profit_dist = abs(state.peak_price - entry_price)
         current_profit_dist = abs(current_price - entry_price)
 
-        # 1. Check Target Profit
-        tp_hit = (is_long and current_price >= risk.tp) or (not is_long and current_price <= risk.tp)
+        # 1. Target Profit
+        tp_hit = (
+            (is_long and current_price >= risk.tp)
+            or (not is_long and current_price <= risk.tp)
+        )
         if tp_hit:
-            await self._schedule_exit(current_price, "Target Profit", current_time_ms)
+            await self._execute_exit(current_price, "Target Profit")
             return
 
-        # 2. Check Max SL (BLOCKED on entry bar - FIX-007)
+        # 2. Max SL (blocked on entry bar — FIX-007)
         is_entry_bar = self._is_same_bar(current_time_ms)
         if not is_entry_bar and not state.max_sl_fired:
             if max_sl_hit(current_price, entry_price, atr, is_long):
                 state.max_sl_fired = True
-                await self._schedule_exit(current_price, "Max SL Hit", current_time_ms)
+                await self._execute_exit(current_price, "Max SL Hit")
                 return
 
-        # 3. Check Breakeven
+        # 3. Breakeven
         if not state.be_done and should_trigger_be(current_profit_dist, atr):
             state.be_done = True
             if self._sl_improves(entry_price, state.current_sl, is_long):
@@ -161,7 +176,7 @@ class TrailMonitor:
                 logger.info(f"Breakeven | SL {old_sl:.2f} → {entry_price:.2f}")
                 await self.telegram.notify_breakeven(entry_price)
 
-        # 4. Update Trail Stage based on PEAK profit
+        # 4. Trail Stage upgrade (peak-based, matches Pine Script)
         new_stage = calc_trail_stage(peak_profit_dist, atr)
         if new_stage > state.stage:
             old_stage = state.stage
@@ -171,21 +186,19 @@ class TrailMonitor:
                 f"TRAIL stage {old_stage} → {state.stage} | "
                 f"peak={state.peak_price:.2f} pts={pts:.2f}"
             )
-            await self.telegram.notify_trail_stage(old_stage, state.stage, current_price, state.current_sl)
+            await self.telegram.notify_trail_stage(
+                old_stage, state.stage, current_price, state.current_sl
+            )
 
-        # 5. Calculate Trailing Stop
+        # 5. Trailing SL calculation (Pine: peak - trail_points)
         if state.stage > 0:
             pts, off = get_trail_params(state.stage, atr)
-            
-            # Activation threshold from TRAIL_STAGES
-            activation_threshold = TRAIL_STAGES[max(0, state.stage-1)][0] * atr
-            
+            activation_threshold = TRAIL_STAGES[max(0, state.stage - 1)][0] * atr
+
             if peak_profit_dist >= activation_threshold:
-                if is_long:
-                    candidate_sl = state.peak_price - pts
-                else:
-                    candidate_sl = state.peak_price + pts
-                    
+                candidate_sl = (
+                    state.peak_price - pts if is_long else state.peak_price + pts
+                )
                 if self._sl_improves(candidate_sl, state.current_sl, is_long):
                     old_sl = state.current_sl
                     state.current_sl = candidate_sl
@@ -195,69 +208,62 @@ class TrailMonitor:
                         f"SL {old_sl:.2f} → {candidate_sl:.2f}"
                     )
 
-        # 6. Check Trail Stop hit
+        # 6. Trail SL hit → EXIT IMMEDIATELY (FIX-TV-001)
         if state.current_sl > 0 and state.stage > 0:
             sl_hit = (
-                (is_long and current_price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER) or
-                (not is_long and current_price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
+                (is_long and current_price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER)
+                or (not is_long and current_price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
             )
             if sl_hit:
-                await self._schedule_exit(current_price, f"Trail S{state.stage}", current_time_ms)
+                await self._execute_exit(current_price, f"Trail S{state.stage}")
                 return
 
-        # 7. Check Initial SL
+        # 7. Initial SL hit → EXIT IMMEDIATELY (FIX-TV-001)
         if state.stage == 0:
             initial_sl_hit = (
-                (is_long and current_price <= risk.sl + TRAIL_SL_PRE_FIRE_BUFFER) or
-                (not is_long and current_price >= risk.sl - TRAIL_SL_PRE_FIRE_BUFFER)
+                (is_long and current_price <= risk.sl + TRAIL_SL_PRE_FIRE_BUFFER)
+                or (not is_long and current_price >= risk.sl - TRAIL_SL_PRE_FIRE_BUFFER)
             )
             if initial_sl_hit:
-                await self._schedule_exit(current_price, "Initial SL", current_time_ms)
+                await self._execute_exit(current_price, "Initial SL")
                 return
 
-    async def _schedule_exit(self, price: float, reason: str, detected_time_ms: int):
-        """Schedule exit with TV time sync"""
-        if not self.tv_sync:
-            await self._execute_exit(price, reason, detected_time_ms)
+    # ──────────────────────────────────────────────
+    # FIX-TV-001: Immediate exit — no bar-boundary wait
+    # ──────────────────────────────────────────────
+    async def _execute_exit(self, price: float, reason: str) -> None:
+        # FIX-TV-002: prevent double-exit
+        if self._exit_triggered:
             return
-            
-        exit_bar_time = self._get_bar_boundary(detected_time_ms)
-        
-        if self.pending_exit is None:
-            self.pending_exit = (price, reason, detected_time_ms, exit_bar_time)
-            logger.info(
-                f"Exit scheduled | reason={reason} price={price:.2f} "
-                f"at_bar={exit_bar_time}"
-            )
-            
-            wait_ms = exit_bar_time - detected_time_ms
-            if wait_ms > 0:
-                await asyncio.sleep(wait_ms / 1000)
-                
-            if self._running and self.pending_exit:
-                await self._execute_exit(price, reason, exit_bar_time)
-
-    async def _execute_exit(self, price: float, reason: str, timestamp_ms: int):
-        """Execute exit with TV-aligned timestamp"""
+        self._exit_triggered = True
         self._running = False
-        
+
         try:
             exit_order = await self.order_mgr.close_at_trail_sl(reason=reason)
-            fill_price = float(exit_order.get("average") or exit_order.get("price") or price)
+            fill_price = float(
+                exit_order.get("average")
+                or exit_order.get("price")
+                or price
+            )
         except Exception as e:
-            logger.error(f"Exit failed: {e}")
+            logger.error(f"Exit order failed: {e}")
             fill_price = price
 
-        real_pl = calc_real_pl(self.risk.entry_price, fill_price, self.risk.is_long, ALERT_QTY)
-        
-        bar_time_str = time.strftime('%Y-%m-%d %H:%M', time.gmtime(timestamp_ms / 1000))
+        real_pl = calc_real_pl(
+            self.risk.entry_price, fill_price, self.risk.is_long, ALERT_QTY
+        )
+
+        # FIX-TV-003: real wall-clock time in log
+        wall_time = time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())
         logger.info(
             f"Position closed | exit={fill_price:.2f} reason={reason} "
-            f"pl={real_pl:.4f} tv_time={bar_time_str}"
+            f"pl={real_pl:.4f} time={wall_time}"
         )
-        
-        await self.telegram.notify_exit(reason, self.risk.entry_price, fill_price, real_pl)
-        
+
+        await self.telegram.notify_exit(
+            reason, self.risk.entry_price, fill_price, real_pl
+        )
+
         if self.on_trail_exit:
             await self.on_trail_exit(fill_price, reason)
 
