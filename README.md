@@ -78,6 +78,3 @@ Before going live, follow the built-in verification suite:
 2. **Phase 2 (Signals)**: Run `python phase2/run_phase2.py` to verify entry/exit bar matching.
 3. **Phase 3 (Orders)**: Run `python phase3/run_phase3.py` to test connectivity.
 
----
-
-Would you like me to generate the Pine Script `tv_exporter.pine` code to help you with the TradingView side of the verification?
