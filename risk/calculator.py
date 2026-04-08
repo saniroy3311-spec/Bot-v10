@@ -1,12 +1,6 @@
 """
 risk/calculator.py - Shiva Sniper v6.5
 SL/TP calculation, 5-stage trail ratchet, breakeven, and P/L math.
-
-FIX — Trail activation mismatch (ROOT CAUSE of bot vs PineScript divergence):
-  calc_trail_stage() previously activated Stage 1 at trail1Trigger (1.0×ATR).
-  PineScript's strategy.exit() trail activates at trail_offset (0.55×ATR).
-  Fixed: Stage 1 now activates at TRAIL_STAGES[0][2] = 0.55×ATR.
-  Stages 2-5 still advance at their trigger values (2, 3, 5, 8 × ATR).
 """
 
 from dataclasses import dataclass
@@ -18,15 +12,10 @@ from config import (
     COMMISSION_PCT, ALERT_QTY,
 )
 
-# ── DELTA INDIA CONSTANTS ───────────────────────────────────────────────────
-# 1 lot = 0.001 BTC on Delta India (Inverse Perpetual)
 DELTA_INDIA_BTC_PER_LOT = 0.001
 
 def lots_to_btc(lots: int) -> float:
-    """Convert number of lots to actual BTC quantity."""
     return float(lots) * DELTA_INDIA_BTC_PER_LOT
-
-# ── Data structures ────────────────────────────────────────────────────────────
 
 @dataclass
 class RiskLevels:
@@ -46,13 +35,7 @@ class TrailState:
     be_done:      bool  = False
     max_sl_fired: bool  = False
 
-# ── Entry-level calculations ───────────────────────────────────────────────────
-
 def calc_levels(entry_price: float, atr: float, is_long: bool, is_trend: bool) -> RiskLevels:
-    """
-    Calculate SL/TP anchored to entry_price.
-    Matches Pine Script: anchors SL/TP to the actual fill price.
-    """
     atr_mult  = TREND_ATR_MULT if is_trend else RANGE_ATR_MULT
     rr        = TREND_RR       if is_trend else RANGE_RR
     stop_dist = min(atr * atr_mult, MAX_SL_POINTS)
@@ -75,48 +58,15 @@ def calc_levels(entry_price: float, atr: float, is_long: bool, is_trend: bool) -
     )
 
 def recalc_levels_from_fill(risk: RiskLevels, fill_price: float) -> RiskLevels:
-    """FIX-RISK-1: Recalculate SL/TP anchored to actual fill price."""
     return calc_levels(fill_price, risk.atr, risk.is_long, risk.is_trend)
 
-# ── Trail engine ───────────────────────────────────────────────────────────────
-
 def calc_trail_stage(profit_dist: float, atr: float) -> int:
-    """
-    Return the active trail stage (0 = trail not yet active).
-
-    ROOT-CAUSE FIX — PineScript trail_offset mismatch:
-    ─────────────────────────────────────────────────────────────────────────
-    PineScript calls strategy.exit() every bar with:
-        trail_points = activePts   (distance behind peak)
-        trail_offset = activeOff   (activation offset from entry)
-
-    Before any "stage" milestone is reached (trailStage==0 in Pine), the
-    ternary chain falls through to trail1Pts / trail1Off, so the trail is
-    ALREADY active with those parameters from the very first tick.
-
-    Pine trail activates when:   profit >= trail1Off = 0.55 × ATR
-    Old bot trail activated at:  profit >= trail1Trigger = 1.00 × ATR   ← BUG
-
-    This gap (0.55→1.00 ATR) meant the bot never set a trailing SL on any
-    move smaller than 1.0 ATR, held through a full reversal, and was stopped
-    out at Max SL — while Pine had already exited via trail at ~0.70 ATR.
-
-    Fix: activate Stage 1 at trail1Off (TRAIL_STAGES[0][2] = 0.55 ATR).
-    Stages 2-5 still advance at their respective trigger values (2,3,5,8 ATR).
-    ─────────────────────────────────────────────────────────────────────────
-    """
-    trail1_off = TRAIL_STAGES[0][2]          # 0.55 — Pine trail_offset for S1
-    if profit_dist < atr * trail1_off:
-        return 0                             # trail not active yet
-
-    # Trail is active — at least Stage 1.
-    # Check whether higher-stage triggers have been reached (stages 2-5).
-    stage = 1
-    for i in range(1, len(TRAIL_STAGES)):   # i = 1,2,3,4 → stages 2,3,4,5
+    """Calculate trail stage based on profit distance (PEAK profit, not current)"""
+    stage = 0
+    for i in range(len(TRAIL_STAGES) - 1, -1, -1):
         trigger_mult = TRAIL_STAGES[i][0]
         if profit_dist >= atr * trigger_mult:
             stage = i + 1
-        else:
             break
     return stage
 
@@ -136,26 +86,17 @@ def max_sl_hit(current_price: float, entry_price: float, atr: float, is_long: bo
     else:
         return current_price >= entry_price + loss_cap
 
-# ── P/L calculation ────────────────────────────────────────────────────────────
-
 def calc_real_pl(entry_price: float, exit_price: float, is_long: bool, qty: int = ALERT_QTY) -> float:
-    """
-    FIX-RISK-2: Correct P/L for Delta India BTC/USD:USD inverse perpetual.
-    Formula: qty * (exit - entry) / entry
-    """
     if entry_price <= 0 or exit_price <= 0:
         return 0.0
     
     move = (exit_price - entry_price) if is_long else (entry_price - exit_price)
     raw_pl_usd = qty * move / entry_price
-    
-    # Commission: 0.05% per side (Total 0.1% round trip)
     commission_usd = 2 * qty * COMMISSION_PCT
     
     return raw_pl_usd - commission_usd
 
 def calc_pl_breakdown(entry_price: float, exit_price: float, is_long: bool, qty: int = ALERT_QTY) -> dict:
-    """Full breakdown dict for Telegram messages and logging."""
     if entry_price <= 0 or exit_price <= 0:
         return {
             "lots": qty, "qty_btc": 0, "price_move": 0, "raw_pl_usdt": 0,
