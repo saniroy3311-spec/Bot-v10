@@ -145,6 +145,16 @@ COMMISSION_PCT    = 0.05 / 100
 BRACKET_SL_BUFFER = float(os.environ.get("BRACKET_SL_BUFFER", "10.0"))
 
 # ──────────────────────────────────────────────
+# TRAIL SL PRE-FIRE BUFFER
+# Fire the market exit order this many points BEFORE the trail SL is
+# actually breached. Gives the market order time to fill near the SL price,
+# reducing slippage vs waiting until close price is already through the SL.
+# On BTC 30m, price can gap 50-100 pts in a single 0.5s tick; firing 8 pts
+# early closes that gap significantly.
+# ──────────────────────────────────────────────
+TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "8.0"))
+
+# ──────────────────────────────────────────────
 # BOT TIMING
 # 30M-OPT: CANDLE_TIMEFRAME changed "5m" → "30m".
 #   The WS feed subscribes to candlestick_30m automatically.
