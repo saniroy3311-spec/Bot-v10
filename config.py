@@ -47,7 +47,10 @@ ADX_RANGE_TH = int(os.environ.get("ADX_RANGE_TH", "18"))
 # ──────────────────────────────────────────────
 FILTER_ATR_MULT    = float(os.environ.get("FILTER_ATR_MULT",  "1.6"))
 FILTER_BODY_MULT   = float(os.environ.get("FILTER_BODY_MULT", "0.4"))
-FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "false").lower() == "true"
+# FIX-VOL-001: Default ON — matches Pine Script filters exactly.
+# Set FILTER_VOL_ENABLED=false in .env ONLY if Delta REST returns zero
+# volume for all bars and you want to disable the filter entirely.
+FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "true").lower() == "true"
 
 # ──────────────────────────────────────────────
 # RISK / REWARD
