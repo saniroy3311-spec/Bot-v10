@@ -138,9 +138,10 @@ _NO_EXIT = ExitSignal(should_exit=False, reason="")
 
 def evaluate_exit(snap: IndicatorSnapshot, signal_type: SignalType) -> ExitSignal:
     """
-    FIXED: Pine Script's strategy.exit() manages bracket orders (TP/SL/Trail).
-    It DOES NOT evaluate indicator flips to close positions. 
-    Returning _NO_EXIT forces the bot to rely purely on trail_loop.py for exits,
-    matching TradingView exactly.
+    This Pine Script uses strategy.exit() with stop/limit/trail_points/trail_offset ONLY.
+    There are NO indicator-flip exits (no strategy.close on EMA/DI/RSI flip).
+    All exits are handled by trail_loop.py (TP, SL, Breakeven, Trail, Max SL).
+
+    Returns _NO_EXIT always — do not change this for this strategy.
     """
     return _NO_EXIT
