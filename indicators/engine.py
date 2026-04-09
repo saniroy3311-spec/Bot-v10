@@ -13,12 +13,27 @@ Pine adx=ema(adxRaw,5) -> extra EMA(5) on top of raw ADX        OK applied manua
 Known tiny delta: floating-point init differs on bar 1.
 After 300+ bars: <0.001% divergence from TV.
 
-FIX (vs original):
-  - FILTER_VOL_ENABLED imported and applied: vol filter can be
-    disabled via env var when Delta REST returns zero volume.
-  - FILTER_BODY_MULT and FILTER_ATR_MULT now env-configurable.
+FIXES vs previous version:
+───────────────────────────────────────────────────────────────────────────────
+FIX-VOL-001 | Volume filter now matches Pine Script exactly.
+
+  Root cause:
+    FILTER_VOL_ENABLED defaulted to false → volume filter completely bypassed.
+    Pine Script: filters = ... and volume > ta.sma(volume, 20) ...
+    With volume filter off, the bot takes trades Pine would reject
+    (low-volume bars, range-transition bars) → "totally different entries".
+
+  Fix:
+    Volume filter is ON by default (matching Pine exactly).
+    BUT: when Delta REST returns volume=0 for a bar (common on Delta India),
+    the filter is bypassed for that bar to avoid permanently blocking signals.
+    Zero-volume bypass is logged as a warning each time it fires.
+
+    Override via env: FILTER_VOL_ENABLED=false to disable entirely.
+───────────────────────────────────────────────────────────────────────────────
 """
 
+import logging
 import pandas as pd
 import pandas_ta as ta
 from dataclasses import dataclass
@@ -29,6 +44,8 @@ from config import (
     FILTER_ATR_MULT, FILTER_BODY_MULT, FILTER_VOL_ENABLED,
     RSI_OB, RSI_OS,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -93,14 +110,9 @@ def compute(df: pd.DataFrame) -> IndicatorSnapshot:
     rsi = ta.rsi(df["close"], length=RSI_LEN).iloc[-1]
 
     # -- DMI / ADX ------------------------------------------------------------
-    # Pine ta.dmi(14, 14):
-    #   +DM/-DM smoothed with Wilder RMA(14)
-    #   ADX = RMA(|+DI - -DI| / (+DI + -DI), 14)
-    # Pine adx = ta.ema(adxRaw, 5)  <- extra EMA(5) on top
     adx_df  = ta.adx(df["high"], df["low"], df["close"],
                      length=DI_LEN, lensig=ADX_SMOOTH)
 
-    # Column names vary by pandas_ta version — handle both
     try:
         adx_raw_series = adx_df[f"ADX_{DI_LEN}"]
         dip_val        = adx_df[f"DMP_{DI_LEN}"].iloc[-1]
@@ -121,19 +133,30 @@ def compute(df: pd.DataFrame) -> IndicatorSnapshot:
     range_regime = bool(adx_smoothed < ADX_RANGE_TH)
 
     # -- Filters --------------------------------------------------------------
-    # Pine: atr < ta.sma(atr,50)*filterATRmul
-    #       and volume > ta.sma(volume,20)        <- controlled by FILTER_VOL_ENABLED
-    #       and math.abs(close-open) > atr*filterBody
+    # Pine: atr < ta.sma(atr, 50) * filterATRmul
+    #       and volume > ta.sma(volume, 20)
+    #       and math.abs(close - open) > atr * filterBody
     last    = df.iloc[-1]
     atr_ok  = bool(atr < atr_sma * FILTER_ATR_MULT)
     body_ok = bool(abs(last["close"] - last["open"]) > atr * FILTER_BODY_MULT)
 
-    # FIX: vol_ok bypassed when FILTER_VOL_ENABLED=false (env var).
-    # Delta Exchange REST frequently returns 0 volume causing vol_ok=False
-    # permanently. Set FILTER_VOL_ENABLED=false in Render env to bypass.
+    # FIX-VOL-001: Volume filter — ON by default (matching Pine).
+    # Bypass ONLY when Delta returns 0 volume (data gap), to avoid permanently
+    # blocking all signals. Zero-bypass is logged as a warning.
     if FILTER_VOL_ENABLED:
-        vol_ok = bool(last["volume"] > vol_sma)
+        bar_volume = float(last["volume"])
+        if bar_volume > 0 and vol_sma > 0:
+            vol_ok = bool(bar_volume > vol_sma)
+        else:
+            # Delta India sometimes returns 0 volume via REST — pass the bar,
+            # log warning so operator knows the filter was skipped.
+            logger.warning(
+                f"VOL-BYPASS | bar_volume={bar_volume:.0f} vol_sma={vol_sma:.0f} "
+                f"— volume filter skipped (Delta returned zero volume)"
+            )
+            vol_ok = True
     else:
+        # Explicitly disabled via env — pass always (legacy behaviour)
         vol_ok = True
 
     filters = atr_ok and vol_ok and body_ok
