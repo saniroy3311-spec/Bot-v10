@@ -181,15 +181,18 @@ class TrailMonitor:
                 logger.info(f"Breakeven | SL {old_sl:.2f} → {entry_price:.2f}")
                 await self.telegram.notify_breakeven(entry_price)
 
-        # 4. Trail Stage upgrade (peak-based, matches Pine Script)
-        new_stage = calc_trail_stage(peak_profit_dist, atr)
+        # 4. Trail Stage upgrade — FIX-STAGE-001
+        # Pine: calc_on_every_tick=true, so 'close' = current tick price.
+        # profitDist = close - entryPrice fires on EVERY TICK, not just bar close.
+        # Both Lite model and re-reading Pine confirmed: use current_profit_dist.
+        new_stage = calc_trail_stage(current_profit_dist, atr)
         if new_stage > state.stage:
             old_stage = state.stage
             state.stage = new_stage
             pts, _ = get_trail_params(state.stage, atr)
             logger.info(
                 f"TRAIL stage {old_stage} → {state.stage} | "
-                f"peak={state.peak_price:.2f} pts={pts:.2f}"
+                f"price={current_price:.2f} profit={current_profit_dist:.2f} pts={pts:.2f}"
             )
             await self.telegram.notify_trail_stage(
                 old_stage, state.stage, current_price, state.current_sl
