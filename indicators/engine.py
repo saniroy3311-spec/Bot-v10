@@ -23,11 +23,11 @@ FIX-VOL-001 | Volume filter now matches Pine Script exactly.
     With volume filter off, the bot takes trades Pine would reject
     (low-volume bars, range-transition bars) → "totally different entries".
 
-  Fix:
+  Fix (FIX-VOL-001 + FIX-VOL-002):
     Volume filter is ON by default (matching Pine exactly).
-    BUT: when Delta REST returns volume=0 for a bar (common on Delta India),
-    the filter is bypassed for that bar to avoid permanently blocking signals.
-    Zero-volume bypass is logged as a warning each time it fires.
+    FIX-VOL-002: when Delta REST returns volume=0, the bar is now REJECTED
+    (vol_ok=False), matching Pine behaviour: 0 > sma(volume,20) = False.
+    Previous code set vol_ok=True (bypass) — causing trades Pine would reject.
 
     Override via env: FILTER_VOL_ENABLED=false to disable entirely.
 ───────────────────────────────────────────────────────────────────────────────
@@ -148,13 +148,14 @@ def compute(df: pd.DataFrame) -> IndicatorSnapshot:
         if bar_volume > 0 and vol_sma > 0:
             vol_ok = bool(bar_volume > vol_sma)
         else:
-            # Delta India sometimes returns 0 volume via REST — pass the bar,
-            # log warning so operator knows the filter was skipped.
+            # Delta India sometimes returns 0 volume via REST.
+            # Pine Script: volume > sma(volume,20) → 0 > positive = FALSE → bar rejected.
+            # FIX-VOL-002: match Pine exactly — reject the bar, do not bypass.
             logger.warning(
                 f"VOL-BYPASS | bar_volume={bar_volume:.0f} vol_sma={vol_sma:.0f} "
-                f"— volume filter skipped (Delta returned zero volume)"
+                f"— zero volume bar REJECTED (Pine parity)"
             )
-            vol_ok = True
+            vol_ok = False
     else:
         # Explicitly disabled via env — pass always (legacy behaviour)
         vol_ok = True
