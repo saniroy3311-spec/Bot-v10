@@ -39,14 +39,14 @@ RSI_LEN       = 14
 # ──────────────────────────────────────────────
 # REGIME THRESHOLDS
 # ──────────────────────────────────────────────
-ADX_TREND_TH = int(os.environ.get("ADX_TREND_TH", "22"))   # Pine: adxTrendTh = 22
+ADX_TREND_TH = int(os.environ.get("ADX_TREND_TH", "20"))   # Pine v6.5-30M: adxTrendTh = 20 (30M-OPT-004, was 22 on 5m)
 ADX_RANGE_TH = int(os.environ.get("ADX_RANGE_TH", "18"))
 
 # ──────────────────────────────────────────────
 # ENTRY FILTERS
 # ──────────────────────────────────────────────
-FILTER_ATR_MULT    = float(os.environ.get("FILTER_ATR_MULT",  "1.4"))   # Pine: filterATRmul = 1.4
-FILTER_BODY_MULT   = float(os.environ.get("FILTER_BODY_MULT", "0.5"))   # Pine: filterBody = 0.5
+FILTER_ATR_MULT    = float(os.environ.get("FILTER_ATR_MULT",  "1.6"))   # Pine v6.5-30M: filterATRmul = 1.6 (30M-OPT-005, was 1.4 on 5m)
+FILTER_BODY_MULT   = float(os.environ.get("FILTER_BODY_MULT", "0.4"))   # Pine v6.5-30M: filterBody = 0.4 (30M-OPT-005, was 0.5 on 5m)
 # FIX-VOL-001: Default ON — matches Pine Script filters exactly.
 # Set FILTER_VOL_ENABLED=false in .env ONLY if Delta REST returns zero
 # volume for all bars and you want to disable the filter entirely.
@@ -55,10 +55,10 @@ FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "true").lower() == "tr
 # ──────────────────────────────────────────────
 # RISK / REWARD
 # ──────────────────────────────────────────────
-TREND_RR       = float(os.environ.get("TREND_RR",       "4.0"))   # Pine: trendRR = 4.0
-RANGE_RR       = float(os.environ.get("RANGE_RR",       "2.5"))   # Pine: rangeRR = 2.5
-TREND_ATR_MULT = float(os.environ.get("TREND_ATR_MULT", "0.6"))   # Pine: trendATRmul = 0.6
-RANGE_ATR_MULT = float(os.environ.get("RANGE_ATR_MULT", "0.5"))   # Pine: rangeATRmul = 0.5
+TREND_RR       = float(os.environ.get("TREND_RR",       "5.0"))   # Pine v6.5-30M: trendRR = 5.0 (30M-OPT-003, was 4.0 on 5m)
+RANGE_RR       = float(os.environ.get("RANGE_RR",       "3.0"))   # Pine v6.5-30M: rangeRR = 3.0 (30M-OPT-003, was 2.5 on 5m)
+TREND_ATR_MULT = float(os.environ.get("TREND_ATR_MULT", "0.9"))   # Pine v6.5-30M: trendATRmul = 0.9 (30M-OPT-002, was 0.6 on 5m)
+RANGE_ATR_MULT = float(os.environ.get("RANGE_ATR_MULT", "0.7"))   # Pine v6.5-30M: rangeATRmul = 0.7 (30M-OPT-002, was 0.5 on 5m)
 MAX_SL_MULT    = float(os.environ.get("MAX_SL_MULT",    "2.0"))
 MAX_SL_POINTS  = float(os.environ.get("MAX_SL_POINTS",  "1500.0"))
 
