@@ -85,7 +85,7 @@ BRACKET_SL_BUFFER = float(os.environ.get("BRACKET_SL_BUFFER", "10.0"))
 TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "0.0"))
 
 CANDLE_TIMEFRAME = os.environ.get("CANDLE_TIMEFRAME", "30m")
-TRAIL_LOOP_SEC   = float(os.environ.get("TRAIL_LOOP_SEC", "2.0"))
+TRAIL_LOOP_SEC   = float(os.environ.get("TRAIL_LOOP_SEC", "0.5"))  # FIX-TRAIL-001: 0.5s for near-tick exit precision
 WS_RECONNECT_SEC = 5
 
 LOG_FILE = os.environ.get("LOG_FILE", "/root/Bot-v10/journal.db")
