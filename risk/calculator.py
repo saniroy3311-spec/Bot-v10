@@ -180,7 +180,7 @@ def calc_pl_breakdown(entry_price: float, exit_price: float,
     """Detailed P/L breakdown for journal and dashboard — matches Pine calcRealPL."""
     if entry_price <= 0 or exit_price <= 0:
         return {
-            "lots": qty, "price_move": 0.0,
+            "lots": qty, "qty_btc": lots_to_btc(qty), "price_move": 0.0,
             "raw_pl_usdt": 0.0, "commission_usdt": 0.0,
             "net_pl_usdt": 0.0, "net_pl_pct": 0.0,
         }
@@ -194,6 +194,7 @@ def calc_pl_breakdown(entry_price: float, exit_price: float,
 
     return {
         "lots":            qty,
+        "qty_btc":         lots_to_btc(qty),
         "price_move":      round(move, 2),
         "raw_pl_usdt":     round(raw_pl, 4),
         "commission_usdt": round(commission, 4),
