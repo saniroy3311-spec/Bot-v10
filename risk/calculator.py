@@ -111,7 +111,9 @@ def get_trail_params(stage: int, atr: float) -> Tuple[float, float]:
 
 
 def should_trigger_be(profit_dist: float, atr: float) -> bool:
-    return profit_dist >= atr * BE_MULT
+    # FIX-BE-001: Pine uses strict > not >=
+    # Pine: if strategy.position_size > 0 and close - entryPrice > beTrigger
+    return profit_dist > atr * BE_MULT
 
 
 def max_sl_hit(current_price: float, entry_price: float, atr: float, is_long: bool) -> bool:
