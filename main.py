@@ -338,6 +338,10 @@ class SniperBot:
 
             # FIX-M7: Bracket TP/SL fallback — detects exchange fills at bar close.
             # Trail exits handled by trail_loop callback at tick resolution.
+            # Guard: skip if trail_loop already handled the exit (_exit_triggered=True)
+            if self.trail_mon and self.trail_mon._exit_triggered:
+                logger.info("Bracket fallback skipped — trail_loop already handled exit")
+                return
             pos = await self.order_mgr.fetch_position()
             if pos is None or pos.get("contracts", 0) == 0:
                 await self._on_position_closed_by_bracket()
