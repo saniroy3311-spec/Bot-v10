@@ -201,11 +201,15 @@ class TrailMonitor:
         # 5. Trailing SL calculation (Pine: peak - trail_points, active from off threshold)
         trail_param_stage = state.stage if state.stage > 0 else 1
         pts, off = get_trail_params(trail_param_stage, atr)
-        trail_active = peak_profit_dist >= off
+        # Pine Script strategy.exit(trail_points, trail_offset):
+        #   trail_points = activation threshold → trail starts when profit >= trail_points
+        #   trail_offset = trailing distance    → SL = peak - trail_offset
+        # pts = trail_points (activation), off = trail_offset (SL distance)
+        trail_active = peak_profit_dist >= pts          # activate at trail_points
 
         if trail_active:
             candidate_sl = (
-                state.peak_price - pts if is_long else state.peak_price + pts
+                state.peak_price - off if is_long else state.peak_price + off   # SL = peak - trail_offset
             )
             if self._sl_improves(candidate_sl, state.current_sl, is_long):
                 old_sl = state.current_sl
