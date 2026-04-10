@@ -1,0 +1,80 @@
+2026-04-10 08:56:35,673 | INFO     | orders.manager | Exchange built → LIVE | endpoint=https://api.india.delta.exchange | qty=1 lots | mode=NO-BRACKET
+2026-04-10 08:56:35,673 | INFO     | infra.gsheet | GSheet disabled — set GSHEET_CREDENTIALS_JSON + GSHEET_SPREADSHEET_ID to enable.
+2026-04-10 08:56:35,674 | INFO     | infra.journal | Connected to SQLite at /root/Bot-v10/journal.db
+2026-04-10 08:56:35,677 | INFO     | infra.journal | Journal initialised [sqlite] | GSheet=disabled
+2026-04-10 08:56:35,679 | INFO     | main | Dashboard LIVE → http://0.0.0.0:10000
+2026-04-10 08:56:35,679 | INFO     | orders.manager | Loading market map from Delta India (async)...
+2026-04-10 08:56:36,236 | INFO     | orders.manager | Market map loaded — symbol BTC/USD:USD verified ✅
+2026-04-10 08:56:36,930 | INFO     | feed.ws_feed | Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-04-10 08:56:37,373 | INFO     | feed.ws_feed | Symbol BTC/USD:USD verified ✅
+2026-04-10 08:56:37,375 | INFO     | feed.ws_feed | Loading 260 historical bars via REST for [BTC/USD:USD] [30m]...
+2026-04-10 08:56:38,083 | INFO     | feed.ws_feed | Feed ready — 260 bars loaded (need 210, have 260 — OK ✅)
+2026-04-10 08:56:38,084 | INFO     | feed.ws_feed | Boundary tracking: period=1800000ms last_closed_boundary=1775790000000 (will fire when next candle opens)
+2026-04-10 08:56:38,088 | INFO     | feed.ws_feed | WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-04-10 08:56:38,539 | INFO     | feed.ws_feed | WebSocket subscribed ✅ | FIX-WS-v3: boundary-based detection, fires once per 30m candle
+2026-04-10 09:00:00,573 | INFO     | feed.ws_feed | ✅ Bar confirmed [WS] | closed_boundary=1775790000000 | new_boundary=1775791800000 | bars=260 — evaluating signals...
+2026-04-10 09:11:28,611 | INFO     | main | Shutting down: signal received
+2026-04-10 09:11:28,611 | INFO     | monitor.trail_loop | TrailMonitor stopped.
+2026-04-10 09:11:30,421 | INFO     | orders.manager | Exchange built → LIVE | endpoint=https://api.india.delta.exchange | qty=1 lots | mode=NO-BRACKET
+2026-04-10 09:11:30,422 | INFO     | infra.gsheet | GSheet disabled — set GSHEET_CREDENTIALS_JSON + GSHEET_SPREADSHEET_ID to enable.
+2026-04-10 09:11:30,423 | INFO     | infra.journal | Connected to SQLite at /root/Bot-v10/journal.db
+2026-04-10 09:11:30,423 | INFO     | infra.journal | Journal initialised [sqlite] | GSheet=disabled
+2026-04-10 09:11:30,424 | INFO     | main | Dashboard LIVE → http://0.0.0.0:10000
+2026-04-10 09:11:30,425 | INFO     | orders.manager | Loading market map from Delta India (async)...
+2026-04-10 09:11:30,973 | INFO     | orders.manager | Market map loaded — symbol BTC/USD:USD verified ✅
+2026-04-10 09:11:31,555 | INFO     | feed.ws_feed | Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-04-10 09:11:32,000 | INFO     | feed.ws_feed | Symbol BTC/USD:USD verified ✅
+2026-04-10 09:11:32,001 | INFO     | feed.ws_feed | Loading 260 historical bars via REST for [BTC/USD:USD] [30m]...
+2026-04-10 09:11:32,706 | INFO     | feed.ws_feed | Feed ready — 260 bars loaded (need 210, have 260 — OK ✅)
+2026-04-10 09:11:32,706 | INFO     | feed.ws_feed | Boundary tracking: period=1800000ms last_closed_boundary=1775791800000 (will fire when next candle opens)
+2026-04-10 09:11:32,711 | INFO     | feed.ws_feed | WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-04-10 09:11:33,275 | INFO     | feed.ws_feed | WebSocket subscribed ✅ | FIX-WS-v3: boundary-based detection, fires once per 30m candle
+2026-04-10 09:12:11,706 | INFO     | main | Shutting down: signal received
+2026-04-10 09:12:11,706 | INFO     | monitor.trail_loop | TrailMonitor stopped.
+2026-04-10 09:12:13,527 | INFO     | orders.manager | Exchange built → LIVE | endpoint=https://api.india.delta.exchange | qty=1 lots | mode=NO-BRACKET
+2026-04-10 09:12:13,528 | INFO     | infra.gsheet | GSheet disabled — set GSHEET_CREDENTIALS_JSON + GSHEET_SPREADSHEET_ID to enable.
+2026-04-10 09:12:13,528 | INFO     | infra.journal | Connected to SQLite at /root/Bot-v10/journal.db
+2026-04-10 09:12:13,528 | INFO     | infra.journal | Journal initialised [sqlite] | GSheet=disabled
+2026-04-10 09:12:13,529 | INFO     | main | Dashboard LIVE → http://0.0.0.0:10000
+2026-04-10 09:12:13,529 | INFO     | orders.manager | Loading market map from Delta India (async)...
+2026-04-10 09:12:14,033 | INFO     | orders.manager | Market map loaded — symbol BTC/USD:USD verified ✅
+2026-04-10 09:12:14,623 | INFO     | feed.ws_feed | Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-04-10 09:12:15,227 | INFO     | feed.ws_feed | Symbol BTC/USD:USD verified ✅
+2026-04-10 09:12:15,227 | INFO     | feed.ws_feed | Loading 260 historical bars via REST for [BTC/USD:USD] [30m]...
+2026-04-10 09:12:15,934 | INFO     | feed.ws_feed | Feed ready — 260 bars loaded (need 210, have 260 — OK ✅)
+2026-04-10 09:12:15,934 | INFO     | feed.ws_feed | Boundary tracking: period=1800000ms last_closed_boundary=1775791800000 (will fire when next candle opens)
+2026-04-10 09:12:15,939 | INFO     | feed.ws_feed | WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-04-10 09:12:16,365 | INFO     | feed.ws_feed | WebSocket subscribed ✅ | FIX-WS-v3: boundary-based detection, fires once per 30m candle
+2026-04-10 09:30:00,190 | INFO     | feed.ws_feed | ✅ Bar confirmed [WS] | closed_boundary=1775791800000 | new_boundary=1775793600000 | bars=260 — evaluating signals...
+2026-04-10 09:46:09,103 | INFO     | main | Shutting down: signal received
+2026-04-10 09:46:09,103 | INFO     | monitor.trail_loop | TrailMonitor stopped.
+2026-04-10 09:46:10,776 | INFO     | orders.manager | Exchange built → LIVE | endpoint=https://api.india.delta.exchange | qty=1 lots | mode=NO-BRACKET
+2026-04-10 09:46:10,776 | INFO     | infra.gsheet | GSheet disabled — set GSHEET_CREDENTIALS_JSON + GSHEET_SPREADSHEET_ID to enable.
+2026-04-10 09:46:10,776 | INFO     | infra.journal | Connected to SQLite at /root/Bot-v10/journal.db
+2026-04-10 09:46:10,776 | INFO     | infra.journal | Journal initialised [sqlite] | GSheet=disabled
+2026-04-10 09:46:10,777 | INFO     | main | Dashboard LIVE → http://0.0.0.0:10000
+2026-04-10 09:46:10,777 | INFO     | orders.manager | Loading market map from Delta India (async)...
+2026-04-10 09:46:11,308 | INFO     | orders.manager | Market map loaded — symbol BTC/USD:USD verified ✅
+2026-04-10 09:46:11,887 | INFO     | feed.ws_feed | Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-04-10 09:46:12,337 | INFO     | feed.ws_feed | Symbol BTC/USD:USD verified ✅
+2026-04-10 09:46:12,337 | INFO     | feed.ws_feed | Loading 260 historical bars via REST for [BTC/USD:USD] [30m]...
+2026-04-10 09:46:13,041 | INFO     | feed.ws_feed | Feed ready — 260 bars loaded (need 210, have 260 — OK ✅)
+2026-04-10 09:46:13,042 | INFO     | feed.ws_feed | Boundary tracking: period=1800000ms last_closed_boundary=1775793600000 (will fire when next candle opens)
+2026-04-10 09:46:13,045 | INFO     | feed.ws_feed | WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-04-10 09:46:13,507 | INFO     | feed.ws_feed | WebSocket subscribed ✅ | FIX-WS-v3: boundary-based detection, fires once per 30m candle
+2026-04-10 09:46:34,138 | INFO     | main | Shutting down: signal received
+2026-04-10 09:46:34,138 | INFO     | monitor.trail_loop | TrailMonitor stopped.
+2026-04-10 09:46:35,932 | INFO     | orders.manager | Exchange built → LIVE | endpoint=https://api.india.delta.exchange | qty=1 lots | mode=NO-BRACKET
+2026-04-10 09:46:35,933 | INFO     | infra.gsheet | GSheet disabled — set GSHEET_CREDENTIALS_JSON + GSHEET_SPREADSHEET_ID to enable.
+2026-04-10 09:46:35,933 | INFO     | infra.journal | Connected to SQLite at /root/Bot-v10/journal.db
+2026-04-10 09:46:35,933 | INFO     | infra.journal | Journal initialised [sqlite] | GSheet=disabled
+2026-04-10 09:46:35,934 | INFO     | main | Dashboard LIVE → http://0.0.0.0:10000
+2026-04-10 09:46:35,934 | INFO     | orders.manager | Loading market map from Delta India (async)...
+2026-04-10 09:46:36,437 | INFO     | orders.manager | Market map loaded — symbol BTC/USD:USD verified ✅
+2026-04-10 09:46:36,992 | INFO     | feed.ws_feed | Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-04-10 09:46:37,454 | INFO     | feed.ws_feed | Symbol BTC/USD:USD verified ✅
+2026-04-10 09:46:37,455 | INFO     | feed.ws_feed | Loading 260 historical bars via REST for [BTC/USD:USD] [30m]...
+2026-04-10 09:46:38,161 | INFO     | feed.ws_feed | Feed ready — 260 bars loaded (need 210, have 260 — OK ✅)
+2026-04-10 09:46:38,161 | INFO     | feed.ws_feed | Boundary tracking: period=1800000ms last_closed_boundary=1775793600000 (will fire when next candle opens)
+2026-04-10 09:46:38,165 | INFO     | feed.ws_feed | WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-04-10 09:46:38,584 | INFO     | feed.ws_feed | WebSocket subscribed ✅ | FIX-WS-v3: boundary-based detection, fires once per 30m candle
