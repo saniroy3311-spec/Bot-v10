@@ -268,9 +268,12 @@ class TrailMonitor:
             f"pl={real_pl:.4f} time={wall_time}"
         )
 
-        await self.telegram.notify_exit(
-            reason, self.risk.entry_price, fill_price, real_pl
-        )
+        try:
+            await self.telegram.notify_exit(
+                reason, self.risk.entry_price, fill_price, real_pl
+            )
+        except Exception as tg_err:
+            logger.error(f"Telegram notify_exit failed (non-fatal): {tg_err}")
 
         if self.on_trail_exit:
             await self.on_trail_exit(fill_price, reason)
