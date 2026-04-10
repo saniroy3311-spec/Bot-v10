@@ -233,11 +233,12 @@ class CandleFeed:
         })
         self._exchange.markets = fetched_markets
 
-        # FIX-WS-3b: set boundary from iloc[-2] (LAST CLOSED bar, not live bar).
-        # ohlcv[-1] = live (open) bar, ohlcv[-2] = last confirmed closed bar.
-        # Setting boundary to the closed bar means the NEXT boundary (when the
-        # next candle opens) will be strictly greater → first signal fires.
-        # If we set it from ohlcv[-1] (live bar) we'd skip the next close.
+        # FIX-WS-3b: set boundary from df.iloc[-1] (the LIVE/current bar).
+        # df.iloc[-1] = the live (open) bar loaded via REST at startup.
+        # Setting _last_candle_boundary to the live bar's boundary means the
+        # NEXT boundary (next candle open) will be strictly greater → correct.
+        # DO NOT change this to iloc[-2] — that would cause the bot to fire a
+        # spurious on_bar_close on the very first WS tick after startup.
         last_closed_ts = int(self._df.iloc[-1]["timestamp"])
         self._last_candle_boundary = _candle_boundary(last_closed_ts, self._period_ms)
 
