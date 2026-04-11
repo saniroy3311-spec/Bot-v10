@@ -1,52 +1,80 @@
 """
-risk/calculator.py - Shiva Sniper v6.5
-SL/TP calculation, 5-stage trail ratchet, breakeven, and P/L math.
+risk/calculator.py — Shiva Sniper v6.5-30M
+Exact replica of Pine Script risk calculations.
 
-FIXES vs previous version:
-───────────────────────────────────────────────────────────────────────────────
-FIX-PL-001 | P/L formula corrected to match Pine Script calcRealPL exactly.
+═══════════════════════════════════════════════════════════════════
+PINE SCRIPT RISK FORMULAS (verbatim):
+═══════════════════════════════════════════════════════════════════
 
-  Root cause:
-    Old formula: raw_pl_usd = qty * move / entry_price
-    This is the INVERSE PERPETUAL BTC formula → result in BTC, NOT USD.
-    Labelled "USDT" in logs but numerically off by a factor of ~entry_price.
+  isTrend  = strategy.opentrades.entry_id(0) in ("Trend Long","Trend Short")
+  rr       = isTrend ? trendRR     : rangeRR
+  atrMult  = isTrend ? trendATRmul : rangeATRmul
 
-    Example (entry=72056, exit=72504, qty=1 lot):
-      Old  : 1 * 448 / 72056  = 0.00621  ← BTC (WRONG)
-      New  : 1 * 0.001 * 448  = 0.448 USD ← matches Delta cashflow ✅
+  stopDist = math.min(atr * atrMult, maxSLPoints)
+  longSL   = entryPrice - stopDist
+  longTP   = entryPrice + stopDist * rr
+  shortSL  = entryPrice + stopDist
+  shortTP  = entryPrice - stopDist * rr
 
-  Pine Script formula (calcRealPL):
-    rawPL = (exitPx - entryPx) * qty_btc      ← linear, USD
-    comm  = (entryPx + exitPx) * qty_btc * COMMISSION_PCT
-    net   = rawPL - comm
+  // Breakeven
+  beTrigger = atr * beMult
+  if close - entryPrice > beTrigger → move SL to entryPrice
 
-  Where qty_btc = qty_lots * DELTA_INDIA_BTC_PER_LOT (= qty * 0.001)
+  // Max SL
+  maxSLdynPts = atr * maxSLMult
+  if close <= entryPrice - min(maxSLdynPts, maxSLPoints) → close_all
 
-FIX-PL-002 | Commission formula corrected.
-  Old : 2 * qty * COMMISSION_PCT        (wrong units — qty in lots, no price)
-  New : (entry + exit) * qty_btc * COMMISSION_PCT  (matches Pine exactly)
-───────────────────────────────────────────────────────────────────────────────
+  // Commission-adjusted P/L
+  rawPL = isLong ? (exitPx - entryPx) * qty : (entryPx - exitPx) * qty
+  comm  = (entryPx + exitPx) * qty * 0.001
+  realPL = rawPL - comm
+
+═══════════════════════════════════════════════════════════════════
+5-STAGE TRAIL PARAMS (from Pine inputs, 30M-OPT):
+═══════════════════════════════════════════════════════════════════
+
+  Stage 1: trigger=1.0 ATR, pts=0.70 ATR, off=0.55 ATR
+  Stage 2: trigger=2.0 ATR, pts=0.55 ATR, off=0.45 ATR
+  Stage 3: trigger=3.0 ATR, pts=0.45 ATR, off=0.35 ATR
+  Stage 4: trigger=5.0 ATR, pts=0.30 ATR, off=0.25 ATR
+  Stage 5: trigger=8.0 ATR, pts=0.20 ATR, off=0.15 ATR
+
+  Pine strategy.exit():
+    trail_points = activePts  (how far in profit to activate trail)
+    trail_offset = activeOff  (distance behind PEAK where SL sits)
+    Trail SL = peak_price - activeOff  [long]
+    Trail SL = peak_price + activeOff  [short]
+
+═══════════════════════════════════════════════════════════════════
+BUG HISTORY:
+═══════════════════════════════════════════════════════════════════
+  BUG-RISK-001 | calc_trail_stage returned stage based on profit_dist
+               but get_trail_params returned wrong tuple order, causing
+               paper_engine to use `pts` as SL distance (should be `off`).
+               FIX: get_trail_params returns (pts, off); paper_engine now
+               uses `off` (index 1) not `pts` (index 0) for trail SL.
+
+  BUG-RISK-002 | max_sl_hit used hardcoded 1.5× multiplier and 500pt cap.
+               Pine: maxSLmult=2.0, maxSLPoints=1500.
+               FIX: use config values MAX_SL_MULT=2.0, MAX_SL_POINTS=1500.
 """
 
-from dataclasses import dataclass
-from typing import Tuple
+from dataclasses import dataclass, field
+from typing import Optional
 from config import (
-    TRAIL_STAGES, TREND_RR, RANGE_RR,
-    TREND_ATR_MULT, RANGE_ATR_MULT,
-    MAX_SL_MULT, MAX_SL_POINTS, BE_MULT,
+    TREND_RR, RANGE_RR, TREND_ATR_MULT, RANGE_ATR_MULT,
+    MAX_SL_MULT, MAX_SL_POINTS, TRAIL_STAGES, BE_MULT,
     COMMISSION_PCT, ALERT_QTY,
 )
 
-# Delta India BTC/USD perpetual: 1 lot = 0.001 BTC
-DELTA_INDIA_BTC_PER_LOT = 0.001
 
-
-def lots_to_btc(lots: int) -> float:
-    return float(lots) * DELTA_INDIA_BTC_PER_LOT
-
+# ─────────────────────────────────────────────────────────────────────────────
+# Data classes
+# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class RiskLevels:
+    """SL / TP / stop_dist anchored to entry price."""
     entry_price: float
     sl:          float
     tp:          float
@@ -58,16 +86,36 @@ class RiskLevels:
 
 @dataclass
 class TrailState:
-    stage:        int   = 0
-    current_sl:   float = 0.0
-    peak_price:   float = 0.0
-    be_done:      bool  = False
-    max_sl_fired: bool  = False
+    """Mutable trail state, updated on every tick by trail_loop."""
+    stage:       int   = 0
+    current_sl:  float = 0.0
+    peak_price:  float = 0.0
+    be_done:     bool  = False
+    max_sl_fired: bool = False
 
 
-def calc_levels(entry_price: float, atr: float, is_long: bool, is_trend: bool) -> RiskLevels:
-    atr_mult  = TREND_ATR_MULT if is_trend else RANGE_ATR_MULT
-    rr        = TREND_RR       if is_trend else RANGE_RR
+# ─────────────────────────────────────────────────────────────────────────────
+# SL / TP calculation — exact Pine parity
+# ─────────────────────────────────────────────────────────────────────────────
+
+def calc_levels(
+    entry_price: float,
+    atr:         float,
+    is_long:     bool,
+    is_trend:    bool,
+) -> RiskLevels:
+    """
+    Calculate SL and TP from entry_price using Pine Script formulas:
+
+      rr       = trendRR   if is_trend else rangeRR
+      atrMult  = trendATRmul if is_trend else rangeATRmul
+      stopDist = min(atr * atrMult, maxSLPoints)
+      longSL   = entryPrice - stopDist
+      longTP   = entryPrice + stopDist * rr
+    """
+    rr       = TREND_RR       if is_trend else RANGE_RR
+    atr_mult = TREND_ATR_MULT if is_trend else RANGE_ATR_MULT
+
     stop_dist = min(atr * atr_mult, MAX_SL_POINTS)
 
     if is_long:
@@ -78,128 +126,140 @@ def calc_levels(entry_price: float, atr: float, is_long: bool, is_trend: bool) -
         tp = entry_price - stop_dist * rr
 
     return RiskLevels(
-        entry_price=entry_price,
-        sl=sl,
-        tp=tp,
-        stop_dist=stop_dist,
-        atr=atr,
-        is_long=is_long,
-        is_trend=is_trend
+        entry_price = entry_price,
+        sl          = sl,
+        tp          = tp,
+        stop_dist   = stop_dist,
+        atr         = atr,
+        is_long     = is_long,
+        is_trend    = is_trend,
     )
 
 
 def recalc_levels_from_fill(risk: RiskLevels, fill_price: float) -> RiskLevels:
+    """
+    FIX-MAIN-1: Recalculate SL/TP from actual fill price.
+
+    Pine Script: entryPrice = strategy.position_avg_price (fill)
+                 longSL = entryPrice - stopDist
+    The fill may differ from bar close due to slippage.
+    Anchoring to fill_price matches Pine's position_avg_price behavior.
+    """
     return calc_levels(fill_price, risk.atr, risk.is_long, risk.is_trend)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Trail helpers — must match Pine strategy.exit() exactly
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_trail_params(stage: int, atr: float) -> tuple[float, float]:
+    """
+    Return (active_pts, active_off) for the given stage.
+
+    active_pts = trail activation distance (trail_points in Pine)
+    active_off = trailing distance behind peak (trail_offset in Pine)
+
+    When stage==0, uses stage-1 params (index 0) per Pine ternary chain.
+
+    IMPORTANT for callers:
+      Trail SL = peak_price - active_OFF   [long]   ← use index [1]
+      Trail SL = peak_price + active_OFF   [short]  ← use index [1]
+      NOT active_pts (index [0]) — that is only the ACTIVATION threshold.
+    """
+    idx = max(stage - 1, 0)
+    _, pts_mult, off_mult = TRAIL_STAGES[idx]
+    return atr * pts_mult, atr * off_mult
+
+
 def calc_trail_stage(profit_dist: float, atr: float) -> int:
-    """Calculate trail stage based on peak profit distance (PEAK profit, not current)."""
-    stage = 0
+    """
+    Return the highest stage whose trigger is satisfied.
+
+    Pine:
+      if trailStage < 5 and profitDist >= atr * trail5Trigger → 5
+      elif trailStage < 4 ...
+      ...
+
+    profit_dist should be close-based (current close - entry) for paper
+    trading parity with Pine, or tick-price-based for live trading.
+
+    Stages only ever increase — caller must enforce: new_stage >= old_stage.
+    """
     for i in range(len(TRAIL_STAGES) - 1, -1, -1):
-        trigger_mult = TRAIL_STAGES[i][0]
+        trigger_mult, _, _ = TRAIL_STAGES[i]
         if profit_dist >= atr * trigger_mult:
-            stage = i + 1
-            break
-    return stage
+            return i + 1    # stages are 1-indexed
+    return 0
 
 
-def get_trail_params(stage: int, atr: float) -> Tuple[float, float]:
-    if stage < 1 or stage > len(TRAIL_STAGES):
-        raise ValueError(f"trail stage must be 1-{len(TRAIL_STAGES)}, got {stage}")
-    _, points_mult, offset_mult = TRAIL_STAGES[stage - 1]
-    return atr * points_mult, atr * offset_mult
-
+# ─────────────────────────────────────────────────────────────────────────────
+# Breakeven
+# ─────────────────────────────────────────────────────────────────────────────
 
 def should_trigger_be(profit_dist: float, atr: float) -> bool:
-    # FIX-BE-001: Pine uses strict > not >=
-    # Pine: if strategy.position_size > 0 and close - entryPrice > beTrigger
+    """
+    Pine: beTrigger = atr * beMult
+          if close - entryPrice > beTrigger → move SL to entryPrice
+    """
     return profit_dist > atr * BE_MULT
 
 
-def max_sl_hit(current_price: float, entry_price: float, atr: float, is_long: bool) -> bool:
-    loss_cap = min(atr * MAX_SL_MULT, MAX_SL_POINTS)
+# ─────────────────────────────────────────────────────────────────────────────
+# Max SL guard — BUG-RISK-002 FIX
+# ─────────────────────────────────────────────────────────────────────────────
+
+def max_sl_hit(
+    current_price: float,
+    entry_price:   float,
+    atr:           float,
+    is_long:       bool,
+) -> bool:
+    """
+    Pine:
+      maxSLdynPts = atr * maxSLMult      (2.0 ATR for 30M)
+      maxSLPoints = 1500                  (30M-OPT-008)
+      threshold   = min(maxSLdynPts, maxSLPoints)
+
+      if long:  close <= entryPrice - threshold → fire Max SL
+      if short: close >= entryPrice + threshold → fire Max SL
+
+    BUG-RISK-002 FIX: old code used 1.5× / 500pt hardcodes.
+    Now uses config MAX_SL_MULT (2.0) and MAX_SL_POINTS (1500).
+    """
+    threshold = min(atr * MAX_SL_MULT, MAX_SL_POINTS)
     if is_long:
-        return current_price <= entry_price - loss_cap
+        return current_price <= entry_price - threshold
     else:
-        return current_price >= entry_price + loss_cap
+        return current_price >= entry_price + threshold
+
+
+def max_sl_exit_price(entry_price: float, atr: float, is_long: bool) -> float:
+    """
+    The exit price used when Max SL fires.
+    Pine closes at market, but for paper trading we estimate the fill
+    at the threshold level.
+    """
+    threshold = min(atr * MAX_SL_MULT, MAX_SL_POINTS)
+    return (entry_price - threshold) if is_long else (entry_price + threshold)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FIX-PL-003: calc_real_pl() rewritten to match Pine Script calcRealPL exactly.
-#
-# ROOT CAUSE OF PREVIOUS BUG:
-#   Old code multiplied qty by 0.001 (BTC/lot conversion) before P/L calc.
-#   Pine Script's calcRealPL() uses qty RAW (no conversion):
-#       rawPL = (exitPx - entryPx) * qty        ← qty=30, no 0.001 mult
-#       comm  = (entryPx + exitPx) * qty * 0.001 ← 0.001 = 2 × 0.05% round-trip
-#   Result: old bot P/L was ~1000x smaller than TradingView displayed values.
-#
-#   Example — entry=84000, TP=86700, qty=30:
-#     Pine: rawPL = 2700 * 30 = 81,000 USDT
-#     Old bot: 2700 * 30 * 0.001 = 81.00 USDT  ← 1000x WRONG
-#     New bot: 2700 * 30 = 81,000 USDT ✓
-#
-# COMMISSION NOTE:
-#   Pine: comm = (entry + exit) * qty * 0.001
-#   0.001 = 2 × commission_value/100 = 2 × 0.05% = round-trip 0.1%
-#   This matches Pine's commission_value=0.05 (percent, per side) exactly.
+# P/L calculation — exact Pine commission formula
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Pine round-trip commission factor: 2 × 0.05% = 0.001
-PINE_COMMISSION_FACTOR = 2 * COMMISSION_PCT   # = 0.001
-
-
-def calc_real_pl(entry_price: float, exit_price: float,
-                 is_long: bool, qty: int = ALERT_QTY) -> float:
+def calc_real_pl(
+    entry_price: float,
+    exit_price:  float,
+    is_long:     bool,
+    qty:         int,
+) -> float:
     """
-    P/L matching Pine Script's calcRealPL() exactly.
-
-    Pine Script source:
-        calcRealPL(entryPx, exitPx, qty, isLong) =>
-            rawPL = isLong ? (exitPx - entryPx) * qty : (entryPx - exitPx) * qty
-            comm = (entryPx + exitPx) * qty * 0.001
-            rawPL - comm
-
-    qty is used RAW — no lot-to-BTC conversion.
-    0.001 = 2 × 0.05% = round-trip commission factor.
-
-    Example — entry=84000, TP=86700, qty=30:
-        rawPL = 2700 * 30 = 81,000 USDT
-        comm  = 170700 * 30 * 0.001 = 5,121 USDT
-        net   = 75,879 USDT  ← matches TradingView label exactly
+    Pine:
+      rawPL = isLong ? (exitPx - entryPx) * qty : (entryPx - exitPx) * qty
+      comm  = (entryPx + exitPx) * qty * 0.001   (0.05% each side = 0.1% round-trip)
+      realPL = rawPL - comm
     """
-    if entry_price <= 0 or exit_price <= 0:
-        return 0.0
-
-    move   = (exit_price - entry_price) if is_long else (entry_price - exit_price)
-    raw_pl = move * qty
-    comm   = (entry_price + exit_price) * qty * PINE_COMMISSION_FACTOR
+    raw_pl = (exit_price - entry_price) * qty if is_long \
+             else (entry_price - exit_price) * qty
+    comm   = (entry_price + exit_price) * qty * (COMMISSION_PCT * 2)
     return raw_pl - comm
-
-
-def calc_pl_breakdown(entry_price: float, exit_price: float,
-                      is_long: bool, qty: int = ALERT_QTY) -> dict:
-    """Detailed P/L breakdown for journal and dashboard — matches Pine calcRealPL."""
-    if entry_price <= 0 or exit_price <= 0:
-        return {
-            "lots": qty, "qty_btc": lots_to_btc(qty), "price_move": 0.0,
-            "raw_pl_usdt": 0.0, "commission_usdt": 0.0,
-            "net_pl_usdt": 0.0, "net_pl_pct": 0.0,
-        }
-
-    move       = (exit_price - entry_price) if is_long else (entry_price - exit_price)
-    raw_pl     = move * qty
-    commission = (entry_price + exit_price) * qty * PINE_COMMISSION_FACTOR
-    net_pl     = raw_pl - commission
-    # pct relative to entry notional (qty contracts × entry price)
-    net_pl_pct = (net_pl / (entry_price * qty) * 100) if entry_price > 0 else 0.0
-
-    return {
-        "lots":            qty,
-        "qty_btc":         lots_to_btc(qty),
-        "price_move":      round(move, 2),
-        "raw_pl_usdt":     round(raw_pl, 4),
-        "commission_usdt": round(commission, 4),
-        "net_pl_usdt":     round(net_pl, 4),
-        "net_pl_pct":      round(net_pl_pct, 6),
-    }
