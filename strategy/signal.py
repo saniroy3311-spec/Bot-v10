@@ -1,42 +1,46 @@
 """
-strategy/signal.py
-Entry + Exit signal engine — exact replica of Shiva Sniper v6.5 Pine Script logic.
+strategy/signal.py — Shiva Sniper v6.5-30M
+Exact replica of Pine Script entry conditions.
 
-FIXES vs previous version:
-───────────────────────────────────────────────────────────────────────────────
-FIX-S1 | Trend Long EMA condition was wrong.
-          Pine:  emaFast > emaTrend  (EMA crossover — fast above slow)
-          Old:   close > ema_trend AND close > ema_fast  (price vs both EMAs)
-          Fixed: snap.ema_fast > snap.ema_trend
+═══════════════════════════════════════════════════════════════════
+PINE SCRIPT ENTRY CONDITIONS (verbatim source):
+═══════════════════════════════════════════════════════════════════
 
-FIX-S2 | Trend Long breakout condition was missing.
-          Pine:  close > high[1]  (close breaks above prior bar high)
-          Old:   not present
-          Fixed: snap.close > snap.prev_high
+  trendLong  = trendRegime and emaFast > emaTrend and dip > dim
+               and close > high[1] and filters
+  trendShort = trendRegime and emaFast < emaTrend and dim > dip
+               and close < low[1] and filters
+  rangeLong  = rangeRegime and rsi < rsiOS and filters
+  rangeShort = rangeRegime and rsi > rsiOB and filters
 
-FIX-S3 | Trend Short EMA condition was wrong (same mirror bug as S1).
-          Pine:  emaFast < emaTrend
-          Old:   close < ema_trend AND close < ema_fast
-          Fixed: snap.ema_fast < snap.ema_trend
+  filters = atr < ta.sma(atr, 50) * filterATRmul
+            and volume > ta.sma(volume, 20)
+            and math.abs(close - open) > atr * filterBody
 
-FIX-S4 | Trend Short breakdown condition was missing.
-          Pine:  close < low[1]
-          Old:   not present
-          Fixed: snap.close < snap.prev_low
+  trendRegime = adx > adxTrendTh   (20)
+  rangeRegime = adx < adxRangeTh   (18)
 
-Range signals (rangeLong, rangeShort) were already correct — no changes.
+═══════════════════════════════════════════════════════════════════
+PINE SCRIPT EXIT CONDITIONS:
+═══════════════════════════════════════════════════════════════════
 
-FIX-EXIT | Bar-close exit signals NEUTERED.
-           Pine Script calls strategy.exit() which manages bracket orders (TP/SL/Trail).
-           It does NOT evaluate indicator flips to close positions. 
-           evaluate_exit() now returns _NO_EXIT to force the bot to rely purely 
-           on trail_loop.py for exits, matching TradingView exactly.
-───────────────────────────────────────────────────────────────────────────────
+  Pine exits ONLY via strategy.exit() — SL / TP / Trail.
+  There is NO bar-close signal-reversal exit in Pine.
+  evaluate_exit() therefore always returns should_exit=False.
+  All real exits are handled by trail_loop.py (tick resolution).
+
+═══════════════════════════════════════════════════════════════════
+BUG HISTORY:
+═══════════════════════════════════════════════════════════════════
+  BUG-SIG-001 | evaluate_exit() previously closed positions when
+               entry conditions reversed at bar close. Pine has no
+               such logic — exits are purely SL/TP/trail-based.
+               FIX: evaluate_exit always returns should_exit=False.
+               Exits managed entirely in trail_loop.py.
 """
 
-from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from dataclasses import dataclass
 from indicators.engine import IndicatorSnapshot
 from config import RSI_OB, RSI_OS
 
@@ -53,95 +57,96 @@ class SignalType(Enum):
 class Signal:
     signal_type: SignalType
     is_long:     bool
-    regime:      str   # "trend" | "range" | "none"
+    is_trend:    bool
+    regime:      str        # "trend" | "range" | "none"
 
-    @property
-    def is_trend(self) -> bool:
-        return self.regime == "trend"
-
-
-_NO_SIGNAL = Signal(signal_type=SignalType.NONE, is_long=False, regime="none")
-
-
-def evaluate(snap: IndicatorSnapshot, has_position: bool) -> Signal:
-    """
-    Evaluate entry conditions on a confirmed IndicatorSnapshot.
-
-    Args:
-        snap:         Indicator values for the last confirmed bar.
-        has_position: True if bot is already in a trade → always returns NONE.
-
-    Returns:
-        Signal — contains signal_type, is_long, regime.
-    """
-    if has_position:
-        return _NO_SIGNAL
-
-    if not snap.filters_ok:
-        return _NO_SIGNAL
-
-    # ── TREND SIGNALS ─────────────────────────────────────────────────────────
-    if snap.trend_regime:
-
-        # Trend Long:
-        if (snap.ema_fast > snap.ema_trend
-                and snap.dip > snap.dim
-                and snap.close > snap.prev_high):
-            return Signal(
-                signal_type=SignalType.TREND_LONG,
-                is_long=True,
-                regime="trend",
-            )
-
-        # Trend Short:
-        if (snap.ema_fast < snap.ema_trend
-                and snap.dim > snap.dip
-                and snap.close < snap.prev_low):
-            return Signal(
-                signal_type=SignalType.TREND_SHORT,
-                is_long=False,
-                regime="trend",
-            )
-
-    # ── RANGE SIGNALS ─────────────────────────────────────────────────────────
-    if snap.range_regime:
-
-        # Range Long: oversold RSI reversal
-        if snap.rsi < RSI_OS:
-            return Signal(
-                signal_type=SignalType.RANGE_LONG,
-                is_long=True,
-                regime="range",
-            )
-
-        # Range Short: overbought RSI reversal
-        if snap.rsi > RSI_OB:
-            return Signal(
-                signal_type=SignalType.RANGE_SHORT,
-                is_long=False,
-                regime="range",
-            )
-
-    return _NO_SIGNAL
-
-
-# ── Exit signal ───────────────────────────────────────────────────────────────
 
 @dataclass
 class ExitSignal:
-    should_exit: bool
-    reason: str   # e.g. "Exit TL" / "Exit TS" / "Exit RL" / "Exit RS"
-
-
-_NO_EXIT = ExitSignal(should_exit=False, reason="")
-
-
-def evaluate_exit(snap: IndicatorSnapshot, signal_type: SignalType) -> ExitSignal:
     """
-    This Pine Script uses strategy.exit() with stop/limit/trail_points/trail_offset ONLY.
-    There are NO indicator-flip exits (no strategy.close on EMA/DI/RSI flip).
-    All exits are handled by trail_loop.py (TP, SL, Breakeven, Trail, Max SL).
-
-    Returns _NO_EXIT always — do not change this for this strategy.
+    Pine Script has NO bar-close signal-reversal exit.
+    should_exit is always False — exits are handled by trail_loop.py.
     """
-    return _NO_EXIT
+    should_exit: bool = False
+    reason:      str  = ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ENTRY EVALUATION — exact Pine parity
+# ─────────────────────────────────────────────────────────────────────────────
+
+def evaluate(snap: IndicatorSnapshot, has_position: bool) -> Signal:
+    """
+    Evaluate entry conditions for the confirmed bar.
+
+    Maps 1:1 to Pine Script:
+      trendLong  = trendRegime and emaFast > emaTrend and dip > dim
+                   and close > high[1] and filters
+      trendShort = trendRegime and emaFast < emaTrend and dim > dip
+                   and close < low[1]  and filters
+      rangeLong  = rangeRegime and rsi < rsiOS and filters
+      rangeShort = rangeRegime and rsi > rsiOB and filters
+
+    Args:
+        snap:         IndicatorSnapshot for the just-closed bar.
+        has_position: True if a position is currently open.
+
+    Returns:
+        Signal with signal_type=NONE if no entry, or the appropriate type.
+    """
+    if has_position:
+        return Signal(SignalType.NONE, False, False, "none")
+
+    f   = snap.filters_ok
+    tr  = snap.trend_regime
+    rr  = snap.range_regime
+
+    # Pine: close > high[1]  →  snap.close > snap.prev_high
+    # Pine: close < low[1]   →  snap.close < snap.prev_low
+    trend_long = (
+        tr
+        and snap.ema_fast > snap.ema_trend
+        and snap.dip > snap.dim
+        and snap.close > snap.prev_high
+        and f
+    )
+    trend_short = (
+        tr
+        and snap.ema_fast < snap.ema_trend
+        and snap.dim > snap.dip
+        and snap.close < snap.prev_low
+        and f
+    )
+    range_long  = rr and snap.rsi < RSI_OS and f
+    range_short = rr and snap.rsi > RSI_OB and f
+
+    # Priority order matches Pine: trendLong → trendShort → rangeLong → rangeShort
+    if trend_long:
+        return Signal(SignalType.TREND_LONG,  is_long=True,  is_trend=True,  regime="trend")
+    if trend_short:
+        return Signal(SignalType.TREND_SHORT, is_long=False, is_trend=True,  regime="trend")
+    if range_long:
+        return Signal(SignalType.RANGE_LONG,  is_long=True,  is_trend=False, regime="range")
+    if range_short:
+        return Signal(SignalType.RANGE_SHORT, is_long=False, is_trend=False, regime="range")
+
+    return Signal(SignalType.NONE, False, False, "none")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EXIT EVALUATION — Pine has NO bar-close exit
+# ─────────────────────────────────────────────────────────────────────────────
+
+def evaluate_exit(snap: IndicatorSnapshot, current_signal_type: SignalType) -> ExitSignal:
+    """
+    Pine Script exits ONLY via strategy.exit() (SL / TP / Trail).
+    There is NO bar-close signal-reversal or condition-reversal exit.
+
+    This function intentionally returns should_exit=False always.
+    All real exits are handled at tick resolution in trail_loop.py.
+
+    BUG-SIG-001 FIX: previous version closed trades here when entry
+    conditions reversed — that behaviour has NO equivalent in Pine Script
+    and caused massive exit timing divergence vs TradingView.
+    """
+    return ExitSignal(should_exit=False, reason="")
