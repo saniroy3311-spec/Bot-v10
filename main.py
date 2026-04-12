@@ -226,6 +226,22 @@ class SniperBot:
                     return
 
                 sig = evaluate(snap, has_position=False)
+
+                # FIX-DEBUG-001: Log every bar's full indicator + filter state.
+                # Lets us see exactly why bot missed any Pine trade.
+                logger.info(
+                    f"BAR | close={snap.close:.2f} "
+                    f"adx={snap.adx:.2f} "
+                    f"regime={'TREND' if snap.trend_regime else 'RANGE' if snap.range_regime else 'NONE'} "
+                    f"ema_fast={snap.ema_fast:.2f} ema_trend={snap.ema_trend:.2f} "
+                    f"dip={snap.dip:.2f} dim={snap.dim:.2f} rsi={snap.rsi:.2f} "
+                    f"atr={snap.atr:.2f} atr_sma={snap.atr_sma:.2f} "
+                    f"vol={snap.volume:.0f} vol_sma={snap.vol_sma:.0f} "
+                    f"prev_high={snap.prev_high:.2f} prev_low={snap.prev_low:.2f} "
+                    f"| atr_ok={snap.atr_ok} vol_ok={snap.vol_ok} body_ok={snap.body_ok} "
+                    f"=> signal={sig.signal_type.value}"
+                )
+
                 if sig.signal_type == SignalType.NONE:
                     return
 
