@@ -90,7 +90,11 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-BAR_PERIOD_MS = 30 * 60 * 1000  # 30 minutes
+BAR_PERIOD_MS   = 30 * 60 * 1000  # 30 minutes
+ENTRY_GUARD_MS  = 30 * 1000        # FIX-007-v2: block exits for 30s after fill only
+                                    # Pine can exit same bar after price moves —
+                                    # we only guard the first 30s to prevent
+                                    # immediate fill-price false fires
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -176,10 +180,22 @@ class TrailMonitor:
         self._bar_close_price: Optional[float] = None
 
     # ── Bar helpers ───────────────────────────────────────────────────────────
-    def _is_same_bar(self, timestamp_ms: int) -> bool:
+    def _in_entry_guard(self, now_ms: int) -> bool:
+        """
+        FIX-007-v2: Block exits for ENTRY_GUARD_MS (30s) after fill only.
+
+        OLD behaviour (_is_same_bar): blocked ALL exits for the entire 30m bar.
+        Problem: Pine can exit same bar after price has genuinely moved —
+        e.g. enter at bar open, trail activates mid-bar, price reverses,
+        trail SL hit — all within one 30m candle. Bot was blocking that.
+
+        NEW behaviour: block only for first 30 seconds after fill.
+        This prevents false fires from fill-price noise while allowing
+        genuine same-bar trail/TP/SL exits after price has moved.
+        """
         if self.entry_bar_time_ms is None:
             return False
-        return (timestamp_ms // BAR_PERIOD_MS) == (self.entry_bar_time_ms // BAR_PERIOD_MS)
+        return (now_ms - self.entry_bar_time_ms) < ENTRY_GUARD_MS
 
     def on_bar_close(self, bar_close_price: float) -> None:
         """
@@ -288,13 +304,17 @@ class TrailMonitor:
             current_profit_dist = entry_price - current_price
 
         # 3. Target Profit (TP) ────────────────────────────────────────────────
-        tp_hit = (is_long and current_price >= risk.tp) or (not is_long and current_price <= risk.tp)
-        if tp_hit:
-            await self._execute_exit(current_price, "Target Profit")
-            return
+        # FIX-007-v2: skip TP check in first 30s to avoid fill-price false fire
+        if not self._in_entry_guard(now_ms):
+            tp_hit = (is_long and current_price >= risk.tp) or (not is_long and current_price <= risk.tp)
+            if tp_hit:
+                await self._execute_exit(current_price, "Target Profit")
+                return
 
-        # 4. Max SL — blocked on entry bar (FIX-007) ──────────────────────────
-        if not self._is_same_bar(now_ms) and not state.max_sl_fired:
+        # 4. Max SL — blocked for 30s after fill (FIX-007-v2) ─────────────────
+        # Old: blocked entire entry bar → missed same-bar exits Pine would take
+        # New: block only 30s → prevents fill-noise false fire, allows genuine moves
+        if not self._in_entry_guard(now_ms) and not state.max_sl_fired:
             if max_sl_hit(current_price, entry_price, atr, is_long):
                 state.max_sl_fired = True
                 await self._execute_exit(current_price, "Max SL Hit")
@@ -357,18 +377,10 @@ class TrailMonitor:
 
         # 8. SL check — split by type to match Pine's calc_on_every_tick=false
         #
-        # FIX-EXIT-001: Pine Script (calc_on_every_tick=false) only evaluates the
-        # Initial SL at bar CLOSE — intrabar wicks that exceed the SL but close
-        # back inside are ignored. The bot's tick loop was firing Initial SL on
-        # intrabar price action that Pine never saw, causing early exits.
+        # FIX-EXIT-001: Initial SL uses bar-close price only (Pine parity).
+        # FIX-007-v2:   All SL checks skip first 30s after fill.
         #
-        # Resolution:
-        #   Initial SL  → use _bar_close_price (updated only on confirmed bars)
-        #   Breakeven SL / Trail SL → use current tick price (protecting gains is OK tick-by-tick)
-        #   TP             → use current tick price (take profit immediately)
-        #   Max SL         → use current tick price (hard gap-protection, safety net only)
-        #
-        if state.current_sl > 0:
+        if state.current_sl > 0 and not self._in_entry_guard(now_ms):
             trail_active = (
                 (is_long  and state.current_sl > risk.sl)
                 or
