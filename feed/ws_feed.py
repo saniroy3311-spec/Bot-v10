@@ -76,7 +76,14 @@ from config import (
 )
 
 logger   = logging.getLogger(__name__)
-MIN_BARS = EMA_TREND_LEN + 10   # 210 for EMA-200
+MIN_BARS = 1500
+# FIX-EMA-001: EMA200 convergence requires 5-10× the EMA length of history.
+# Old value: EMA_TREND_LEN + 10 = 210 bars → EMA200 never converged to Pine's value
+# because Pine uses years of history. With only 210-260 bars, EMA200 is seeded
+# from a cold-start SMA that sits far above the true converged value, causing
+# ema_fast > ema_trend when Pine sees ema_fast < ema_trend → all Trend Short
+# signals blocked, all Trend Long signals blocked.
+# Fix: load 1500 bars (31 days at 30m) → EMA200 converges within ~0.1% of Pine.
 
 _INDIA_LIVE    = "https://api.india.delta.exchange"
 _INDIA_TESTNET = "https://testnet-api.india.delta.exchange"
