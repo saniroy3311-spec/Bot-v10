@@ -67,6 +67,47 @@ from config import (
     COMMISSION_PCT, ALERT_QTY,
 )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Delta India lot size constant
+# 1 lot = 0.001 BTC on Delta Exchange India
+# ─────────────────────────────────────────────────────────────────────────────
+DELTA_INDIA_BTC_PER_LOT = 0.001
+
+
+def lots_to_btc(lots: int) -> float:
+    """Convert Delta India lots to BTC quantity."""
+    return lots * DELTA_INDIA_BTC_PER_LOT
+
+
+def calc_pl_breakdown(
+    entry_price: float,
+    exit_price:  float,
+    is_long:     bool,
+    qty_lots:    int,
+) -> dict:
+    """
+    Full P/L breakdown matching Pine Script commission formula.
+    Returns dict with raw_pl_usdt, comm_usdt, net_pl_usdt, qty_btc.
+
+    Pine:
+      rawPL = isLong ? (exitPx - entryPx) * qty : (entryPx - exitPx) * qty
+      comm  = (entryPx + exitPx) * qty * 0.001  (0.05% × 2 sides)
+      realPL = rawPL - comm
+
+    Here qty is in BTC (lots × 0.001).
+    """
+    qty_btc = lots_to_btc(qty_lots)
+    raw_pl  = (exit_price - entry_price) * qty_btc if is_long \
+              else (entry_price - exit_price) * qty_btc
+    comm    = (entry_price + exit_price) * qty_btc * (COMMISSION_PCT * 2)
+    net_pl  = raw_pl - comm
+    return {
+        "raw_pl_usdt" : raw_pl,
+        "comm_usdt"   : comm,
+        "net_pl_usdt" : net_pl,
+        "qty_btc"     : qty_btc,
+    }
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Data classes
