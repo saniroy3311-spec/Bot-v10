@@ -209,6 +209,11 @@ class SniperBot:
     async def _process_bar(self, df) -> None:
         snap = compute(df)
 
+        # FIX-EXIT-001: Notify trail monitor of confirmed bar close price.
+        # This is the price Pine Script uses for Initial SL evaluation.
+        if self.in_position:
+            self.trail_mon.on_bar_close(snap.close)
+
         if not self.in_position:
             # FIX-LOCK: acquire lock — prevents double-entry if on_bar_close fires
             # twice before first entry order completes.
