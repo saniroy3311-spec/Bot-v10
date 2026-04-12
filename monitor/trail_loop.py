@@ -167,11 +167,27 @@ class TrailMonitor:
         self.entry_bar_time_ms: Optional[int] = None
         self._exit_triggered = False           # FIX-TV-002
 
+        # FIX-EXIT-001: Initial SL uses bar-close price only.
+        # Pine Script uses calc_on_every_tick=false — the initial SL is only
+        # evaluated at bar close (every 30m). Intrabar wicks that pierce the SL
+        # but close back above it do NOT trigger an exit in Pine.
+        # _bar_close_price is updated via on_bar_close() from the feed callback.
+        # The tick loop checks Initial SL against this price, NOT the live tick.
+        self._bar_close_price: Optional[float] = None
+
     # ── Bar helpers ───────────────────────────────────────────────────────────
     def _is_same_bar(self, timestamp_ms: int) -> bool:
         if self.entry_bar_time_ms is None:
             return False
         return (timestamp_ms // BAR_PERIOD_MS) == (self.entry_bar_time_ms // BAR_PERIOD_MS)
+
+    def on_bar_close(self, bar_close_price: float) -> None:
+        """
+        FIX-EXIT-001: Called by the feed on every confirmed bar close.
+        Updates the bar-close price used for Initial SL evaluation.
+        Pine Script: calc_on_every_tick=false → SL only checked at bar close.
+        """
+        self._bar_close_price = bar_close_price
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
     def start(
@@ -339,31 +355,57 @@ class TrailMonitor:
                     f"SL {old_sl:.2f} → {trail_sl:.2f}"
                 )
 
-        # 8. SL check — initial / breakeven / trail ───────────────────────────
+        # 8. SL check — split by type to match Pine's calc_on_every_tick=false
+        #
+        # FIX-EXIT-001: Pine Script (calc_on_every_tick=false) only evaluates the
+        # Initial SL at bar CLOSE — intrabar wicks that exceed the SL but close
+        # back inside are ignored. The bot's tick loop was firing Initial SL on
+        # intrabar price action that Pine never saw, causing early exits.
+        #
+        # Resolution:
+        #   Initial SL  → use _bar_close_price (updated only on confirmed bars)
+        #   Breakeven SL / Trail SL → use current tick price (protecting gains is OK tick-by-tick)
+        #   TP             → use current tick price (take profit immediately)
+        #   Max SL         → use current tick price (hard gap-protection, safety net only)
+        #
         if state.current_sl > 0:
-            sl_hit = (
-                (is_long  and current_price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER)
+            trail_active = (
+                (is_long  and state.current_sl > risk.sl)
                 or
-                (not is_long and current_price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
+                (not is_long and state.current_sl < risk.sl)
             )
-            if sl_hit:
-                trail_improved = (
-                    (is_long  and state.current_sl > risk.sl)
+
+            if trail_active:
+                # Trail SL or Breakeven SL — evaluate on every tick (protecting gains)
+                sl_hit = (
+                    (is_long  and current_price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER)
                     or
-                    (not is_long and state.current_sl < risk.sl)
+                    (not is_long and current_price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
                 )
-                be_at_entry = (
-                    state.be_done
-                    and abs(state.current_sl - entry_price) <= max(1e-9, atr * 1e-6)
-                )
-                if trail_improved:
-                    reason = f"Trail S{state.stage}"
-                elif be_at_entry:
-                    reason = "Breakeven SL"
-                else:
-                    reason = "Initial SL"
-                await self._execute_exit(current_price, reason)
-                return
+                if sl_hit:
+                    be_at_entry = (
+                        state.be_done
+                        and abs(state.current_sl - entry_price) <= max(1e-9, atr * 1e-6)
+                    )
+                    reason = "Breakeven SL" if be_at_entry else f"Trail S{state.stage}"
+                    await self._execute_exit(current_price, reason)
+                    return
+            else:
+                # Initial SL — only evaluate at bar close (Pine parity: calc_on_every_tick=false)
+                check_price = self._bar_close_price
+                if check_price is not None:
+                    sl_hit = (
+                        (is_long  and check_price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER)
+                        or
+                        (not is_long and check_price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
+                    )
+                    if sl_hit:
+                        logger.info(
+                            f"Initial SL hit at bar close | bar_close={check_price:.2f} "
+                            f"sl={state.current_sl:.2f}"
+                        )
+                        await self._execute_exit(check_price, "Initial SL")
+                        return
 
     # ── FIX-TV-001: Immediate exit — no bar-boundary wait ────────────────────
     async def _execute_exit(self, price: float, reason: str) -> None:
