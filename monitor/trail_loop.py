@@ -54,8 +54,8 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-# Block exits for 30s after fill — avoids noise on entry bar
-ENTRY_GUARD_MS = 30 * 1000
+# Block exits for 5s after fill — avoids noise on entry bar
+ENTRY_GUARD_MS = 5 * 1000
 
 
 # ─── Stage helpers ────────────────────────────────────────────────────────────
