@@ -4,10 +4,13 @@
 # FIX-REQ-001: aiohttp pinned to 3.10.11
 #   ccxt==4.4.57 requires aiohttp<=3.10.11
 #
-# FIX-REQ-002: numpy unpinned (was 1.26.4)
-#   pandas-ta==0.4.71b0 requires numpy>=2.2.6
-#   pandas==2.2.3 requires numpy>=1.26.0
-#   Letting pip pick the latest compatible numpy (>=2.2.6) satisfies both.
+# FIX-REQ-002: pandas and numpy unpinned
+#   pandas-ta==0.4.71b0 requires pandas>=2.3.2 and numpy>=2.2.6
+#   Pinning pandas==2.2.3 conflicts. Let pip pick compatible versions.
+#
+# FIX-REQ-003: pandas-ta unpinned
+#   0.4.71b0 is a beta with aggressive dependency requirements.
+#   Using >= to allow pip to find a working combination.
 
 # Exchange connectivity
 ccxt==4.4.57
@@ -19,9 +22,9 @@ websockets>=12.0
 # MUST stay <=3.10.11 while ccxt==4.4.57 is pinned
 aiohttp==3.10.11
 
-# Data / indicators
-pandas==2.2.3
-pandas-ta==0.4.71b0
+# Data / indicators — let pip resolve compatible versions
+pandas>=2.3.2
+pandas-ta>=0.3.14b
 numpy>=2.2.6
 
 # PostgreSQL driver (optional — only needed if DATABASE_URL is set)
