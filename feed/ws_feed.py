@@ -283,9 +283,16 @@ class CandleFeed:
             f"channel={channel} symbol={ws_symbol}"
         )
 
+        # FIX-WS-PING: ping_interval=None disables WebSocket protocol-level
+        # pings. NAT/firewalls silently kill idle TCP connections after ~10 min
+        # ("no close frame received or sent"). ping_interval=20 sends a WS PING
+        # frame every 20s at the protocol layer, keeping the TCP session alive.
+        # This is separate from the app-level heartbeat_msg (which Delta may
+        # or may not ack). Protocol pings are handled by the OS/network stack.
         async with websockets.connect(
             ws_url,
-            ping_interval=None,
+            ping_interval=20,
+            ping_timeout=10,
             close_timeout=10,
         ) as ws:
             await ws.send(subscribe_msg)
