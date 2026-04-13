@@ -96,16 +96,23 @@ def calc_pl_breakdown(
 
     Here qty is in BTC (lots × 0.001).
     """
-    qty_btc = lots_to_btc(qty_lots)
-    raw_pl  = (exit_price - entry_price) * qty_btc if is_long \
-              else (entry_price - exit_price) * qty_btc
-    comm    = (entry_price + exit_price) * qty_btc * (COMMISSION_PCT * 2)
-    net_pl  = raw_pl - comm
+    qty_btc     = lots_to_btc(qty_lots)
+    price_move  = (exit_price - entry_price) if is_long \
+                  else (entry_price - exit_price)
+    raw_pl      = price_move * qty_btc
+    comm        = (entry_price + exit_price) * qty_btc * (COMMISSION_PCT * 2)
+    net_pl      = raw_pl - comm
+    notional    = entry_price * qty_btc
+    net_pl_pct  = (net_pl / notional * 100) if notional > 0 else 0.0
     return {
-        "raw_pl_usdt" : raw_pl,
-        "comm_usdt"   : comm,
-        "net_pl_usdt" : net_pl,
-        "qty_btc"     : qty_btc,
+        "raw_pl_usdt"    : raw_pl,
+        "comm_usdt"      : comm,
+        "commission_usdt": comm,        # alias used in telegram.notify_exit
+        "net_pl_usdt"    : net_pl,
+        "qty_btc"        : qty_btc,
+        "lots"           : qty_lots,    # alias used in telegram.notify_exit
+        "price_move"     : price_move,  # signed pts (+ = profit direction)
+        "net_pl_pct"     : net_pl_pct,
     }
 
 
