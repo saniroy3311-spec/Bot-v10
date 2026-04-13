@@ -315,3 +315,41 @@ def _row_to_snap(row, prev_row):
         prev_low     = float(prev_row["low"]),
         timestamp    = int(row["timestamp"]),
     )
+
+
+# ── CLI entry point ───────────────────────────────────────────────
+if __name__ == "__main__":
+    import glob, sys
+
+    # Find latest indicators CSV
+    csvs = sorted(glob.glob("phase1/data/*_indicators.csv"))
+    if not csvs:
+        print("❌ No indicators CSV found in phase1/data/")
+        sys.exit(1)
+
+    csv_path = csvs[-1]
+    print(f"Loading: {csv_path}")
+
+    df = pd.read_csv(csv_path)
+    print(f"Bars loaded: {len(df)}")
+
+    trades = run(df)
+    df_trades = trades_to_df(trades)
+
+    print(f"\n{'='*60}")
+    print(f"Total trades : {len(df_trades)}")
+
+    if not df_trades.empty:
+        wins  = (df_trades['real_pl'] > 0).sum()
+        total = len(df_trades)
+        net   = df_trades['real_pl'].sum()
+        print(f"Win rate     : {wins}/{total} ({100*wins/total:.1f}%)")
+        print(f"Net P/L      : {net:.2f} USDT")
+        print(f"\nExit breakdown:\n{df_trades['exit_reason'].value_counts().to_string()}")
+        print(f"\nLast 5 trades:\n{df_trades.tail()[['entry_ts','is_long','entry_price','exit_price','exit_reason','real_pl']].to_string()}")
+
+        out = f"phase2/results_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.csv"
+        df_trades.to_csv(out, index=False)
+        print(f"\nSaved: {out}")
+    else:
+        print("No trades generated — check signal filters or bar count")
