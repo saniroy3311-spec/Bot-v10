@@ -447,7 +447,8 @@ class TrailMonitor:
         )
         try:
             await self.telegram.notify_exit(
-                reason, self.risk.entry_price, fill_price, real_pl
+                reason, self.risk.entry_price, fill_price, real_pl,
+                is_long=self.risk.is_long,   # FIX-TG-001: was defaulting to True on SHORT exits
             )
         except Exception as tg_err:
             logger.error(f"Telegram notify_exit failed (non-fatal): {tg_err}")
