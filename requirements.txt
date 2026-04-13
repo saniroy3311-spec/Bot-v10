@@ -1,10 +1,13 @@
 # Shiva Sniper v6.5 — Python dependencies
 # Generated for Hostinger VPS (Ubuntu 24.04, Python 3.12)
 #
-# FIX-REQ-001: aiohttp pinned to 3.10.11 (was 3.11.11)
+# FIX-REQ-001: aiohttp pinned to 3.10.11
 #   ccxt==4.4.57 requires aiohttp<=3.10.11
-#   aiohttp 3.10.11 is fully compatible with the dashboard server + Telegram
-#   No bot functionality is affected by this downgrade.
+#
+# FIX-REQ-002: numpy unpinned (was 1.26.4)
+#   pandas-ta==0.4.71b0 requires numpy>=2.2.6
+#   pandas==2.2.3 requires numpy>=1.26.0
+#   Letting pip pick the latest compatible numpy (>=2.2.6) satisfies both.
 
 # Exchange connectivity
 ccxt==4.4.57
@@ -19,7 +22,7 @@ aiohttp==3.10.11
 # Data / indicators
 pandas==2.2.3
 pandas-ta==0.4.71b0
-numpy==1.26.4
+numpy>=2.2.6
 
 # PostgreSQL driver (optional — only needed if DATABASE_URL is set)
 psycopg2-binary==2.9.10
