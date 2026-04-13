@@ -209,10 +209,11 @@ class SniperBot:
     async def _process_bar(self, df) -> None:
         snap = compute(df)
 
-        # FIX-EXIT-001: Notify trail monitor of confirmed bar close price.
-        # This is the price Pine Script uses for Initial SL evaluation.
+        # PINE-FIX-001/002/005: Pass bar close + bar high/low to trail monitor.
+        # on_bar_close() upgrades trail stage (using close profit dist) and
+        # corrects peak_price with confirmed bar high/low — matching Pine exactly.
         if self.in_position:
-            self.trail_mon.on_bar_close(snap.close)
+            self.trail_mon.on_bar_close(snap.close, snap.high, snap.low)
 
         if not self.in_position:
             # FIX-LOCK: acquire lock — prevents double-entry if on_bar_close fires
@@ -349,6 +350,10 @@ class SniperBot:
             exit_reason = reason,
             trail_stage = trail_stage,
         )
+        # Capture before clearing (needed for notify_exit below)
+        _entry_price = self.risk.entry_price if self.risk else 0.0
+        _is_long     = self.risk.is_long     if self.risk else True
+
         self.journal.close_open_trade()
         self.in_position = False
         self.risk        = None
@@ -356,7 +361,8 @@ class SniperBot:
         logger.info(
             f"Position closed | exit={exit_price:.2f} reason={reason} pl={real_pl:+.4f}"
         )
-        await self.telegram.notify_exit(reason, 0.0, exit_price, real_pl)
+        # PINE-FIX-008: was notify_exit(reason, 0.0, ...) — 0.0 is wrong
+        await self.telegram.notify_exit(reason, _entry_price, exit_price, real_pl)
 
     async def _on_position_closed_by_bracket(self) -> None:
         """
