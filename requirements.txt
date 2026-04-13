@@ -12,7 +12,7 @@ aiohttp==3.11.11
 
 # Data / indicators
 pandas==2.2.3
-pandas-ta==0.3.14b0
+pandas-ta==0.4.71b0
 numpy==1.26.4
 
 # PostgreSQL driver (optional — only needed if DATABASE_URL is set)
