@@ -1,5 +1,5 @@
 """
-risk/calculator.py — Shiva Sniper v6.5 (FIX-CALC-v2)
+risk/calculator.py — Shiva Sniper v6.5 (FIX-CALC-v3)
 """
 
 from dataclasses import dataclass
@@ -61,12 +61,53 @@ def calc_levels(entry_price: float, atr: float, is_long: bool, is_trend: bool) -
         sl, tp = entry_price + stop_dist, entry_price - stop_dist * rr
     return RiskLevels(entry_price, sl, tp, stop_dist, atr, is_long, is_trend)
 
+# --- Functions required by Phase 2 Test Scripts ---
+
+def get_trail_params(stage: int, atr: float) -> tuple[float, float]:
+    """Returns (trail_points, trail_offset) for the given stage."""
+    idx = max(stage - 1, 0)
+    _, pts_mult, off_mult = TRAIL_STAGES[idx]
+    return atr * pts_mult, atr * off_mult
+
+def calc_trail_stage(profit_dist: float, atr: float) -> int:
+    """Returns the highest stage satisfied by the current profit distance."""
+    for i in range(len(TRAIL_STAGES) - 1, -1, -1):
+        trigger_mult, _, _ = TRAIL_STAGES[i]
+        if profit_dist >= atr * trigger_mult:
+            return i + 1
+    return 0
+
+def should_trigger_be(profit_dist: float, atr: float) -> bool:
+    return profit_dist > atr * BE_MULT
+
 def max_sl_hit(current_price: float, entry_price: float, atr: float, is_long: bool) -> bool:
     threshold = min(atr * MAX_SL_MULT, MAX_SL_POINTS)
     return (current_price <= entry_price - threshold) if is_long else (current_price >= entry_price + threshold)
+
+def max_sl_exit_price(entry_price: float, atr: float, is_long: bool) -> float:
+    threshold = min(atr * MAX_SL_MULT, MAX_SL_POINTS)
+    return (entry_price - threshold) if is_long else (entry_price + threshold)
 
 def calc_real_pl(entry_price: float, exit_price: float, is_long: bool, qty_lots: int) -> float:
     qty_btc = lots_to_btc(qty_lots)
     raw_pl = (exit_price - entry_price) * qty_btc if is_long else (entry_price - exit_price) * qty_btc
     comm = (entry_price + exit_price) * qty_btc * (COMMISSION_PCT * 2)
     return raw_pl - comm
+
+
+def recalc_levels_from_fill(risk: "RiskLevels", fill_price: float) -> "RiskLevels":
+    """Re-anchor SL/TP to actual fill price (FIX-MAIN-1)."""
+    from config import TREND_RR, RANGE_RR
+    stop_dist = risk.stop_dist
+    rr = TREND_RR if risk.is_trend else RANGE_RR
+    if risk.is_long:
+        sl = fill_price - stop_dist
+        tp = fill_price + stop_dist * rr
+    else:
+        sl = fill_price + stop_dist
+        tp = fill_price - stop_dist * rr
+    return RiskLevels(
+        entry_price=fill_price, sl=sl, tp=tp,
+        stop_dist=stop_dist, atr=risk.atr,
+        is_long=risk.is_long, is_trend=risk.is_trend,
+    )
