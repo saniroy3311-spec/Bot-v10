@@ -90,9 +90,9 @@ def _compute_trail_sl(
     OPTION-B-2: Trail stop = peak - trail_offset (long) or peak + trail_offset (short).
     Only fires when peak_profit_dist >= active_pts (Pine implicit guard).
     """
-    if stage == 0:
-        return None
-    _, active_pts, active_off = TRAIL_STAGES[stage - 1]
+    # BUG-FIX-TRAIL-MISMATCH: stage 0 maps to Stage 1 params (idx=0).
+    # Pine applies trail1Pts from the very first tick — no stage gate.
+    _, active_pts, active_off = TRAIL_STAGES[max(stage - 1, 0)]
     active_pts_val = atr * active_pts
     active_off_val = atr * active_off
     if peak_profit_dist < active_pts_val:
@@ -377,14 +377,18 @@ class TrailMonitor:
                 return
 
         # 5. Ratchet trail SL (OPTION-B-2: live peak_profit_dist)
-        if state.stage > 0:
-            trail_sl = _compute_trail_sl(
-                state.stage, state.peak_price, peak_profit_dist, is_long, atr
-            )
-            if trail_sl is not None:
-                if (is_long and trail_sl > state.current_sl) or \
-                   (not is_long and trail_sl < state.current_sl):
-                    state.current_sl = trail_sl
+        # BUG-FIX-TRAIL-MISMATCH: Removed `if state.stage > 0` gate.
+        # Pine's strategy.exit(trail_points=activePts) uses trail1Pts (0.70 ATR)
+        # from the first tick after entry — no stage promotion required.
+        # _compute_trail_sl uses idx=max(stage-1,0) so stage 0 maps to Stage 1
+        # params, exactly matching Pine behaviour.
+        trail_sl = _compute_trail_sl(
+            state.stage, state.peak_price, peak_profit_dist, is_long, atr
+        )
+        if trail_sl is not None:
+            if (is_long and trail_sl > state.current_sl) or \
+               (not is_long and trail_sl < state.current_sl):
+                state.current_sl = trail_sl
 
         # 6. SL check
         if state.current_sl > 0 and not self._in_entry_guard(now_ms):
