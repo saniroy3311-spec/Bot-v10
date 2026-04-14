@@ -1,8 +1,31 @@
 """
-monitor/trail_loop.py — Shiva Sniper v6.5 (PINE-EXACT-v4)
+monitor/trail_loop.py — Shiva Sniper v6.5 (PINE-EXACT-v5)
 
 FIXES IN THIS VERSION:
 ──────────────────────────────────────────────────────────────────────
+FIX-TRAIL-5 | Cancel + restart tick task at every bar boundary
+  Root cause (race condition):
+    on_bar_close() resets state.peak_price = bar_close at the end.
+    But asyncio.create_task(_run()) is already mid-sleep — when it
+    wakes it calls _on_tick() which reads the OLD pre-reset peak_price
+    because the reset assignment hasn't been observed by the running
+    coroutine (Python GIL yields between sleep and next statement).
+    Result: trail SL computed from bar N's intrabar peak → immediate
+    false exit at bar N+1 open.
+
+  Fix:
+    At the start of on_bar_close(), cancel self._task.
+    After all state updates (including peak reset), restart it.
+    The new task starts fresh with the correct bar_close peak.
+    No artificial delay. Exact Pine bar-boundary semantics.
+
+FIX-TRAIL-6 | _bar_just_closed guard skips one tick after bar boundary
+  Belt-and-suspenders on top of FIX-TRAIL-5.
+  Even with task restart, if the restart scheduling and the old task
+  cancellation are not perfectly atomic, _on_tick could fire once with
+  stale peak. The flag prevents any exit evaluation on the first tick
+  cycle after on_bar_close() returns.
+
 FIX-TRAIL-1 | Peak reset to bar_close at every bar boundary (Bug 1 fix)
   Root cause:
     Tick loop tracks peak_price intrabar all through bar N.
@@ -138,6 +161,11 @@ class TrailMonitor:
         self._active_pts: float = 0.0
         self._active_off: float = 0.0
 
+        # FIX-TRAIL-6: skip exit checks on the first tick after a bar closes
+        # Prevents false exits from the brief window between task restart and
+        # peak_price being read by _on_tick for the first time this bar.
+        self._bar_just_closed: bool = False
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def start(
@@ -151,6 +179,7 @@ class TrailMonitor:
         self.state            = trail_state
         self.on_trail_exit    = on_trail_exit
         self._exit_triggered  = False
+        self._bar_just_closed = False  # FIX-TRAIL-6: fresh for new trade
         self.entry_bar_time_ms = entry_bar_time_ms or int(time.time() * 1000)
 
         if self.state.peak_price == 0.0:
@@ -181,6 +210,14 @@ class TrailMonitor:
         """
         Called by main.py at every 30-minute bar close.
 
+        FIX-TRAIL-5: Cancels and restarts the tick task at every bar boundary.
+                     Prevents the race where _on_tick fires with bar N's
+                     intrabar peak_price after we have already reset it
+                     to bar_close. See docstring at top of file.
+
+        FIX-TRAIL-6: Sets _bar_just_closed=True so the FIRST tick of the new
+                     bar skips exit evaluation entirely. Belt-and-suspenders.
+
         FIX-TRAIL-1: Resets peak_price = bar_close at end of every bar.
                      Tick loop starts the new bar tracking peak fresh
                      from bar_close — exactly like Pine's bar boundary.
@@ -197,6 +234,18 @@ class TrailMonitor:
         """
         if not self._running or self.risk is None or self.state is None:
             return
+
+        # FIX-TRAIL-5: Cancel the running tick task immediately so it cannot
+        # fire _on_tick with the old (intrabar) peak_price while we update state.
+        # We restart it at the end of this method after all state is refreshed.
+        if self._task and not self._task.done():
+            self._task.cancel()
+            self._task = None
+
+        # FIX-TRAIL-6: Belt-and-suspenders flag — suppresses exit checks on
+        # the very first _on_tick of the new bar even if task restart timing
+        # is imperfect.
+        self._bar_just_closed = True
 
         # FIX-TRAIL-2 + FIX-TRAIL-4: Recalculate ATR, SL, TP, stop_dist every bar.
         #
@@ -305,6 +354,15 @@ class TrailMonitor:
             f"current_sl={state.current_sl:.2f} be_done={state.be_done} atr={atr:.2f}"
         )
 
+        # FIX-TRAIL-5: Restart the tick task now that all state (peak, stage,
+        # ATR, SL, TP) is fully updated. The new task observes the correct
+        # bar_close peak from its very first _on_tick call. The _bar_just_closed
+        # flag (set at the top of this method) provides belt-and-suspenders
+        # protection against any marginal task scheduling latency.
+        if self._running:
+            self._task = asyncio.create_task(self._run())
+            logger.debug("[BAR CLOSE] Tick task restarted with fresh bar state")
+
     # ── Internal tick loop ────────────────────────────────────────────────────
 
     async def _run(self):
@@ -339,6 +397,20 @@ class TrailMonitor:
 
     async def _on_tick(self, current_price: float):
         if not self._running or self.risk is None or self.state is None:
+            return
+
+        # FIX-TRAIL-6: Skip ALL exit evaluation on the first tick after a bar
+        # boundary. This is belt-and-suspenders on top of FIX-TRAIL-5 (task
+        # restart). The flag is set in on_bar_close() and cleared here so every
+        # subsequent tick in the bar runs normally.
+        if self._bar_just_closed:
+            self._bar_just_closed = False
+            logger.debug(f"[TICK] Bar-boundary guard active — skipping exit eval | price={current_price:.2f}")
+            # Still update peak so we don't lose the first tick's price move
+            if self.risk.is_long:
+                self.state.peak_price = max(self.state.peak_price, current_price)
+            else:
+                self.state.peak_price = min(self.state.peak_price, current_price)
             return
 
         risk, state   = self.risk, self.state
