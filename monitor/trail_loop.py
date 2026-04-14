@@ -53,6 +53,7 @@ from config import (
     SYMBOL, DELTA_API_KEY, DELTA_API_SECRET, DELTA_TESTNET,
     ALERT_QTY, TRAIL_SL_PRE_FIRE_BUFFER, TRAIL_LOOP_SEC,
     TRAIL_STAGES, BE_MULT,
+    TREND_RR, RANGE_RR, TREND_ATR_MULT, RANGE_ATR_MULT, MAX_SL_POINTS,
 )
 
 logger = logging.getLogger(__name__)
@@ -197,19 +198,68 @@ class TrailMonitor:
         if not self._running or self.risk is None or self.state is None:
             return
 
-        # FIX-TRAIL-2: update ATR to current bar (Pine recalculates every bar)
-        old_atr = self.risk.atr
-        if current_atr > 0 and current_atr != old_atr:
-            self.risk = RiskLevels(
-                entry_price = self.risk.entry_price,
-                sl          = self.risk.sl,
-                tp          = self.risk.tp,
-                stop_dist   = self.risk.stop_dist,
-                atr         = current_atr,
-                is_long     = self.risk.is_long,
-                is_trend    = self.risk.is_trend,
-            )
-            logger.debug(f"[BAR CLOSE] ATR updated {old_atr:.2f} → {current_atr:.2f}")
+        # FIX-TRAIL-2 + FIX-TRAIL-4: Recalculate ATR, SL, TP, stop_dist every bar.
+        #
+        # WHY THIS IS NEEDED (Pine parity):
+        #   Pine Script recalculates on EVERY bar:
+        #     stopDist = math.min(atr * atrMult, maxSLPoints)   ← new ATR each bar
+        #     longSL   = entryPrice - stopDist                   ← shifts with ATR
+        #     longTP   = entryPrice + stopDist * rr              ← shifts with ATR
+        #     strategy.exit("Exit TL", stop=longSL, limit=longTP, ...)
+        #   Because strategy.exit() is re-called each bar with fresh SL/TP,
+        #   both levels drift as ATR expands or contracts over the trade lifetime.
+        #
+        #   Old code only updated risk.atr but kept risk.sl and risk.tp frozen at
+        #   entry values — causing exits at completely different price levels vs Pine.
+        #
+        # SAFE UPDATE RULES:
+        #   - risk.sl  : always updated (initial SL, Pine widens/tightens with ATR)
+        #   - risk.tp  : always updated (Pine moves TP every bar)
+        #   - state.current_sl: updated ONLY if trail has NOT yet moved it above
+        #     the initial SL (i.e. trail is still at stage 0 or current_sl == old sl).
+        #     Once trail/BE has ratcheted current_sl to a better level, we keep it —
+        #     we never move current_sl backwards against the trade.
+        old_atr      = self.risk.atr
+        old_sl       = self.risk.sl
+        atr_mult     = TREND_ATR_MULT if self.risk.is_trend else RANGE_ATR_MULT
+        rr           = TREND_RR       if self.risk.is_trend else RANGE_RR
+        new_stop_dist = min(current_atr * atr_mult, MAX_SL_POINTS)
+        entry_price_  = self.risk.entry_price
+        is_long_      = self.risk.is_long
+
+        if is_long_:
+            new_sl = entry_price_ - new_stop_dist
+            new_tp = entry_price_ + new_stop_dist * rr
+        else:
+            new_sl = entry_price_ + new_stop_dist
+            new_tp = entry_price_ - new_stop_dist * rr
+
+        self.risk = RiskLevels(
+            entry_price = entry_price_,
+            sl          = new_sl,
+            tp          = new_tp,
+            stop_dist   = new_stop_dist,
+            atr         = current_atr,
+            is_long     = is_long_,
+            is_trend    = self.risk.is_trend,
+        )
+
+        # Sync state.current_sl to new initial SL only if trail/BE hasn't
+        # already moved it to a better (more profitable) level.
+        # "Better" = above entry for long, below entry for short (BE/trail zone).
+        trail_has_moved_sl = (
+            (is_long_  and self.state.current_sl > old_sl + 1.0) or
+            (not is_long_ and self.state.current_sl < old_sl - 1.0)
+        )
+        if not trail_has_moved_sl:
+            self.state.current_sl = new_sl
+
+        logger.info(
+            f"[BAR CLOSE] ATR {old_atr:.2f}→{current_atr:.2f} | "
+            f"stop_dist={new_stop_dist:.2f} | "
+            f"sl={new_sl:.2f} tp={new_tp:.2f} | "
+            f"current_sl={'kept at trail ' + str(round(self.state.current_sl,2)) if trail_has_moved_sl else str(round(new_sl,2))}"
+        )
 
         risk, state = self.risk, self.state
         is_long     = risk.is_long
