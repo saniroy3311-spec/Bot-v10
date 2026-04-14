@@ -2,39 +2,25 @@
 main.py — Shiva Sniper v6.5
 Production entry point: bot loop + aiohttp dashboard server.
 
-CHANGES IN THIS VERSION:
-──────────────────────────────────────────────────────────────────────────────
-FIX-MAIN-1 | SL/TP now recalculated from ACTUAL FILL PRICE after entry.
+FIXES IN THIS VERSION:
+──────────────────────────────────────────────────────────────────────
+FIX-MAIN-3 | Pass snap.atr into trail_mon.on_bar_close() (Bug 2 fix)
+  Pine recalculates atr every bar. The trail monitor now receives the
+  current bar's ATR so all trail offset calculations stay in sync.
 
-  Root cause:
-    Old code called calc_levels(snap.close, ...) → SL/TP anchored to
-    bar close. Then set risk.entry_price = fill_price but left risk.sl
-    and risk.tp pointing at bar-close anchor.
-    Pine Script always anchors SL/TP to position_avg_price (the fill).
-    With slippage of even 10-50 pts the SL was in the wrong place.
+FIX-MAIN-4 | Same-bar re-entry guard (Bug 4 fix)
+  After _on_trail_exit() fires and clears in_position, main can
+  immediately re-evaluate entries on the SAME bar index (async gap).
+  Pine's noPosition is evaluated once per bar — once you exit on a bar,
+  no new entry is possible until the NEXT bar closes.
+  Fix: track _last_exit_bar_ts. If on_bar_close fires with the same
+  bar timestamp as the exit bar, skip entry evaluation entirely.
 
-  Fix:
-    After place_entry() returns, call recalc_levels_from_fill(risk, fill)
-    which re-runs calc_levels() with fill_price as the anchor.
-    The bracket orders placed by place_entry() also use fill_price
-    via this recalculated risk (manager.py already uses the fill
-    for the bracket — this fix just brings journal/trail in sync).
-
-FIX-MAIN-2 | Same-bar entry+exit guard retained (entryBar == bar_index check).
-             blockExit flag now also uses entryBar tracker, matching Pine
-             FIX-007/008 exactly.
-
-PRESERVED FIXES (from previous version):
-  FIX-M1:  get_summary() calls journal.get_summary()
-  FIX-M2:  _on_position_closed() fetches real exit price
-  FIX-M3:  Exceptions in on_bar_close() caught + sent to Telegram
-  FIX-M4:  Graceful shutdown on SIGTERM/SIGINT
-  FIX-M5:  LOG_FILE directory created at startup
-  FIX-M6:  Trail exit callback (_on_trail_exit) — immediate, tick-resolution
-  FIX-M7:  No fetch_position() REST call on every bar
-  FIX-M8:  _last_signal_type stored correctly for journal logging
-  FIX-LOCK: asyncio.Lock() prevents concurrent double-entry
-──────────────────────────────────────────────────────────────────────────────
+PRESERVED FIXES:
+  FIX-MAIN-1: recalc_levels_from_fill (SL/TP anchored to fill price)
+  FIX-MAIN-2: same-bar entry+exit guard (entryBar == bar_index)
+  FIX-M1..M8: all prior fixes
+──────────────────────────────────────────────────────────────────────
 """
 
 import asyncio
@@ -47,7 +33,7 @@ from feed.ws_feed       import CandleFeed
 from indicators.engine  import compute
 from strategy.signal    import evaluate, SignalType
 from risk.calculator    import (
-    calc_levels, recalc_levels_from_fill,   # FIX-MAIN-1: import recalc helper
+    calc_levels, recalc_levels_from_fill,
     TrailState, calc_real_pl, RiskLevels,
 )
 from orders.manager     import OrderManager
@@ -162,7 +148,14 @@ class SniperBot:
         self.risk: RiskLevels | None     = None
         self.trail_state: TrailState | None = None
         self._last_signal_type: str      = "Unknown"
-        self._entry_lock = asyncio.Lock()   # Prevent concurrent double-entry
+        self._entry_lock = asyncio.Lock()
+
+        # FIX-MAIN-4: track the bar timestamp when last exit fired
+        # If on_bar_close() fires with this same timestamp, skip entry eval.
+        self._last_exit_bar_ts: int | None = None
+
+        # Track current bar timestamp so _on_trail_exit can read it
+        self._current_bar_ts: int = 0
 
     async def _recover_position(self) -> None:
         saved = self.journal.get_open_trade()
@@ -209,27 +202,35 @@ class SniperBot:
     async def _process_bar(self, df) -> None:
         snap = compute(df)
 
-        # PINE-FIX-001/002/005: Pass bar close + bar high/low to trail monitor.
-        # on_bar_close() upgrades trail stage (using close profit dist) and
-        # corrects peak_price with confirmed bar high/low — matching Pine exactly.
+        # Store current bar timestamp for same-bar exit guard (FIX-MAIN-4)
+        self._current_bar_ts = snap.timestamp
+
+        # FIX-MAIN-3: Pass snap.atr (current bar ATR) to trail monitor.
+        # Pine recalculates atr every bar — trail offsets must follow.
         if self.in_position:
-            self.trail_mon.on_bar_close(snap.close, snap.high, snap.low)
+            self.trail_mon.on_bar_close(snap.close, snap.high, snap.low, snap.atr)
 
         if not self.in_position:
-            # FIX-LOCK: acquire lock — prevents double-entry if on_bar_close fires
-            # twice before first entry order completes.
             if self._entry_lock.locked():
                 logger.warning("Entry lock held — skipping duplicate bar_close signal")
                 return
             async with self._entry_lock:
-                # Re-check in_position inside lock (state may have changed)
                 if self.in_position:
+                    return
+
+                # FIX-MAIN-4: Skip entry if the exit just happened on this bar.
+                # Pine's noPosition gate is evaluated once at bar open —
+                # once you're out on bar N, no re-entry until bar N+1.
+                if self._last_exit_bar_ts is not None and \
+                   self._last_exit_bar_ts == self._current_bar_ts:
+                    logger.info(
+                        f"Same-bar re-entry blocked | bar_ts={self._current_bar_ts} "
+                        f"exit_ts={self._last_exit_bar_ts} (Pine parity)"
+                    )
                     return
 
                 sig = evaluate(snap, has_position=False)
 
-                # FIX-DEBUG-001: Log every bar's full indicator + filter state.
-                # Lets us see exactly why bot missed any Pine trade.
                 logger.info(
                     f"BAR | close={snap.close:.2f} "
                     f"adx={snap.adx:.2f} "
@@ -246,21 +247,9 @@ class SniperBot:
                 if sig.signal_type == SignalType.NONE:
                     return
 
-                # ── Calculate INITIAL risk levels from bar close ───────────────
-                # These are used to compute the bracket SL/TP to send to the
-                # exchange. The calc uses snap.close as a price estimate.
                 risk = calc_levels(snap.close, snap.atr, sig.is_long, sig.is_trend)
-
-                # ── Place the entry order ─────────────────────────────────────
                 order = await self.order_mgr.place_entry(sig.is_long, risk.sl, risk.tp)
 
-                # ── FIX-MAIN-1: Recalculate SL/TP from ACTUAL FILL ───────────
-                # Pine Script: entryPrice = strategy.position_avg_price (fill)
-                #              longSL = entryPrice - stopDist
-                #              longTP = entryPrice + stopDist * rr
-                # The fill may differ from snap.close due to slippage.
-                # Recalculating anchors our journal/trail state to the real fill,
-                # matching Pine's SL/TP positions exactly.
                 fill_price = float(order.get("average") or order.get("price") or snap.close)
                 risk = recalc_levels_from_fill(risk, fill_price)
 
@@ -278,7 +267,6 @@ class SniperBot:
                     current_sl = risk.sl,
                     peak_price = fill_price,
                 )
-                # FIX-M6: register trail exit callback (tick-resolution exit)
                 self.trail_mon.start(risk, self.trail_state,
                                      on_trail_exit=self._on_trail_exit)
                 self.journal.open_trade(
@@ -291,28 +279,6 @@ class SniperBot:
                 )
 
         else:
-            # ── Pine Script EXIT MODEL ─────────────────────────────────────────
-            # Pine Script exits ONLY via strategy.exit() — SL / TP / Trail.
-            # There is NO bar-close signal-reversal exit in Pine.
-            #
-            # BUG-SIG-001 FIX: A previous version called evaluate_exit() here
-            # which closed positions when entry conditions reversed at bar close.
-            # Pine has no such logic — this caused premature exits and massive
-            # divergence from TradingView's trade timing.
-            #
-            # All exits are handled by trail_loop.py at tick resolution:
-            #   - Initial SL / TP bracket
-            #   - 5-stage trailing SL ratchet
-            #   - Breakeven move
-            #   - Max SL guard
-            #
-            # The only bar-close check here is the bracket FALLBACK — detects
-            # if the exchange already closed the position via a filled bracket
-            # order between bars (exchange-side fill, not Python-side logic).
-            #
-            # FIX-M7: Bracket TP/SL fallback — detects exchange fills at bar close.
-            # Trail exits handled by trail_loop callback at tick resolution.
-            # Guard: skip if trail_loop already handled the exit (_exit_triggered=True)
             if self.trail_mon and self.trail_mon._exit_triggered:
                 logger.info("Bracket fallback skipped — trail_loop already handled exit")
                 return
@@ -320,14 +286,12 @@ class SniperBot:
             if pos is None or pos.get("contracts", 0) == 0:
                 await self._on_position_closed_by_bracket()
 
-    # FIX-M6: Called by trail_loop immediately when trail SL is breached
     async def _on_trail_exit(self, exit_price: float, reason: str) -> None:
-        """
-        Immediate callback from trail_loop when trail SL closes the position.
-        Runs at tick resolution (TRAIL_LOOP_SEC) — NOT bar resolution.
-        """
         if not self.in_position:
             return
+
+        # FIX-MAIN-4: record which bar this exit happened on
+        self._last_exit_bar_ts = self._current_bar_ts
 
         self.trail_mon.stop()
         trail_stage = self.trail_state.stage if self.trail_state else 0
@@ -350,7 +314,6 @@ class SniperBot:
             exit_reason = reason,
             trail_stage = trail_stage,
         )
-        # Capture before clearing (needed for notify_exit below)
         _entry_price = self.risk.entry_price if self.risk else 0.0
         _is_long     = self.risk.is_long     if self.risk else True
 
@@ -361,13 +324,9 @@ class SniperBot:
         logger.info(
             f"Position closed | exit={exit_price:.2f} reason={reason} pl={real_pl:+.4f}"
         )
-        # PINE-FIX-008: was notify_exit(reason, 0.0, ...) — 0.0 is wrong
-        await self.telegram.notify_exit(reason, _entry_price, exit_price, real_pl)
+        await self.telegram.notify_exit(reason, _entry_price, exit_price, real_pl, _is_long)
 
     async def _on_position_closed_by_bracket(self) -> None:
-        """
-        Fallback: bracket TP or SL fired on exchange, detected at next bar.
-        """
         self.trail_mon.stop()
         exit_price  = 0.0
         exit_reason = "Bracket"
@@ -403,7 +362,11 @@ class SniperBot:
 
             await self.telegram.notify_exit(
                 exit_reason, self.risk.entry_price, exit_price, real_pl,
+                self.risk.is_long,
             )
+
+        # FIX-MAIN-4: record exit bar for same-bar guard
+        self._last_exit_bar_ts = self._current_bar_ts
 
         self.journal.close_open_trade()
         self.in_position = False
