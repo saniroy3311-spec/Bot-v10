@@ -344,7 +344,20 @@ class SniperBot:
                     self.risk.is_long, ALERT_QTY,
                 )
                 trail_stage = self.trail_state.stage if self.trail_state else 0
-                exit_reason = "Bracket-TP" if real_pl > 0 else "Bracket-SL"
+
+                # FIX-MAIN-5: Correctly label TP exits caught by the bracket
+                # fallback (position already closed on exchange before _on_tick
+                # could detect it). If trail was active and PL is positive,
+                # this is a Trail TP — not a generic Bracket-TP.
+                # Pine: exit at TP = "Target Profit", whether caught by trail
+                # loop or exchange-side bracket.
+                if real_pl > 0:
+                    if trail_stage > 0:
+                        exit_reason = f"Trail S{trail_stage} TP"
+                    else:
+                        exit_reason = "Target Profit"
+                else:
+                    exit_reason = "Bracket-SL"
 
                 self.journal.log_trade(
                     signal_type = self._last_signal_type,
