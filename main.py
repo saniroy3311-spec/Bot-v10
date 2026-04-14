@@ -293,7 +293,13 @@ class SniperBot:
         # FIX-MAIN-4: record which bar this exit happened on
         self._last_exit_bar_ts = self._current_bar_ts
 
-        self.trail_mon.stop()
+        # BUG-FIX-TELEGRAM-EXIT: DO NOT call trail_mon.stop() here yet.
+        # stop() calls self._task.cancel(). Since _on_trail_exit runs inside
+        # that same task, the CancelledError fires at the next `await` —
+        # which is the Telegram notify_exit call — silently dropping the message.
+        # Fix: do all awaits first, then call stop() at the end (the exchange
+        # socket is all that remains to close; _running is already False).
+
         trail_stage = self.trail_state.stage if self.trail_state else 0
 
         real_pl = calc_real_pl(
@@ -325,6 +331,9 @@ class SniperBot:
             f"Position closed | exit={exit_price:.2f} reason={reason} pl={real_pl:+.4f}"
         )
         await self.telegram.notify_exit(reason, _entry_price, exit_price, real_pl, _is_long)
+
+        # Stop AFTER all awaits — only closes the exchange WebSocket now.
+        self.trail_mon.stop()
 
     async def _on_position_closed_by_bracket(self) -> None:
         self.trail_mon.stop()
