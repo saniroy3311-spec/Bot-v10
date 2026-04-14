@@ -62,6 +62,15 @@ FILTER_BODY_MULT   = float(os.environ.get("FILTER_BODY_MULT", "0.4"))   # Pine v
 # volume for all bars and you want to disable the filter entirely.
 FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "true").lower() == "true"
 
+# FIX-VOL-003: Volume multiplier to compensate for Delta India REST returning
+# compressed volume figures compared to TradingView's own aggregation.
+# TradingView vol > sma(vol, 20) translates to: bar_vol > vol_sma * FILTER_VOL_MULT
+# Default 1.0 = exact Pine parity. Lower (e.g. 0.5) if Delta REST volumes are
+# consistently 2× lower than TV — this lets signals through that TV would take.
+# Tune by comparing log vol= vs vol_sma= values against your TV chart.
+# Override via .env: FILTER_VOL_MULT=0.5
+FILTER_VOL_MULT = float(os.environ.get("FILTER_VOL_MULT", "1.0"))
+
 # ──────────────────────────────────────────────
 # RISK / REWARD
 # ──────────────────────────────────────────────
