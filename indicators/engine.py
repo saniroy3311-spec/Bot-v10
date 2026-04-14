@@ -41,7 +41,7 @@ from config import (
     EMA_TREND_LEN, EMA_FAST_LEN, ATR_LEN,
     DI_LEN, ADX_SMOOTH, ADX_EMA, RSI_LEN,
     ADX_TREND_TH, ADX_RANGE_TH,
-    FILTER_ATR_MULT, FILTER_BODY_MULT, FILTER_VOL_ENABLED,
+    FILTER_ATR_MULT, FILTER_BODY_MULT, FILTER_VOL_ENABLED, FILTER_VOL_MULT,
     RSI_OB, RSI_OS,
 )
 
@@ -143,10 +143,14 @@ def compute(df: pd.DataFrame) -> IndicatorSnapshot:
     # FIX-VOL-001: Volume filter — ON by default (matching Pine).
     # Bypass ONLY when Delta returns 0 volume (data gap), to avoid permanently
     # blocking all signals. Zero-bypass is logged as a warning.
+    # FIX-VOL-003: FILTER_VOL_MULT scales vol_sma threshold to compensate
+    # for Delta India REST returning lower volume than TradingView's feed.
+    # Pine: volume > ta.sma(volume, 20)
+    # Bot:  bar_volume > vol_sma * FILTER_VOL_MULT  (default 1.0 = Pine exact)
     if FILTER_VOL_ENABLED:
         bar_volume = float(last["volume"])
         if bar_volume > 0 and vol_sma > 0:
-            vol_ok = bool(bar_volume > vol_sma)
+            vol_ok = bool(bar_volume > vol_sma * FILTER_VOL_MULT)
         else:
             # Delta India sometimes returns 0 volume via REST.
             # Pine Script: volume > sma(volume,20) → 0 > positive = FALSE → bar rejected.
