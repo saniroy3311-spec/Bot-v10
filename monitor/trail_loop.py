@@ -87,17 +87,30 @@ def _compute_trail_sl(
     atr: float,
 ) -> Optional[float]:
     """
-    OPTION-B-2: Trail stop = peak - trail_offset (long) or peak + trail_offset (short).
-    Only fires when peak_profit_dist >= active_pts (Pine implicit guard).
+    Pine-exact trail stop: SL = peak - trail_POINTS (not trail_offset).
+
+    Pine Script strategy.exit(trail_points=activePts) places the stop at
+    peak_price - trail_points (for longs), where trail_points is the wider
+    of the two ATR multiples stored per stage.  trail_offset in Pine is a
+    limit-order slippage parameter only — it does NOT change where the SL
+    sits relative to peak.
+
+    FIX-TRAIL-PTS: Changed return value from active_off_val → active_pts_val
+    so the bot matches Pine exactly:
+      Stage 1 : peak - 0.70 ATR  (was 0.55 ATR — 15 pts tighter per ATR)
+      Stage 2 : peak - 0.55 ATR  (was 0.45 ATR)
+      Stage 3 : peak - 0.45 ATR  (was 0.35 ATR)
+      Stage 4 : peak - 0.30 ATR  (was 0.25 ATR)
+      Stage 5 : peak - 0.20 ATR  (was 0.15 ATR)
     """
-    # BUG-FIX-TRAIL-MISMATCH: stage 0 maps to Stage 1 params (idx=0).
+    # stage 0 maps to Stage 1 params (idx=0).
     # Pine applies trail1Pts from the very first tick — no stage gate.
-    _, active_pts, active_off = TRAIL_STAGES[max(stage - 1, 0)]
+    _, active_pts, _ = TRAIL_STAGES[max(stage - 1, 0)]
     active_pts_val = atr * active_pts
-    active_off_val = atr * active_off
     if peak_profit_dist < active_pts_val:
         return None
-    return (peak_price - active_off_val) if is_long else (peak_price + active_off_val)
+    # Pine: SL = peak - trail_points  (the WIDER value, i.e. active_pts_val)
+    return (peak_price - active_pts_val) if is_long else (peak_price + active_pts_val)
 
 
 # ─── TrailMonitor ─────────────────────────────────────────────────────────────
