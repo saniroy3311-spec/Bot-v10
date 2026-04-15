@@ -343,10 +343,13 @@ def upgrade_trail_stage(current_stage: int, peak_profit_dist: float, atr: float)
 
 
 def compute_trail_sl(stage: int, peak_price: float, peak_profit_dist: float, is_long: bool, atr: float) -> Optional[float]:
-    active_pts, active_off = get_trail_params(stage, atr)
+    # FIX-TRAIL-PTS: Use active_pts (trail_POINTS) not active_off (trail_offset).
+    # Pine Script SL = peak - trail_points.  active_off is Pine's limit-order
+    # slippage parameter only and does NOT affect the SL price.
+    active_pts, _ = get_trail_params(stage, atr)
     if peak_profit_dist < active_pts:
         return None
-    return (peak_price - active_off) if is_long else (peak_price + active_off)
+    return (peak_price - active_pts) if is_long else (peak_price + active_pts)
 
 
 def should_trigger_be(profit_dist: float, atr: float) -> bool:
