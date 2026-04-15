@@ -1,38 +1,37 @@
 """
-monitor/trail_loop.py — Shiva Sniper v6.5 (PINE-EXACT-v6)
+monitor/trail_loop.py — Shiva Sniper v6.5 (PINE-EXACT-v7)
 
 FIXES IN THIS VERSION:
 ──────────────────────────────────────────────────────────────────────
-OPTION-A-1 | Poll every 0.5 seconds (via TRAIL_LOOP_SEC in .env)
-  Tightest reliable interval on Delta India REST without rate limits.
+FIX-TRAIL-7 | Removed OPTION-B-1 intra-bar stage upgrade (BUG-TRAIL-STAGE-001)
+  ROOT CAUSE of early exits vs TradingView:
+    Pine Script runs with calc_on_every_tick=false.
+    The strategy block (where trail stage logic lives) executes ONLY at
+    bar close — NOT on every tick. OPTION-B-1 was upgrading stages
+    mid-bar every 0.5s, tightening the trail prematurely and causing
+    exits up to 229 pts before Pine's exit price.
+  FIX:
+    Removed live_profit_dist + _calc_new_stage() block from _on_tick().
+    Stage upgrades now happen ONLY in on_bar_close() — Pine parity.
+    Trail execution (SL check) still runs every tick — correct.
 
+FIX-TRAIL-8 | Peak price preserves intra-bar extremes (BUG-PEAK-RESET-001)
+  ROOT CAUSE:
+    state.peak_price = bar_close at every bar boundary discarded
+    intra-bar highs (longs) / lows (shorts) tracked during the tick loop.
+    If price hit 75,800 mid-bar but closed at 75,600, trail was computed
+    from 75,600 instead of 75,800 — understating the peak by up to bar range.
+  FIX:
+    Long:  state.peak_price = max(state.peak_price, bar_high, bar_close)
+    Short: state.peak_price = min(state.peak_price, bar_low,  bar_close)
+    bar_high / bar_low already passed into on_bar_close() — no API change.
+
+PRESERVED FROM v6:
+──────────────────────────────────────────────────────────────────────
+OPTION-A-1 | Poll every TRAIL_LOOP_SEC seconds (0.1s from .env)
 OPTION-A-2 | Persistent exchange connection (no reconnect per bar)
-  ROOT CAUSE of previous latency:
-    _run() created ccxt.delta({...}) INSIDE the loop.
-    on_bar_close() cancels + restarts _run() at every 30m bar close.
-    Each restart triggered a fresh TLS handshake (~200-500ms blind window).
-  FIX:
-    Exchange created ONCE in start(), stored as self._exchange.
-    _run() reuses it. on_bar_close() restarts only the coroutine.
-    Only closed in stop(). Zero reconnect latency at bar boundaries.
-
-OPTION-B-1 | Intra-bar stage upgrade on every tick (Pine parity)
-  ROOT CAUSE of missed exits:
-    Old code upgraded stage ONLY in on_bar_close() using bar CLOSE price.
-    Pine's stage upgrade block runs on EVERY tick. If price crosses a
-    stage trigger mid-bar, Pine tightens the trail immediately.
-    Old bot waited up to 30 minutes — exiting at the wrong price.
-  FIX:
-    _on_tick() calls _calc_new_stage(live_profit_dist, atr) every tick.
-    Stage upgrades instantly when price crosses the trigger threshold.
-    active_pts and active_off recalculated immediately.
-
 OPTION-B-2 | Trail SL uses live peak_profit_dist (Pine parity)
-  Pine guard: trail only moves stop when peak moved by trail_points.
-  Now uses the live peak_profit_dist computed this tick, not stale value.
-
-PRESERVED FROM v5:
-  FIX-TRAIL-1..6 | All prior peak-reset and race-condition fixes
+FIX-TRAIL-1..6 | All prior peak-reset and race-condition fixes
 ──────────────────────────────────────────────────────────────────────
 """
 
@@ -70,7 +69,8 @@ def _get_active_params(stage: int, atr: float):
 def _calc_new_stage(profit_dist: float, atr: float) -> int:
     """
     Highest stage satisfied by profit_dist.
-    Called on EVERY tick (OPTION-B-1) AND at bar close — Pine parity.
+    Called ONLY at bar close (on_bar_close()) — Pine parity.
+    Pine runs calc_on_every_tick=false so stage logic executes once per bar.
     """
     for i in range(len(TRAIL_STAGES) - 1, -1, -1):
         trigger_mult, _, _ = TRAIL_STAGES[i]
@@ -270,10 +270,18 @@ class TrailMonitor:
                     f"| close_profit_dist={close_profit_dist:.2f}"
                 )
 
-        # FIX-TRAIL-1: Reset peak to bar_close
-        state.peak_price = bar_close
+        # FIX-TRAIL-8: Preserve intra-bar peak extremes — do NOT discard
+        # highs/lows seen during tick loop by resetting to bar_close only.
+        # Long:  keep highest of current peak, bar_high, bar_close
+        # Short: keep lowest  of current peak, bar_low,  bar_close
+        if is_long:
+            state.peak_price = max(state.peak_price, bar_high, bar_close)
+        else:
+            state.peak_price = min(state.peak_price, bar_low, bar_close)
+
         logger.info(
-            f"[BAR CLOSE] stage={state.stage} peak reset to bar_close={bar_close:.2f} "
+            f"[BAR CLOSE] stage={state.stage} peak updated to {state.peak_price:.2f} "
+            f"(bar_high={bar_high:.2f} bar_low={bar_low:.2f} bar_close={bar_close:.2f}) "
             f"current_sl={state.current_sl:.2f} be_done={state.be_done} atr={atr:.2f}"
         )
 
@@ -286,7 +294,7 @@ class TrailMonitor:
 
     async def _run(self):
         """
-        OPTION-A-1: Polls every TRAIL_LOOP_SEC seconds (0.5s from .env).
+        OPTION-A-1: Polls every TRAIL_LOOP_SEC seconds (0.1s from .env).
         OPTION-A-2: Uses self._exchange — already open, no TLS handshake.
         """
         try:
@@ -343,22 +351,10 @@ class TrailMonitor:
             else (entry_price - state.peak_price)
         )
 
-        # OPTION-B-1: Intra-bar stage upgrade — runs EVERY tick like Pine
-        live_profit_dist = max(
-            0.0,
-            (current_price - entry_price) if is_long
-            else (entry_price - current_price)
-        )
-        new_stage = _calc_new_stage(live_profit_dist, atr)
-        if new_stage > state.stage:
-            old_stage   = state.stage
-            state.stage = new_stage
-            self._active_pts, self._active_off = _get_active_params(new_stage, atr)
-            logger.info(
-                f"[TICK] Trail stage {old_stage}→{new_stage} INTRA-BAR "
-                f"| price={current_price:.2f} profit={live_profit_dist:.2f} "
-                f"active_off={self._active_off:.2f}"
-            )
+        # NOTE: FIX-TRAIL-7 — OPTION-B-1 intra-bar stage upgrade removed.
+        # Pine's calc_on_every_tick=false means the strategy block (stage logic)
+        # only runs at bar close. Stage upgrades happen exclusively in
+        # on_bar_close() above. Trail SL execution still runs every tick.
 
         # 3. TP check
         if not self._in_entry_guard(now_ms):
