@@ -2,6 +2,21 @@
 infra/journal.py
 Persistent trade journal for Shiva Sniper v11.
 
+FIXES IN THIS VERSION:
+──────────────────────────────────────────────────────────────────────
+FIX-DB-001 | SQLite lock failures on rapid restart (BUG-DB-READONLY-001)
+  ROOT CAUSE:
+    sqlite3.connect() with no timeout defaults to 5s on some builds
+    and raises "database is locked" immediately on others when a prior
+    process still holds a write lock (e.g. PM2 restart < 1s).
+    6 lock failures observed in logs after rapid restarts.
+  FIX:
+    Added timeout=10 to both sqlite3.connect() calls — Python will
+    retry the lock for up to 10 seconds before raising.
+    Added PRAGMA busy_timeout=5000 (5s in ms) — SQLite-level retry
+    for concurrent write contention inside the same process.
+──────────────────────────────────────────────────────────────────────
+
 BACKENDS:
   1. PostgreSQL (Supabase) — primary when DATABASE_URL is set
   2. SQLite — local fallback
@@ -157,9 +172,13 @@ class Journal:
                     f"-- falling back to SQLite at {LOG_FILE}"
                 )
                 self._driver = "sqlite"
-                self._conn = sqlite3.connect(LOG_FILE, check_same_thread=False)
+                # FIX-DB-001: timeout=10 retries lock for 10s on rapid restarts
+                self._conn = sqlite3.connect(LOG_FILE, check_same_thread=False, timeout=10)
+                self._conn.execute("PRAGMA busy_timeout=5000")
         else:
-            self._conn = sqlite3.connect(LOG_FILE, check_same_thread=False)
+            # FIX-DB-001: timeout=10 retries lock for 10s on rapid restarts
+            self._conn = sqlite3.connect(LOG_FILE, check_same_thread=False, timeout=10)
+            self._conn.execute("PRAGMA busy_timeout=5000")
             logger.info(f"Connected to SQLite at {LOG_FILE}")
 
     def _cursor(self):
