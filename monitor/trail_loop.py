@@ -1,9 +1,39 @@
 """
-monitor/trail_loop.py — Shiva Sniper v6.5 (PINE-EXACT-v7)
+monitor/trail_loop.py — Shiva Sniper v6.5 (PINE-EXACT-v9)
 
 FIXES IN THIS VERSION:
 ──────────────────────────────────────────────────────────────────────
-FIX-TRAIL-7 | Removed OPTION-B-1 intra-bar stage upgrade (BUG-TRAIL-STAGE-001)
+FIX-TRAIL-9 | Removed peak_profit_dist gate from _compute_trail_sl()
+  ROOT CAUSE (BUG-TRAIL-GATE-001 — observed 2026-04-17 14:30 Range Short):
+    The gate `if peak_profit_dist < active_pts_val: return None` prevented
+    the trailing stop from being placed until price had already moved the
+    FULL trail_pts distance in our favour.
+    Example: ATR=284, trail1Pts=0.70 → trail_pts=199. Price dipped 168 pts
+    favourably (< 199), so _compute_trail_sl returned None. current_sl stayed
+    at original initial SL (75,949). Price then reversed → bot stopped out
+    at 76,128 (-377 pts). Pine had no gate — it moved trail_sl to
+    peak + 199 = 75,781 and exited there (only -39 pts vs entry).
+  FIX:
+    Removed the gate entirely. Trail SL = peak ± trail_pts always, matching
+    Pine's strategy.exit(trail_points=X) which places the trailing stop from
+    the first tick. Initially trail_sl = entry ± trail_pts = initial SL.
+    As price moves favourably, trail_sl improves. No gate required.
+
+FIX-TRAIL-10 | Never widen SL when ATR grows between bars
+  ROOT CAUSE (BUG-ATR-WIDEN-001):
+    on_bar_close() recalculates SL using current ATR. If ATR grew since
+    entry (e.g. 284→318), new_stop_dist grew, pushing new_sl AWAY from
+    entry for both longs and shorts — widening the stop and diverging from
+    Pine's fixed initial `stop=` parameter.
+  FIX:
+    When trail has not yet moved the SL, only apply new_sl if it is
+    MORE FAVOURABLE (tighter) than current_sl:
+      Long:  current_sl = max(new_sl, current_sl)  — never lower
+      Short: current_sl = min(new_sl, current_sl)  — never higher
+
+──────────────────────────────────────────────────────────────────────
+PRESERVED FROM v8 (PINE-EXACT-v7 renamed v8 after prior patches):
+──────────────────────────────────────────────────────────────────────
   ROOT CAUSE of early exits vs TradingView:
     Pine Script runs with calc_on_every_tick=false.
     The strategy block (where trail stage logic lives) executes ONLY at
@@ -107,9 +137,29 @@ def _compute_trail_sl(
     # Pine applies trail1Pts from the very first tick — no stage gate.
     _, active_pts, _ = TRAIL_STAGES[max(stage - 1, 0)]
     active_pts_val = atr * active_pts
-    if peak_profit_dist < active_pts_val:
-        return None
-    # Pine: SL = peak - trail_points  (the WIDER value, i.e. active_pts_val)
+    # FIX-TRAIL-9: Removed `if peak_profit_dist < active_pts_val: return None` gate.
+    #
+    # ROOT CAUSE OF THIS BUG:
+    #   The old gate required price to move trail_pts in our favour BEFORE the
+    #   trailing stop was computed. Example: ATR=284, trail1Pts=0.70 → trail_pts=199.
+    #   If price only moved 168 pts favourably, trail_sl returned None and
+    #   current_sl stayed at the original initial SL — never tightening.
+    #
+    # WHAT PINE ACTUALLY DOES:
+    #   strategy.exit(trail_points=X) places the trailing stop at
+    #   `peak ± trail_pts` from the very first tick after entry.
+    #   Initially (no favourable movement) → trail_sl = entry ± trail_pts
+    #   = same as initial SL. As price moves favourably the trail improves.
+    #   There is NO gate that prevents the trail from computing.
+    #
+    # RESULT OF THE BUG (observed 2026-04-17 14:30 Range Short):
+    #   Price dipped 168.5 pts favourably (< trail_pts 198.9) then reversed.
+    #   Pine moved trail_sl to peak + trail_pts = 75,582 + 199 = 75,781 and
+    #   exited when price rose through 75,781 (small loss/near-breakeven).
+    #   Bot kept SL at 75,949 → price ran to 76,128 before stopping out
+    #   (-377 pts vs Pine's -39 pts on the position).
+    #
+    # Pine: SL = peak ± trail_points (always, no gate)
     return (peak_price - active_pts_val) if is_long else (peak_price + active_pts_val)
 
 
@@ -243,7 +293,23 @@ class TrailMonitor:
             (not is_long_ and self.state.current_sl < old_sl - 1.0)
         )
         if not trail_has_moved_sl:
-            self.state.current_sl = new_sl
+            # FIX-TRAIL-10: Never widen the initial SL when ATR increases.
+            #
+            # ROOT CAUSE OF THIS BUG:
+            #   If ATR grows between bars, new_stop_dist grows, so:
+            #     Long:  new_sl = entry - new_stop_dist  (goes DOWN  = wider)
+            #     Short: new_sl = entry + new_stop_dist  (goes UP    = wider)
+            #   The old code blindly set current_sl = new_sl, effectively giving
+            #   the market more room to hit the SL — diverging from Pine where
+            #   the initial `stop=` parameter is fixed at entry and never changes.
+            #
+            # FIX: Only apply the recalculated SL if it is MORE FAVOURABLE
+            # (tighter) than the current SL. This matches Pine: initial SL is a
+            # one-way ratchet — it can only improve, never widen.
+            if is_long_:
+                self.state.current_sl = max(new_sl, self.state.current_sl)
+            else:
+                self.state.current_sl = min(new_sl, self.state.current_sl)
 
         logger.info(
             f"[BAR CLOSE] ATR {old_atr:.2f}→{current_atr:.2f} | "
