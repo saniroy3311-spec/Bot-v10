@@ -109,7 +109,7 @@ RSI_OS  = int(os.environ.get("RSI_OS", "30"))
 # ──────────────────────────────────────────────
 # COMMISSION + BUFFERS
 # ──────────────────────────────────────────────
-COMMISSION_PCT           = 0.05 / 100
+COMMISSION_PCT           = 0.059 / 100   # FIX-COMM-001: actual Delta India taker rate (was 0.05)
 BRACKET_SL_BUFFER        = float(os.environ.get("BRACKET_SL_BUFFER",        "10.0"))
 TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "0.0"))
 
