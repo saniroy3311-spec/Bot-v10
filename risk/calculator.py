@@ -18,7 +18,9 @@ def calc_pl_breakdown(entry_price: float, exit_price: float, is_long: bool, qty_
     qty_btc = lots_to_btc(qty_lots)
     price_move = (exit_price - entry_price) if is_long else (entry_price - exit_price)
     raw_pl = price_move * qty_btc
-    comm = (entry_price + exit_price) * qty_btc * (COMMISSION_PCT * 2)
+    # FIX-COMM-002: Exit orders are bracket/limit orders → maker fee = 0%.
+    # Only charge taker fee on entry side.
+    comm = entry_price * qty_btc * COMMISSION_PCT
     net_pl = raw_pl - comm
     notional = entry_price * qty_btc
     net_pl_pct = (net_pl / notional) * 100 if notional > 0 else 0
@@ -91,7 +93,8 @@ def max_sl_exit_price(entry_price: float, atr: float, is_long: bool) -> float:
 def calc_real_pl(entry_price: float, exit_price: float, is_long: bool, qty_lots: int) -> float:
     qty_btc = lots_to_btc(qty_lots)
     raw_pl = (exit_price - entry_price) * qty_btc if is_long else (entry_price - exit_price) * qty_btc
-    comm = (entry_price + exit_price) * qty_btc * (COMMISSION_PCT * 2)
+    # FIX-COMM-002: Exit orders are bracket/limit → maker fee = 0%. Entry is taker only.
+    comm = entry_price * qty_btc * COMMISSION_PCT
     return raw_pl - comm
 
 
