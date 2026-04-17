@@ -5,7 +5,7 @@ Entry and exit notifications only. All trail/BE/stage messages silenced.
 
 import logging
 import aiohttp
-from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, ALERT_QTY
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, ALERT_QTY, COMMISSION_PCT
 from risk.calculator import lots_to_btc, DELTA_INDIA_BTC_PER_LOT
 
 logger = logging.getLogger(__name__)
@@ -104,7 +104,8 @@ class Telegram:
         qty_btc  = lots_to_btc(qty)
         move_pts = exit_price - entry_price if is_long else entry_price - exit_price
         gross_pl = move_pts * qty_btc
-        comm     = (entry_price + exit_price) * qty_btc * 0.001
+        # FIX-COMM-002: Exit is bracket/limit (maker = 0%). Only charge entry taker fee.
+        comm     = entry_price * qty_btc * COMMISSION_PCT
         emoji    = "💰" if real_pl >= 0 else "🔻"
         direction = "LONG" if is_long else "SHORT"
         pl_sign  = "+" if real_pl >= 0 else ""
