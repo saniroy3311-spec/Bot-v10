@@ -167,8 +167,9 @@ def _compute_trail_sl(
     """
     # stage 0 maps to Stage 1 params (idx=0).
     # Pine applies trail1Pts from the very first tick — no stage gate.
-    _, active_pts, _ = TRAIL_STAGES[max(stage - 1, 0)]
+    _, active_pts, active_off = TRAIL_STAGES[max(stage - 1, 0)]
     active_pts_val = atr * active_pts
+    active_off_val = atr * active_off
     # FIX-TRAIL-9: Removed `if peak_profit_dist < active_pts_val: return None` gate.
     #
     # ROOT CAUSE OF THIS BUG:
@@ -192,7 +193,7 @@ def _compute_trail_sl(
     #   (-377 pts vs Pine's -39 pts on the position).
     #
     # Pine: SL = peak ± trail_points (always, no gate)
-    return (peak_price - active_pts_val) if is_long else (peak_price + active_pts_val)
+    return (peak_price - active_pts_val - active_off_val) if is_long else (peak_price + active_pts_val + active_off_val)
 
 
 # ─── TrailMonitor ─────────────────────────────────────────────────────────────
