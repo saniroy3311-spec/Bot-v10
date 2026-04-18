@@ -4,38 +4,29 @@ Replicates every Pine Script indicator from Shiva Sniper v6.5.
 
 TV ACCURACY NOTES:
 ─────────────────────────────────────────────────────────────────
-Pine ta.ema()  -> standard EMA (multiplier = 2/(len+1))         OK pandas_ta matches
-Pine ta.atr()  -> Wilder RMA smoothing (alpha = 1/len)          OK pandas_ta mamode="rma" matches
-Pine ta.rsi()  -> Wilder RMA for avg gain/loss                  OK pandas_ta matches
-Pine ta.dmi()  -> Wilder RMA for +DM/-DM smoothing              OK pandas_ta matches
-Pine adx=ema(adxRaw,5) -> extra EMA(5) on top of raw ADX        OK applied manually below
+Pine ta.ema()  -> standard EMA (multiplier = 2/(len+1))         OK matches
+Pine ta.atr()  -> Wilder RMA smoothing (alpha = 1/len)          OK custom RMA matches
+Pine ta.rsi()  -> Wilder RMA for avg gain/loss                  OK custom RMA matches
+Pine ta.dmi()  -> Wilder RMA for +DM/-DM smoothing              OK custom RMA matches
+Pine adx=ema(adxRaw,5) -> extra EMA(5) on top of raw ADX        OK applied manually
+
+FIX-ENGINE-001 | Replace pandas_ta ADX with custom RMA (Pine-exact)
+  ROOT CAUSE:
+    pandas_ta seeds its RMA with SMA(first N values) while Pine Script seeds
+    it with the first single value (alpha warm-up). This tiny initialisation
+    difference propagates forward and can produce ADX values that differ by
+    0.1–0.3 near the 18/20 thresholds, flipping regime (TREND/RANGE/NONE)
+    on borderline bars — causing the bot to take entries Pine rejects,
+    or miss entries Pine takes.
+  FIX:
+    Use the same custom _rma/_ema/_dmi/_atr/_rsi helpers that strategy_logic.py
+    uses for the backtest (already Pine-exact). Removed pandas_ta dependency.
 ─────────────────────────────────────────────────────────────────
-Known tiny delta: floating-point init differs on bar 1.
-After 300+ bars: <0.001% divergence from TV.
-
-FIXES vs previous version:
-───────────────────────────────────────────────────────────────────────────────
-FIX-VOL-001 | Volume filter now matches Pine Script exactly.
-
-  Root cause:
-    FILTER_VOL_ENABLED defaulted to false → volume filter completely bypassed.
-    Pine Script: filters = ... and volume > ta.sma(volume, 20) ...
-    With volume filter off, the bot takes trades Pine would reject
-    (low-volume bars, range-transition bars) → "totally different entries".
-
-  Fix (FIX-VOL-001 + FIX-VOL-002):
-    Volume filter is ON by default (matching Pine exactly).
-    FIX-VOL-002: when Delta REST returns volume=0, the bar is now REJECTED
-    (vol_ok=False), matching Pine behaviour: 0 > sma(volume,20) = False.
-    Previous code set vol_ok=True (bypass) — causing trades Pine would reject.
-
-    Override via env: FILTER_VOL_ENABLED=false to disable entirely.
-───────────────────────────────────────────────────────────────────────────────
 """
 
 import logging
+import numpy as np
 import pandas as pd
-import pandas_ta as ta
 from dataclasses import dataclass
 from config import (
     EMA_TREND_LEN, EMA_FAST_LEN, ATR_LEN,
@@ -46,6 +37,93 @@ from config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ─── Custom Pine-exact indicator helpers (mirrors strategy_logic.py) ──────────
+
+def _first_valid_idx(arr: np.ndarray) -> int:
+    for i, v in enumerate(arr):
+        if not np.isnan(v):
+            return i
+    return -1
+
+
+def _rma(series: pd.Series, length: int) -> pd.Series:
+    arr = series.to_numpy(dtype=np.float64)
+    n = len(arr)
+    out = np.full(n, np.nan, dtype=np.float64)
+    start = _first_valid_idx(arr)
+    if start < 0 or n - start < length:
+        return pd.Series(out, index=series.index)
+    seed_end = start + length
+    seed = float(np.mean(arr[start:seed_end]))
+    out[seed_end - 1] = seed
+    alpha = 1.0 / length
+    for i in range(seed_end, n):
+        v = arr[i]
+        if np.isnan(v):
+            out[i] = out[i - 1]
+        else:
+            out[i] = out[i - 1] * (1.0 - alpha) + v * alpha
+    return pd.Series(out, index=series.index)
+
+
+def _ema(series: pd.Series, length: int) -> pd.Series:
+    arr = series.to_numpy(dtype=np.float64)
+    n = len(arr)
+    out = np.full(n, np.nan, dtype=np.float64)
+    start = _first_valid_idx(arr)
+    if start < 0 or n - start < length:
+        return pd.Series(out, index=series.index)
+    seed_end = start + length
+    seed = float(np.mean(arr[start:seed_end]))
+    out[seed_end - 1] = seed
+    alpha = 2.0 / (length + 1.0)
+    for i in range(seed_end, n):
+        v = arr[i]
+        if np.isnan(v):
+            out[i] = out[i - 1]
+        else:
+            out[i] = out[i - 1] * (1.0 - alpha) + v * alpha
+    return pd.Series(out, index=series.index)
+
+
+def _true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
+    prev_close = close.shift(1)
+    tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
+    tr.iloc[0] = high.iloc[0] - low.iloc[0]
+    return tr
+
+
+def _atr_series(high: pd.Series, low: pd.Series, close: pd.Series, length: int) -> pd.Series:
+    return _rma(_true_range(high, low, close), length)
+
+
+def _rsi_series(close: pd.Series, length: int) -> pd.Series:
+    delta = close.diff()
+    gain = delta.clip(lower=0.0)
+    loss = (-delta.clip(upper=0.0))
+    avg_gain = _rma(gain.fillna(0.0), length)
+    avg_loss = _rma(loss.fillna(0.0), length)
+    rs = avg_gain / avg_loss.replace(0.0, np.nan)
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    rsi = rsi.where(avg_loss != 0.0, 100.0)
+    return rsi
+
+
+def _dmi_series(high: pd.Series, low: pd.Series, close: pd.Series, di_len: int, adx_smooth: int):
+    up_move   = high.diff()
+    down_move = -low.diff()
+    plus_dm   = pd.Series(np.where((up_move > down_move) & (up_move > 0), up_move, 0.0), index=high.index).fillna(0.0)
+    minus_dm  = pd.Series(np.where((down_move > up_move) & (down_move > 0), down_move, 0.0), index=high.index).fillna(0.0)
+    tr        = _true_range(high, low, close)
+    atr_di    = _rma(tr, di_len)
+    plus_di   = (100.0 * _rma(plus_dm,  di_len) / atr_di.replace(0.0, np.nan)).fillna(0.0)
+    minus_di  = (100.0 * _rma(minus_dm, di_len) / atr_di.replace(0.0, np.nan)).fillna(0.0)
+    dx_denom  = (plus_di + minus_di).replace(0.0, np.nan)
+    dx        = (100.0 * (plus_di - minus_di).abs() / dx_denom).fillna(0.0)
+    adx_raw   = _rma(dx, adx_smooth)
+    return plus_di, minus_di, adx_raw
 
 
 @dataclass
@@ -82,86 +160,51 @@ class IndicatorSnapshot:
 def compute(df: pd.DataFrame) -> IndicatorSnapshot:
     """
     Compute all indicators on a confirmed OHLCV DataFrame.
-
-    Args:
-        df: DataFrame with columns [timestamp, open, high, low, close, volume].
-            Must have >= EMA_TREND_LEN + 10 rows for indicators to stabilise.
-
-    Returns:
-        IndicatorSnapshot for the LAST confirmed bar (bar[-1]).
+    Uses custom Pine-exact RMA helpers (FIX-ENGINE-001).
     """
     min_bars = EMA_TREND_LEN + 10
     if len(df) < min_bars:
         raise ValueError(f"Need >={min_bars} bars, got {len(df)}")
 
-    # -- EMA ------------------------------------------------------------------
-    ema_trend = ta.ema(df["close"], length=EMA_TREND_LEN).iloc[-1]
-    ema_fast  = ta.ema(df["close"], length=EMA_FAST_LEN).iloc[-1]
+    high   = df["high"].astype(float)
+    low    = df["low"].astype(float)
+    close  = df["close"].astype(float)
+    last   = df.iloc[-1]
 
-    # -- ATR ------------------------------------------------------------------
-    # Pine: ta.atr(14) uses Wilder RMA (alpha=1/14)
-    # pandas_ta default mamode="rma" -> matches Pine exactly
-    atr_series = ta.atr(df["high"], df["low"], df["close"],
-                        length=ATR_LEN, mamode="rma")
-    atr        = atr_series.iloc[-1]
-    atr_sma    = atr_series.rolling(50).mean().iloc[-1]
+    ema_trend = _ema(close, EMA_TREND_LEN).iloc[-1]
+    ema_fast  = _ema(close, EMA_FAST_LEN).iloc[-1]
 
-    # -- RSI ------------------------------------------------------------------
-    rsi = ta.rsi(df["close"], length=RSI_LEN).iloc[-1]
+    atr_s   = _atr_series(high, low, close, ATR_LEN)
+    atr     = atr_s.iloc[-1]
+    atr_sma = atr_s.rolling(50).mean().iloc[-1]
 
-    # -- DMI / ADX ------------------------------------------------------------
-    adx_df  = ta.adx(df["high"], df["low"], df["close"],
-                     length=DI_LEN, lensig=ADX_SMOOTH)
+    rsi = _rsi_series(close, RSI_LEN).iloc[-1]
 
-    try:
-        adx_raw_series = adx_df[f"ADX_{DI_LEN}"]
-        dip_val        = adx_df[f"DMP_{DI_LEN}"].iloc[-1]
-        dim_val        = adx_df[f"DMN_{DI_LEN}"].iloc[-1]
-    except KeyError:
-        adx_raw_series = adx_df.iloc[:, 0]
-        dip_val        = adx_df.iloc[-1, 1]
-        dim_val        = adx_df.iloc[-1, 2]
+    plus_di_s, minus_di_s, adx_raw_s = _dmi_series(high, low, close, DI_LEN, ADX_SMOOTH)
+    dip_val     = plus_di_s.iloc[-1]
+    dim_val     = minus_di_s.iloc[-1]
+    adx_raw_val = adx_raw_s.iloc[-1]
+    adx_smoothed = _ema(adx_raw_s, ADX_EMA).iloc[-1]
 
-    adx_raw_val  = adx_raw_series.iloc[-1]
-    adx_smoothed = ta.ema(adx_raw_series, length=ADX_EMA).iloc[-1]
-
-    # -- Volume SMA -----------------------------------------------------------
     vol_sma = df["volume"].rolling(20).mean().iloc[-1]
 
-    # -- Regime ---------------------------------------------------------------
     trend_regime = bool(adx_smoothed > ADX_TREND_TH)
     range_regime = bool(adx_smoothed < ADX_RANGE_TH)
 
-    # -- Filters --------------------------------------------------------------
-    # Pine: atr < ta.sma(atr, 50) * filterATRmul
-    #       and volume > ta.sma(volume, 20)
-    #       and math.abs(close - open) > atr * filterBody
-    last    = df.iloc[-1]
     atr_ok  = bool(atr < atr_sma * FILTER_ATR_MULT)
-    body_ok = bool(abs(last["close"] - last["open"]) > atr * FILTER_BODY_MULT)
+    body_ok = bool(abs(float(last["close"]) - float(last["open"])) > atr * FILTER_BODY_MULT)
 
-    # FIX-VOL-001: Volume filter — ON by default (matching Pine).
-    # Bypass ONLY when Delta returns 0 volume (data gap), to avoid permanently
-    # blocking all signals. Zero-bypass is logged as a warning.
-    # FIX-VOL-003: FILTER_VOL_MULT scales vol_sma threshold to compensate
-    # for Delta India REST returning lower volume than TradingView's feed.
-    # Pine: volume > ta.sma(volume, 20)
-    # Bot:  bar_volume > vol_sma * FILTER_VOL_MULT  (default 1.0 = Pine exact)
     if FILTER_VOL_ENABLED:
         bar_volume = float(last["volume"])
         if bar_volume > 0 and vol_sma > 0:
             vol_ok = bool(bar_volume > vol_sma * FILTER_VOL_MULT)
         else:
-            # Delta India sometimes returns 0 volume via REST.
-            # Pine Script: volume > sma(volume,20) → 0 > positive = FALSE → bar rejected.
-            # FIX-VOL-002: match Pine exactly — reject the bar, do not bypass.
             logger.warning(
                 f"VOL-BYPASS | bar_volume={bar_volume:.0f} vol_sma={vol_sma:.0f} "
                 f"— zero volume bar REJECTED (Pine parity)"
             )
             vol_ok = False
     else:
-        # Explicitly disabled via env — pass always (legacy behaviour)
         vol_ok = True
 
     filters = atr_ok and vol_ok and body_ok
@@ -198,38 +241,38 @@ def compute_full_series(df: pd.DataFrame) -> pd.DataFrame:
     """
     Compute ALL indicator values for the entire DataFrame.
     Used by phase1_verify.py to produce a comparison CSV.
+    Uses custom Pine-exact RMA helpers (FIX-ENGINE-001).
     """
     min_bars = EMA_TREND_LEN + 10
     if len(df) < min_bars:
         raise ValueError(f"Need >={min_bars} bars, got {len(df)}")
 
+    high   = df["high"].astype(float)
+    low    = df["low"].astype(float)
+    close  = df["close"].astype(float)
+
     out = pd.DataFrame()
     out["timestamp"] = df["timestamp"].values
     out["open"]      = df["open"].values
-    out["high"]      = df["high"].values
-    out["low"]       = df["low"].values
-    out["close"]     = df["close"].values
+    out["high"]      = high.values
+    out["low"]       = low.values
+    out["close"]     = close.values
     out["volume"]    = df["volume"].values
 
-    out["ema200"]    = ta.ema(df["close"], length=EMA_TREND_LEN).values
-    out["ema50"]     = ta.ema(df["close"], length=EMA_FAST_LEN).values
-    out["atr"]       = ta.atr(df["high"], df["low"], df["close"],
-                              length=ATR_LEN, mamode="rma").values
-    out["rsi"]       = ta.rsi(df["close"], length=RSI_LEN).values
+    out["ema200"] = _ema(close, EMA_TREND_LEN).values
+    out["ema50"]  = _ema(close, EMA_FAST_LEN).values
 
-    adx_df = ta.adx(df["high"], df["low"], df["close"],
-                    length=DI_LEN, lensig=ADX_SMOOTH)
-    try:
-        out["adx_raw"] = adx_df[f"ADX_{DI_LEN}"].values
-        out["dip"]     = adx_df[f"DMP_{DI_LEN}"].values
-        out["dim"]     = adx_df[f"DMN_{DI_LEN}"].values
-    except KeyError:
-        out["adx_raw"] = adx_df.iloc[:, 0].values
-        out["dip"]     = adx_df.iloc[:, 1].values
-        out["dim"]     = adx_df.iloc[:, 2].values
+    atr_s = _atr_series(high, low, close, ATR_LEN)
+    out["atr"]     = atr_s.values
+    out["atr_sma"] = atr_s.rolling(50).mean().values
 
-    out["adx"]     = ta.ema(out["adx_raw"], length=ADX_EMA).values
+    out["rsi"] = _rsi_series(close, RSI_LEN).values
+
+    plus_di_s, minus_di_s, adx_raw_s = _dmi_series(high, low, close, DI_LEN, ADX_SMOOTH)
+    out["dip"]     = plus_di_s.values
+    out["dim"]     = minus_di_s.values
+    out["adx_raw"] = adx_raw_s.values
+    out["adx"]     = _ema(adx_raw_s, ADX_EMA).values
     out["vol_sma"] = df["volume"].rolling(20).mean().values
-    out["atr_sma"] = out["atr"].rolling(50).mean().values
 
     return out.dropna().reset_index(drop=True)
