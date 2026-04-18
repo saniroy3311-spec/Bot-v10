@@ -346,9 +346,14 @@ def compute_trail_sl(stage: int, peak_price: float, peak_profit_dist: float, is_
     # FIX-TRAIL-PTS: Use active_pts (trail_POINTS) not active_off (trail_offset).
     # Pine Script SL = peak - trail_points.  active_off is Pine's limit-order
     # slippage parameter only and does NOT affect the SL price.
+    #
+    # FIX-TRAIL-GATE: Removed `if peak_profit_dist < active_pts: return None`.
+    # Pine strategy.exit(trail_points=X) places the trailing stop at
+    # peak - trail_points from the FIRST tick — there is NO activation gate.
+    # Initially trail_sl = entry ± trail_pts. The ratchet (max/min guard in
+    # the caller) ensures the trail never widens — it only tightens once it
+    # beats the initial SL. Matches trail_loop.py _compute_trail_sl() exactly.
     active_pts, _ = get_trail_params(stage, atr)
-    if peak_profit_dist < active_pts:
-        return None
     return (peak_price - active_pts) if is_long else (peak_price + active_pts)
 
 
