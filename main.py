@@ -354,17 +354,26 @@ class SniperBot:
                 )
                 trail_stage = self.trail_state.stage if self.trail_state else 0
 
-                # FIX-MAIN-5: Correctly label TP exits caught by the bracket
-                # fallback (position already closed on exchange before _on_tick
-                # could detect it). If trail was active and PL is positive,
-                # this is a Trail TP — not a generic Bracket-TP.
-                # Pine: exit at TP = "Target Profit", whether caught by trail
-                # loop or exchange-side bracket.
+                # FIX-MAIN-5 (revised): Accurately label bracket-detected exits.
+                #
+                # ROOT CAUSE OF MISLABELING BUG:
+                #   Old logic: real_pl > 0 + trail_stage == 0 → "Target Profit"
+                #   This fires even when price NEVER reached TP — e.g. position
+                #   closed at entry+49pts while TP was entry+1630pts. Any small
+                #   positive fill gets labeled "Target Profit" incorrectly.
+                #
+                # FIX: Only call it "Target Profit" when exit_price is within
+                #   10 pts of the frozen TP (i.e. the exchange actually hit it).
+                #   Otherwise label as "Bracket-Unknown" so you can investigate.
+                #   Trail TP: trail_stage > 0 and positive PL (unchanged).
+                tp_proximity = 10.0  # pts tolerance for TP hit detection
                 if real_pl > 0:
                     if trail_stage > 0:
                         exit_reason = f"Trail S{trail_stage} TP"
-                    else:
+                    elif abs(exit_price - self.risk.tp) <= tp_proximity:
                         exit_reason = "Target Profit"
+                    else:
+                        exit_reason = "Bracket-Unknown"
                 else:
                     exit_reason = "Bracket-SL"
 
