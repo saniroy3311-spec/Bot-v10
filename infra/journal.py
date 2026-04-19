@@ -174,11 +174,19 @@ class Journal:
                 self._driver = "sqlite"
                 # FIX-DB-001: timeout=10 retries lock for 10s on rapid restarts
                 self._conn = sqlite3.connect(LOG_FILE, check_same_thread=False, timeout=10)
-                self._conn.execute("PRAGMA busy_timeout=5000")
+                # FIX-DB-002: WAL mode — allows concurrent reader+writer without
+                # exclusive locks. Eliminates "attempt to write a readonly database"
+                # errors when PM2 restarts overlap and two processes hold the same DB.
+                self._conn.execute("PRAGMA journal_mode=WAL")
+                self._conn.execute("PRAGMA busy_timeout=10000")
         else:
             # FIX-DB-001: timeout=10 retries lock for 10s on rapid restarts
             self._conn = sqlite3.connect(LOG_FILE, check_same_thread=False, timeout=10)
-            self._conn.execute("PRAGMA busy_timeout=5000")
+            # FIX-DB-002: WAL mode — allows concurrent reader+writer without
+            # exclusive locks. Eliminates "attempt to write a readonly database"
+            # errors when PM2 restarts overlap and two processes hold the same DB.
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA busy_timeout=10000")
             logger.info(f"Connected to SQLite at {LOG_FILE}")
 
     def _cursor(self):
