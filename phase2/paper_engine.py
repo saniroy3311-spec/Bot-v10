@@ -27,7 +27,7 @@ from risk.calculator    import (
     calc_levels, calc_trail_stage, get_trail_params,
     should_trigger_be, max_sl_hit, calc_real_pl, RiskLevels,
 )
-from config import ALERT_QTY, COMMISSION_PCT
+from config import ALERT_QTY, COMMISSION_PCT, TRAIL_STAGES
 
 
 @dataclass
@@ -99,6 +99,17 @@ def run(df: pd.DataFrame) -> list[PaperTrade]:
         if state.in_position:
             t = state.trade
 
+            # FIX-ATR-CURRENT: Use current bar's ATR for all calculations.
+            # Pine recalculates stopDist, activePts, activeOff EVERY BAR
+            # with the current bar's ATR. Freezing at entry ATR causes:
+            #   - Trail stage triggers too early / too late when ATR drifts
+            #   - Trail SL distance wrong (wrong net_dist)
+            #   - TP level frozen instead of floating with ATR
+            #   - BE trigger distance wrong
+            # Match Pine exactly: use row["atr"] for each bar.
+            current_atr = float(row["atr"])
+            is_trend    = "Trend" in t.signal_type
+
             # FIX: Track peak price — Pine anchors trail to highest high (long)
             # or lowest low (short) since entry. Paper engine must mirror this.
             if t.is_long:
@@ -112,28 +123,43 @@ def run(df: pd.DataFrame) -> list[PaperTrade]:
             profit_dist = (close - t.entry_price) if t.is_long \
                           else (t.entry_price - close)
 
-            # Trail stage ratchet (uses profit_dist from close, mirrors Pine)
-            new_stage = calc_trail_stage(profit_dist, t.atr_at_entry)
+            # FIX: Recalculate TP every bar with current ATR — Pine parity.
+            # Pine: stopDist = math.min(atr * atrMult, maxSLPoints)
+            #        longTP   = entryPrice + stopDist * rr  (runs every bar close)
+            from config import TREND_RR, RANGE_RR, TREND_ATR_MULT, RANGE_ATR_MULT, MAX_SL_POINTS
+            atr_mult     = TREND_ATR_MULT if is_trend else RANGE_ATR_MULT
+            rr           = TREND_RR       if is_trend else RANGE_RR
+            curr_stop_dist = min(current_atr * atr_mult, MAX_SL_POINTS)
+            if t.is_long:
+                current_tp = t.entry_price + curr_stop_dist * rr
+            else:
+                current_tp = t.entry_price - curr_stop_dist * rr
+
+            # Trail stage ratchet — uses close profit_dist + current ATR (Pine parity)
+            new_stage = calc_trail_stage(profit_dist, current_atr)
             if new_stage > state.trail_stage:
                 state.trail_stage = new_stage
                 t.trail_stage     = new_stage
 
-            # Breakeven
-            if not state.be_done and should_trigger_be(profit_dist, t.atr_at_entry):
+            # Breakeven — uses current ATR (Pine: beTrigger = atr * beMult)
+            if not state.be_done and should_trigger_be(profit_dist, current_atr):
                 state.current_sl = t.entry_price
                 state.be_done    = True
 
-            # Trail ratchet SL — FIX: anchor to peak_price, NOT close.
-            # Pine: strategy.exit(trail_points=X) -> stop = highest_high - X
-            # trail_offset is a bracket-limit buffer, NOT subtracted from SL.
+            # FIX-TRAIL-NET: Trail SL = peak ± net_dist = peak ± (trail_pts - trail_off).
+            # OLD WRONG: peak_price - pts  (used trail_pts only, exited ~trail_off pts late)
+            # Pine fires at peak - (trail_pts - trail_off) = peak - net_dist.
+            # Matches trail_loop.py _compute_trail_sl() and strategy_logic.compute_trail_sl().
             if state.trail_stage > 0:
-                pts, _ = get_trail_params(state.trail_stage, t.atr_at_entry)
+                idx = state.trail_stage - 1
+                _, pts_mult, off_mult = TRAIL_STAGES[idx]
+                net_dist = current_atr * (pts_mult - off_mult)
                 if t.is_long:
-                    candidate = peak_price - pts
+                    candidate = peak_price - net_dist
                     if candidate > state.current_sl:
                         state.current_sl = candidate
                 else:
-                    candidate = peak_price + pts
+                    candidate = peak_price + net_dist
                     if candidate < state.current_sl:
                         state.current_sl = candidate
 
@@ -142,32 +168,32 @@ def run(df: pd.DataFrame) -> list[PaperTrade]:
             exit_reason = None
 
             if t.is_long:
-                # TP hit (high touches limit)
-                if high >= t.tp:
-                    exit_price  = t.tp
+                # TP hit (high touches recalculated limit)
+                if high >= current_tp:
+                    exit_price  = current_tp
                     exit_reason = "TP"
                 # SL hit (low touches stop) — current_sl may have moved
                 elif low <= state.current_sl:
                     exit_price  = state.current_sl
-                    exit_reason = "SL" if not state.be_done else "Trail/BE SL"
-                # Max SL guard
-                elif max_sl_hit(low, t.entry_price, t.atr_at_entry, True):
-                    exit_price  = t.entry_price - min(
-                        t.atr_at_entry * 1.5, 500.0)
+                    exit_reason = "Trail/BE SL" if state.be_done or state.trail_stage > 0 else "SL"
+                # Max SL guard — uses config values (was hardcoded 1.5 / 500)
+                elif max_sl_hit(low, t.entry_price, current_atr, True):
+                    from risk.calculator import max_sl_exit_price
+                    exit_price  = max_sl_exit_price(t.entry_price, current_atr, True)
                     exit_reason = "Max SL"
             else:
-                # TP hit (low touches limit)
-                if low <= t.tp:
-                    exit_price  = t.tp
+                # TP hit (low touches recalculated limit)
+                if low <= current_tp:
+                    exit_price  = current_tp
                     exit_reason = "TP"
                 # SL hit (high touches stop)
                 elif high >= state.current_sl:
                     exit_price  = state.current_sl
-                    exit_reason = "SL" if not state.be_done else "Trail/BE SL"
-                # Max SL guard
-                elif max_sl_hit(high, t.entry_price, t.atr_at_entry, False):
-                    exit_price  = t.entry_price + min(
-                        t.atr_at_entry * 1.5, 500.0)
+                    exit_reason = "Trail/BE SL" if state.be_done or state.trail_stage > 0 else "SL"
+                # Max SL guard — uses config values (was hardcoded 1.5 / 500)
+                elif max_sl_hit(high, t.entry_price, current_atr, False):
+                    from risk.calculator import max_sl_exit_price
+                    exit_price  = max_sl_exit_price(t.entry_price, current_atr, False)
                     exit_reason = "Max SL"
 
             if exit_price is not None:
@@ -256,11 +282,13 @@ class _Snap:
 def _row_to_snap(row, prev_row) -> object:
     """Build a minimal IndicatorSnapshot-compatible object from series rows."""
     from indicators.engine import IndicatorSnapshot
-    from config import ADX_TREND_TH, ADX_RANGE_TH, FILTER_ATR_MULT, FILTER_BODY_MULT
+    from config import ADX_TREND_TH, ADX_RANGE_TH, FILTER_ATR_MULT, FILTER_BODY_MULT, FILTER_VOL_MULT
 
     atr    = float(row["atr"])
     atr_ok = atr < float(row["atr_sma"]) * FILTER_ATR_MULT
-    vol_ok = float(row["volume"]) > float(row["vol_sma"])
+    # FIX-VOL-SNAP: was `volume > vol_sma` — missing FILTER_VOL_MULT.
+    # Must match indicators/engine.py compute() exactly.
+    vol_ok = float(row["volume"]) > float(row["vol_sma"]) * FILTER_VOL_MULT
     body_ok= abs(float(row["close"]) - float(row["open"])) > atr * FILTER_BODY_MULT
 
     return IndicatorSnapshot(
