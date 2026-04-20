@@ -1,446 +1,151 @@
 """
-main.py — Shiva Sniper v6.5
-Production entry point: bot loop + aiohttp dashboard server.
-
-FIXES IN THIS VERSION:
-──────────────────────────────────────────────────────────────────────
-FIX-MAIN-3 | Pass snap.atr into trail_mon.on_bar_close() (Bug 2 fix)
-  Pine recalculates atr every bar. The trail monitor now receives the
-  current bar's ATR so all trail offset calculations stay in sync.
-
-FIX-MAIN-4 | Same-bar re-entry guard (Bug 4 fix)
-  After _on_trail_exit() fires and clears in_position, main can
-  immediately re-evaluate entries on the SAME bar index (async gap).
-  Pine's noPosition is evaluated once per bar — once you exit on a bar,
-  no new entry is possible until the NEXT bar closes.
-  Fix: track _last_exit_bar_ts. If on_bar_close fires with the same
-  bar timestamp as the exit bar, skip entry evaluation entirely.
-
-PRESERVED FIXES:
-  FIX-MAIN-1: recalc_levels_from_fill (SL/TP anchored to fill price)
-  FIX-MAIN-2: same-bar entry+exit guard (entryBar == bar_index)
-  FIX-M1..M8: all prior fixes
-──────────────────────────────────────────────────────────────────────
+orders/manager.py  —  Shiva Sniper v6.5  (BRACKET MODE)
+Market entry with exchange-side bracket SL/TP as hard floor.
+Python trail_loop.py manages dynamic trailing on top.
 """
 
 import asyncio
 import logging
-import signal as sys_signal
-import os
-import json
-from aiohttp import web
-from feed.ws_feed       import CandleFeed
-from indicators.engine  import compute
-from strategy.signal    import evaluate, SignalType
-from risk.calculator    import (
-    calc_levels, recalc_levels_from_fill,
-    TrailState, calc_real_pl, RiskLevels,
+from typing import Optional
+
+import ccxt.async_support as ccxt
+
+from config import (
+    DELTA_API_KEY, DELTA_API_SECRET, DELTA_TESTNET,
+    SYMBOL, ALERT_QTY,
 )
-from orders.manager     import OrderManager
-from monitor.trail_loop import TrailMonitor
-from infra.telegram     import Telegram
-from infra.journal      import Journal
-from config             import ALERT_QTY, LOG_FILE
 
-os.makedirs(os.path.dirname(os.path.abspath(LOG_FILE)), exist_ok=True)
+logger = logging.getLogger(__name__)
 
-logging.basicConfig(
-    level  = logging.INFO,
-    format = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(
-            os.path.join(os.path.dirname(os.path.abspath(LOG_FILE)), "bot.log"),
-            encoding="utf-8",
-        ),
-    ],
-)
-logger = logging.getLogger("main")
+_INDIA_LIVE    = "https://api.india.delta.exchange"
+_INDIA_TESTNET = "https://testnet-api.india.delta.exchange"
 
 
-# ── DASHBOARD HANDLERS ────────────────────────────────────────────────────────
-
-async def dashboard_page(request):
-    html_path = os.path.join(os.path.dirname(__file__), "dashboard.html")
-    try:
-        with open(html_path, "r", encoding="utf-8") as f:
-            return web.Response(text=f.read(), content_type="text/html")
-    except Exception as e:
-        return web.Response(text=f"Dashboard file not found: {e}", status=404)
-
-
-async def get_summary(request):
-    bot = request.app["bot"]
-    try:
-        summary = bot.journal.get_summary()
-        if not summary:
-            summary = {"total": 0, "wins": 0, "losses": 0, "total_pl": 0.0,
-                       "best": 0.0, "worst": 0.0, "win_rate": 0.0}
-    except Exception as e:
-        logger.error(f"get_summary error: {e}")
-        summary = {"total": 0, "wins": 0, "losses": 0, "total_pl": 0.0,
-                   "best": 0.0, "worst": 0.0, "win_rate": 0.0}
-    return web.json_response(summary)
+def build_exchange() -> ccxt.delta:
+    base_url = _INDIA_TESTNET if DELTA_TESTNET else _INDIA_LIVE
+    params = {
+        "apiKey"         : DELTA_API_KEY,
+        "secret"         : DELTA_API_SECRET,
+        "enableRateLimit": True,
+        "urls": {"api": {"public": base_url, "private": base_url}},
+    }
+    exchange = ccxt.delta(params)
+    logger.info(
+        f"Exchange built → {'TESTNET' if DELTA_TESTNET else 'LIVE'} | "
+        f"endpoint={base_url} | qty={ALERT_QTY} lots | mode=BRACKET"
+    )
+    return exchange
 
 
-async def get_position(request):
-    bot = request.app["bot"]
-    if not bot.in_position or not bot.risk:
-        return web.json_response(None)
-    return web.json_response({
-        "symbol"      : "BTCUSDT",
-        "is_long"     : bot.risk.is_long,
-        "entry_price" : bot.risk.entry_price,
-        "sl"          : bot.risk.sl,
-        "tp"          : bot.risk.tp,
-        "atr"         : bot.risk.atr,
-        "trail_stage" : bot.trail_state.stage if bot.trail_state else 0,
-        "current_sl"  : bot.trail_state.current_sl if bot.trail_state else bot.risk.sl,
-    })
-
-
-async def get_trades(request):
-    bot = request.app["bot"]
-    limit = int(request.query.get("limit", 50))
-    try:
-        trades = bot.journal.get_trades(limit)
-    except Exception as e:
-        logger.error(f"get_trades error: {e}")
-        trades = []
-    return web.json_response(trades)
-
-
-async def get_status(request):
-    bot = request.app["bot"]
-    return web.json_response({
-        "status"     : "live" if bot.feed else "offline",
-        "in_position": bot.in_position,
-    })
-
-
-async def start_health_server(bot_instance):
-    port = int(os.environ.get("PORT", 10000))
-    app  = web.Application()
-    app["bot"] = bot_instance
-    app.router.add_get("/",             dashboard_page)
-    app.router.add_get("/health",       lambda r: web.Response(text="OK"))
-    app.router.add_get("/api/summary",  get_summary)
-    app.router.add_get("/api/position", get_position)
-    app.router.add_get("/api/trades",   get_trades)
-    app.router.add_get("/api/status",   get_status)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    logger.info(f"Dashboard LIVE → http://0.0.0.0:{port}")
-
-
-# ── BOT LOGIC ─────────────────────────────────────────────────────────────────
-
-class SniperBot:
-    def __init__(self):
-        self.order_mgr    = OrderManager()
-        self.telegram     = Telegram()
-        self.journal      = Journal()
-        self.trail_mon    = TrailMonitor(self.order_mgr, self.telegram, self.journal)
-        self.feed         = CandleFeed(self.on_bar_close, self._on_feed_ready)
-        self.in_position  = False
-        self.risk: RiskLevels | None     = None
-        self.trail_state: TrailState | None = None
-        self._last_signal_type: str      = "Unknown"
-        self._entry_lock = asyncio.Lock()
-
-        # FIX-MAIN-4: track the bar timestamp when last exit fired
-        # If on_bar_close() fires with this same timestamp, skip entry eval.
-        self._last_exit_bar_ts: int | None = None
-
-        # Track current bar timestamp so _on_trail_exit can read it
-        self._current_bar_ts: int = 0
-
-    async def _recover_position(self) -> None:
-        saved = self.journal.get_open_trade()
-        if not saved:
-            return
-        pos = await self.order_mgr.fetch_position()
-        if not pos or pos.get("contracts", 0) == 0:
-            self.journal.close_open_trade()
-            return
-
-        self.risk = RiskLevels(
-            entry_price = float(saved["entry_price"]),
-            sl          = float(saved["sl"]),
-            tp          = float(saved["tp"]),
-            stop_dist   = abs(float(saved["entry_price"]) - float(saved["sl"])),
-            atr         = float(saved["atr"]),
-            is_long     = bool(saved["is_long"]),
-            is_trend    = "Trend" in saved["signal_type"],
-        )
-        self.trail_state = TrailState()
-        self.trail_state.stage      = int(saved["trail_stage"])
-        self.trail_state.current_sl = float(saved["current_sl"])
-        self.trail_state.peak_price = float(saved.get("peak_price") or saved["entry_price"])
-        self._last_signal_type      = saved.get("signal_type", "Unknown")
-
-        self.in_position = True
-        self.trail_mon.start(self.risk, self.trail_state,
-                             on_trail_exit=self._on_trail_exit)
-        logger.info(
-            f"Position recovered from DB | entry={self.risk.entry_price:.2f} "
-            f"sl={self.risk.sl:.2f} trail_stage={self.trail_state.stage}"
-        )
-
-    async def _on_feed_ready(self) -> None:
-        await self._recover_position()
-
-    async def on_bar_close(self, df) -> None:
+async def _retry(coro_fn, retries: int = 3, delay: float = 1.0):
+    for attempt in range(1, retries + 1):
         try:
-            await self._process_bar(df)
-        except Exception as e:
-            logger.error(f"on_bar_close error: {e}", exc_info=True)
-            await self.telegram.notify_error(f"on_bar_close crashed: {e}")
+            return await coro_fn()
+        except (ccxt.NetworkError, ccxt.RequestTimeout) as e:
+            if attempt == retries:
+                raise
+            wait = delay * (2 ** (attempt - 1))
+            logger.warning(f"Attempt {attempt} failed ({e}), retry in {wait}s")
+            await asyncio.sleep(wait)
 
-    async def _process_bar(self, df) -> None:
-        snap = compute(df)
 
-        # Store current bar timestamp for same-bar exit guard (FIX-MAIN-4)
-        self._current_bar_ts = snap.timestamp
+class OrderManager:
+    def __init__(self):
+        self.exchange = build_exchange()
+        self.position: Optional[dict] = None
 
-        # FIX-MAIN-3: Pass snap.atr (current bar ATR) to trail monitor.
-        # Pine recalculates atr every bar — trail offsets must follow.
-        if self.in_position:
-            self.trail_mon.on_bar_close(snap.close, snap.high, snap.low, snap.atr)
-
-        if not self.in_position:
-            if self._entry_lock.locked():
-                logger.warning("Entry lock held — skipping duplicate bar_close signal")
-                return
-            async with self._entry_lock:
-                if self.in_position:
-                    return
-
-                # FIX-MAIN-4: Skip entry if the exit just happened on this bar.
-                # Pine's noPosition gate is evaluated once at bar open —
-                # once you're out on bar N, no re-entry until bar N+1.
-                if self._last_exit_bar_ts is not None and \
-                   self._last_exit_bar_ts == self._current_bar_ts:
-                    logger.info(
-                        f"Same-bar re-entry blocked | bar_ts={self._current_bar_ts} "
-                        f"exit_ts={self._last_exit_bar_ts} (Pine parity)"
-                    )
-                    return
-
-                sig = evaluate(snap, has_position=False)
-
-                logger.info(
-                    f"BAR | close={snap.close:.2f} "
-                    f"adx={snap.adx:.2f} "
-                    f"regime={'TREND' if snap.trend_regime else 'RANGE' if snap.range_regime else 'NONE'} "
-                    f"ema_fast={snap.ema_fast:.2f} ema_trend={snap.ema_trend:.2f} "
-                    f"dip={snap.dip:.2f} dim={snap.dim:.2f} rsi={snap.rsi:.2f} "
-                    f"atr={snap.atr:.2f} atr_sma={snap.atr_sma:.2f} "
-                    f"vol={snap.volume:.0f} vol_sma={snap.vol_sma:.0f} "
-                    f"prev_high={snap.prev_high:.2f} prev_low={snap.prev_low:.2f} "
-                    f"| atr_ok={snap.atr_ok} vol_ok={snap.vol_ok} body_ok={snap.body_ok} "
-                    f"=> signal={sig.signal_type.value}"
-                )
-
-                if sig.signal_type == SignalType.NONE:
-                    return
-
-                risk = calc_levels(snap.close, snap.atr, sig.is_long, sig.is_trend)
-                order = await self.order_mgr.place_entry(sig.is_long, risk.sl, risk.tp)
-
-                fill_price = float(order.get("average") or order.get("price") or snap.close)
-                risk = recalc_levels_from_fill(risk, fill_price)
-
-                logger.info(
-                    f"Entry | signal={sig.signal_type.value} "
-                    f"bar_close={snap.close:.2f} fill={fill_price:.2f} "
-                    f"sl={risk.sl:.2f} tp={risk.tp:.2f} atr={snap.atr:.2f}"
-                )
-
-                self.in_position       = True
-                self.risk              = risk
-                self._last_signal_type = sig.signal_type.value
-                self.trail_state = TrailState(
-                    stage      = 0,
-                    current_sl = risk.sl,
-                    peak_price = fill_price,
-                )
-                self.trail_mon.start(risk, self.trail_state,
-                                     on_trail_exit=self._on_trail_exit)
-                self.journal.open_trade(
-                    sig.signal_type.value, sig.is_long,
-                    fill_price, risk.sl, risk.tp, snap.atr, ALERT_QTY,
-                )
-                await self.telegram.notify_entry(
-                    sig.signal_type.value, fill_price,
-                    risk.sl, risk.tp, snap.atr,
-                )
-
-        else:
-            if self.trail_mon and self.trail_mon._exit_triggered:
-                logger.info("Bracket fallback skipped — trail_loop already handled exit")
-                return
-            pos = await self.order_mgr.fetch_position()
-            if pos is None or pos.get("contracts", 0) == 0:
-                await self._on_position_closed_by_bracket()
-
-    async def _on_trail_exit(self, exit_price: float, reason: str) -> None:
-        if not self.in_position:
-            return
-
-        # FIX-MAIN-4: record which bar this exit happened on
-        self._last_exit_bar_ts = self._current_bar_ts
-
-        # BUG-FIX-TELEGRAM-EXIT: DO NOT call trail_mon.stop() here yet.
-        # stop() calls self._task.cancel(). Since _on_trail_exit runs inside
-        # that same task, the CancelledError fires at the next `await` —
-        # which is the Telegram notify_exit call — silently dropping the message.
-        # Fix: do all awaits first, then call stop() at the end (the exchange
-        # socket is all that remains to close; _running is already False).
-
-        trail_stage = self.trail_state.stage if self.trail_state else 0
-
-        real_pl = calc_real_pl(
-            self.risk.entry_price, exit_price,
-            self.risk.is_long, ALERT_QTY,
-        ) if self.risk else 0.0
-
-        self.journal.log_trade(
-            signal_type = self._last_signal_type,
-            is_long     = self.risk.is_long if self.risk else True,
-            entry_price = self.risk.entry_price if self.risk else 0.0,
-            exit_price  = exit_price,
-            sl          = self.risk.sl if self.risk else 0.0,
-            tp          = self.risk.tp if self.risk else 0.0,
-            atr         = self.risk.atr if self.risk else 0.0,
-            qty         = ALERT_QTY,
-            real_pl     = real_pl,
-            exit_reason = reason,
-            trail_stage = trail_stage,
-        )
-        _entry_price = self.risk.entry_price if self.risk else 0.0
-        _is_long     = self.risk.is_long     if self.risk else True
-
-        self.journal.close_open_trade()
-        self.in_position = False
-        self.risk        = None
-        self.trail_state = None
-        logger.info(
-            f"Position closed | exit={exit_price:.2f} reason={reason} pl={real_pl:+.4f}"
-        )
-        await self.telegram.notify_exit(reason, _entry_price, exit_price, real_pl, _is_long)
-
-        # Stop AFTER all awaits — only closes the exchange WebSocket now.
-        self.trail_mon.stop()
-
-    async def _on_position_closed_by_bracket(self) -> None:
-        self.trail_mon.stop()
-        exit_price  = 0.0
-        exit_reason = "Bracket"
-        real_pl     = 0.0
-
-        if self.risk:
-            try:
-                exit_price = await self.order_mgr.fetch_last_trade_price() or 0.0
-            except Exception as e:
-                logger.warning(f"Could not fetch exit price: {e}")
-
-            if exit_price > 0:
-                real_pl = calc_real_pl(
-                    self.risk.entry_price, exit_price,
-                    self.risk.is_long, ALERT_QTY,
-                )
-                trail_stage = self.trail_state.stage if self.trail_state else 0
-
-                # FIX-MAIN-5 (revised): Accurately label bracket-detected exits.
-                #
-                # ROOT CAUSE OF MISLABELING BUG:
-                #   Old logic: real_pl > 0 + trail_stage == 0 → "Target Profit"
-                #   This fires even when price NEVER reached TP — e.g. position
-                #   closed at entry+49pts while TP was entry+1630pts. Any small
-                #   positive fill gets labeled "Target Profit" incorrectly.
-                #
-                # FIX: Only call it "Target Profit" when exit_price is within
-                #   10 pts of the frozen TP (i.e. the exchange actually hit it).
-                #   Otherwise label as "Bracket-Unknown" so you can investigate.
-                #   Trail TP: trail_stage > 0 and positive PL (unchanged).
-                tp_proximity = 10.0  # pts tolerance for TP hit detection
-                if real_pl > 0:
-                    if trail_stage > 0:
-                        exit_reason = f"Trail S{trail_stage} TP"
-                    elif abs(exit_price - self.risk.tp) <= tp_proximity:
-                        exit_reason = "Target Profit"
-                    else:
-                        exit_reason = "Bracket-Unknown"
-                else:
-                    exit_reason = "Bracket-SL"
-
-                self.journal.log_trade(
-                    signal_type = self._last_signal_type,
-                    is_long     = self.risk.is_long,
-                    entry_price = self.risk.entry_price,
-                    exit_price  = exit_price,
-                    sl          = self.risk.sl,
-                    tp          = self.risk.tp,
-                    atr         = self.risk.atr,
-                    qty         = ALERT_QTY,
-                    real_pl     = real_pl,
-                    exit_reason = exit_reason,
-                    trail_stage = trail_stage,
-                )
-
-            await self.telegram.notify_exit(
-                exit_reason, self.risk.entry_price, exit_price, real_pl,
-                self.risk.is_long,
+    async def initialize(self) -> None:
+        logger.info("Loading market map from Delta India (async)...")
+        await self.exchange.load_markets()
+        if SYMBOL not in self.exchange.markets:
+            available = [
+                s for s in self.exchange.markets
+                if "BTC" in s and "USD" in s and ":" in s and len(s) < 15
+            ]
+            raise ValueError(
+                f"SYMBOL '{SYMBOL}' not found on Delta India.\n"
+                f"Available BTC perpetuals: {available}\n"
+                f"Fix: update SYMBOL= in your .env"
             )
+        logger.info(f"Market map loaded — symbol {SYMBOL} verified ✅")
 
-        # FIX-MAIN-4: record exit bar for same-bar guard
-        self._last_exit_bar_ts = self._current_bar_ts
-
-        self.journal.close_open_trade()
-        self.in_position = False
-        self.risk        = None
-        self.trail_state = None
+    async def place_entry(self, is_long: bool, sl: float, tp: float) -> dict:
+        side = "buy" if is_long else "sell"
         logger.info(
-            f"Position closed by bracket | exit={exit_price:.2f} "
-            f"reason={exit_reason} pl={real_pl:+.4f}"
+            f"Placing {side.upper()} entry (bracket) | "
+            f"SL={sl:.2f} TP={tp:.2f} | Qty={ALERT_QTY} lots"
         )
+        order = await _retry(lambda: self.exchange.create_order(
+            symbol = SYMBOL,
+            type   = "market",
+            side   = side,
+            amount = ALERT_QTY,
+            params = {
+                "stop_loss_order": {
+                    "order_type": "market_order",
+                    "stop_price": round(sl, 1),
+                },
+                "take_profit_order": {
+                    "order_type": "market_order",
+                    "stop_price": round(tp, 1),
+                },
+            }
+        ))
+        fill_price = float(order.get("average") or order.get("price") or 0)
+        self.position = {
+            "entry_order_id": order["id"],
+            "is_long"       : is_long,
+            "entry_price"   : fill_price,
+        }
+        logger.info(
+            f"Entry filled | price={fill_price:.2f} "
+            f"| SL={sl:.2f} TP={tp:.2f} — exchange bracket + Python trail active ✅"
+        )
+        return order
 
-    async def run(self) -> None:
-        await self.order_mgr.initialize()
-        await self.telegram.notify_start()
-        self.journal.log_event("start", "Shiva Sniper v6.5 started")
-        await self.feed.start()
+    async def modify_sl(self, new_sl: float,
+                        sl_limit_buf: Optional[float] = None) -> None:
+        logger.debug(f"modify_sl({new_sl:.2f}) — bracket mode, exchange handles hard floor")
 
-    async def shutdown(self, reason: str = "redeploy") -> None:
-        logger.info(f"Shutting down: {reason}")
-        self.trail_mon.stop()
-        await self.telegram.notify_stop()
-        self.journal.log_event("stop", reason)
-        await self.order_mgr.close_exchange()
-        await self.telegram.close()
-        self.journal.close()
+    async def close_at_trail_sl(self, reason: str = "Trail SL") -> dict:
+        if not self.position:
+            logger.warning("close_at_trail_sl called but no position tracked")
+            return {}
+        is_long = self.position["is_long"]
+        side    = "sell" if is_long else "buy"
+        logger.info(f"Market exit ({reason}) | side={side} qty={ALERT_QTY} lots")
+        order = await _retry(lambda: self.exchange.create_order(
+            symbol = SYMBOL,
+            type   = "market",
+            side   = side,
+            amount = ALERT_QTY,
+            params = {"reduce_only": True}
+        ))
+        self.position = None
+        return order
 
+    async def close_position(self, reason: str = "Max SL Hit") -> dict:
+        return await self.close_at_trail_sl(reason=reason)
 
-async def main():
-    bot  = SniperBot()
-    loop = asyncio.get_running_loop()
-    stop_event = asyncio.Event()
+    async def fetch_position(self) -> Optional[dict]:
+        positions = await _retry(
+            lambda: self.exchange.fetch_positions([SYMBOL])
+        )
+        for pos in positions:
+            if pos.get("symbol") == SYMBOL and pos.get("contracts", 0) != 0:
+                return pos
+        return None
 
-    def _handle_signal():
-        stop_event.set()
+    async def fetch_last_trade_price(self) -> Optional[float]:
+        try:
+            trades = await _retry(
+                lambda: self.exchange.fetch_my_trades(SYMBOL, limit=1)
+            )
+            if trades:
+                return float(trades[-1]["price"])
+        except Exception as e:
+            logger.warning(f"fetch_last_trade_price failed: {e}")
+        return None
 
-    loop.add_signal_handler(sys_signal.SIGTERM, _handle_signal)
-    loop.add_signal_handler(sys_signal.SIGINT,  _handle_signal)
-
-    await start_health_server(bot)
-    bot_task = asyncio.create_task(bot.run())
-    await stop_event.wait()
-    bot_task.cancel()
-    await bot.shutdown("signal received")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    async def close_exchange(self) -> None:
+        await self.exchange.close()
