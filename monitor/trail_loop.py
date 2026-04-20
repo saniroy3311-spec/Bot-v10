@@ -75,6 +75,7 @@ FIX:
   for backward compatibility but is no longer used.
 
 ─────────────────────────────────────────────────────────────────────
+
 BUG-3 (PRIMARY) — FIX-TRAIL-13 froze TP at entry (WRONG diagnosis)
 ─────────────────────────────────────────────────────────────────────
 ROOT CAUSE (BUG-TP-FROZEN-001):
@@ -128,6 +129,11 @@ FIX-TRAIL-1..4 | Prior peak-reset and race-condition fixes
 BUG-1 FIX    | ENTRY_GUARD_MS=0 (exits fire immediately)
 BUG-2 FIX    | _bar_just_closed guard removed from _on_tick()
 BUG-3 FIX    | FIX-TRAIL-14 unfroze TP (FIX-TRAIL-13 was wrong)
+
+BUG-5 FIX    | trail_loop exchange missing load_markets() — markets
+               injected from order_manager.exchange.markets at start()
+               so fetch_ticker(SYMBOL) resolves correctly without an
+               extra API call.
 ═══════════════════════════════════════════════════════════════════════
 """
 
@@ -283,13 +289,22 @@ class TrailMonitor:
             "urls"           : {"api": {"public": _base_url, "private": _base_url}},
         })
 
+        # BUG-5 FIX: Inject already-loaded market map from OrderManager.
+        # Without this, fetch_ticker(SYMBOL) raises BadSymbol because the
+        # fresh ccxt.delta instance has no market map and cannot resolve
+        # "BTC/USD:USD" → "BTCUSD.P". This was silently swallowed by the
+        # except block in _run(), causing the trail monitor to never fire
+        # any [TICK] messages and the position to be completely unmonitored.
+        self._exchange.markets = self.order_mgr.exchange.markets
+
         self._task = asyncio.create_task(self._run())
         logger.info(
             f"TrailMonitor started | entry={risk_levels.entry_price:.2f} "
             f"sl={risk_levels.sl:.2f} tp={risk_levels.tp:.2f} "
             f"atr={risk_levels.atr:.2f} long={risk_levels.is_long} "
             f"poll_interval={TRAIL_LOOP_SEC}s [OPTION-A-1] "
-            f"[ENTRY_GUARD_MS={ENTRY_GUARD_MS} — exits fire immediately]"
+            f"[ENTRY_GUARD_MS={ENTRY_GUARD_MS} — exits fire immediately] "
+            f"[BUG-5 FIX: markets injected from order_manager]"
         )
 
     def stop(self):
@@ -443,6 +458,8 @@ class TrailMonitor:
         """
         OPTION-A-1: Polls every TRAIL_LOOP_SEC seconds (0.1s from .env).
         OPTION-A-2: Uses self._exchange — already open, no TLS handshake.
+        BUG-5 FIX:  self._exchange.markets pre-loaded from order_manager —
+                    fetch_ticker(SYMBOL) resolves without BadSymbol error.
         """
         try:
             while self._running:
