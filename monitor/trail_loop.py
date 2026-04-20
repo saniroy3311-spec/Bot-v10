@@ -1,9 +1,37 @@
 """
-monitor/trail_loop.py — Shiva Sniper v6.5 (PINE-EXACT-v13)
+monitor/trail_loop.py — Shiva Sniper v6.5 (PINE-EXACT-v14)
 
 ═══════════════════════════════════════════════════════════════════════
-THREE CRITICAL BUGS FIXED IN THIS VERSION (vs Bot-v10 on Hostinger)
+FOUR CRITICAL BUGS FIXED IN THIS VERSION (vs Bot-v10 on Hostinger)
 ═══════════════════════════════════════════════════════════════════════
+
+BUG-4 (PRIMARY) — trail_offset dropped from SL fire-level formula
+─────────────────────────────────────────────────────────────────────
+ROOT CAUSE:
+  FIX-TRAIL-12A declared trail_offset = "limit-order execution
+  slippage allowance ONLY" and computed trail stop as:
+      trail_sl = peak + trail_pts          (for short)
+
+  Pine Script strategy.exit(trail_points=X, trail_offset=Y):
+  trail_offset is a PRE-FIRE BUFFER, not slippage. Pine places the
+  trailing stop order at peak + trail_pts, but triggers (executes)
+  the exit trail_offset points BEFORE that level is reached. The
+  effective exit level is:
+      trail_sl = peak + trail_pts - trail_off  (for short)
+      trail_sl = peak - trail_pts + trail_off  (for long)
+
+SYMPTOM:
+  Bot held positions trail_offset (~0.55 ATR ≈ 165 pts on 30m)
+  longer than Pine before exiting. All "Trail S0" exits in logs were
+  ~165-200 pts worse than the matching Pine Strategy Tester exit.
+  Example: Pine exited short at 74,079 — bot exited at 74,282 (+203 pts).
+
+FIX (FIX-TRAIL-15):
+  _compute_trail_sl() now uses net_dist = (trail_pts - trail_off) * ATR.
+  Stage net distances: Stage 1=0.15, Stage 2=0.10, Stage 3=0.10,
+  Stage 4=0.05, Stage 5=0.05 (in ATR units).
+
+─────────────────────────────────────────────────────────────────────
 
 BUG-1 (PRIMARY) — ENTRY_GUARD_MS = 5000 blocks same-candle exits
 ─────────────────────────────────────────────────────────────────────
@@ -83,9 +111,11 @@ FIX (FIX-TRAIL-14):
   tightens via the tick loop's max/min ratchet guard.
 
 ═══════════════════════════════════════════════════════════════════════
-PRESERVED FIXES (unchanged from v10/v11)
+PRESERVED FIXES (unchanged from v13)
 ═══════════════════════════════════════════════════════════════════════
-FIX-TRAIL-12 | trail_points-only SL formula (_compute_trail_sl)
+FIX-TRAIL-14 | TP recalculates every bar with current ATR (BUG-3 fix)
+FIX-TRAIL-12B| No activation gate — Pine applies trail from tick 1
+FIX-TRAIL-12A| (SUPERSEDED by FIX-TRAIL-15 — trail_off restored)
 FIX-TRAIL-10 | Never widen state.current_sl when ATR grows between bars
 FIX-TRAIL-9  | Removed peak_profit_dist gate from _compute_trail_sl
 FIX-TRAIL-8  | Preserve intra-bar peak extremes at bar boundary
@@ -95,6 +125,9 @@ FIX-TRAIL-5  | Cancel/restart tick task at bar boundary
 OPTION-A-1   | Poll every TRAIL_LOOP_SEC seconds
 OPTION-A-2   | Persistent exchange connection (no reconnect per bar)
 FIX-TRAIL-1..4 | Prior peak-reset and race-condition fixes
+BUG-1 FIX    | ENTRY_GUARD_MS=0 (exits fire immediately)
+BUG-2 FIX    | _bar_just_closed guard removed from _on_tick()
+BUG-3 FIX    | FIX-TRAIL-14 unfroze TP (FIX-TRAIL-13 was wrong)
 ═══════════════════════════════════════════════════════════════════════
 """
 
@@ -153,28 +186,41 @@ def _compute_trail_sl(
     atr: float,
 ) -> Optional[float]:
     """
-    Pine-exact trail stop: SL = peak ± trail_POINTS only.
+    Pine-exact trail stop: SL fires at peak ± (trail_pts - trail_off).
 
-    FIX-TRAIL-12A: Use active_pts_val only (not pts + off combined).
+    FIX-TRAIL-15: Restore trail_offset into the SL fire-level formula.
 
     Pine Script strategy.exit(trail_points=X, trail_offset=Y):
-      trail_points = distance of the trailing STOP below/above the peak.
-      trail_offset = limit-order execution slippage allowance ONLY.
-                     Does NOT move the SL level.
+      trail_points  = distance from peak at which the trailing STOP ORDER is placed.
+      trail_offset  = pre-fire buffer. Pine activates the exit order when price
+                      reaches (stop_price - trail_offset) for longs or
+                      (stop_price + trail_offset) for shorts — i.e. trail_offset
+                      points BEFORE the trailing stop placement level.
 
-    Stage SL distances from peak:
-      Stage 0/1 : peak ± 0.70 ATR
-      Stage 2   : peak ± 0.55 ATR
-      Stage 3   : peak ± 0.45 ATR
-      Stage 4   : peak ± 0.30 ATR
-      Stage 5   : peak ± 0.20 ATR
+    Net effective exit level from peak:
+      LONG  : peak - trail_pts + trail_off   (= peak - net_dist)
+      SHORT : peak + trail_pts - trail_off   (= peak + net_dist)
+      where  net_dist = trail_pts - trail_off
+
+    Stage net distances from peak (trail_pts - trail_off):
+      Stage 0/1 : (0.70 - 0.55) ATR = 0.15 ATR
+      Stage 2   : (0.55 - 0.45) ATR = 0.10 ATR
+      Stage 3   : (0.45 - 0.35) ATR = 0.10 ATR
+      Stage 4   : (0.30 - 0.25) ATR = 0.05 ATR
+      Stage 5   : (0.20 - 0.15) ATR = 0.05 ATR
+
+    WHY THIS WAS WRONG BEFORE (FIX-TRAIL-12A):
+      The prior formula used trail_pts only → fires at peak ± trail_pts.
+      Pine fires trail_offset points earlier → fires at peak ± (trail_pts - trail_off).
+      Result: bot held losing positions ~trail_off (≈0.55 ATR ≈165 pts on 30m)
+      longer than Pine, producing bigger losses than the backtest showed.
 
     No gate on peak_profit_dist. Pine applies trail from tick 1.
     The max/min ratchet in _on_tick() ensures the trail never widens.
     """
-    _, active_pts, _ = TRAIL_STAGES[max(stage - 1, 0)]
-    active_pts_val = atr * active_pts
-    return (peak_price - active_pts_val) if is_long else (peak_price + active_pts_val)
+    _, pts_mult, off_mult = TRAIL_STAGES[max(stage - 1, 0)]
+    net_dist = atr * (pts_mult - off_mult)   # e.g. (0.70-0.55)*ATR = 0.15*ATR
+    return (peak_price - net_dist) if is_long else (peak_price + net_dist)
 
 
 # ─── TrailMonitor ─────────────────────────────────────────────────────────────
