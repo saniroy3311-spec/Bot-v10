@@ -1,102 +1,101 @@
 """
-monitor/trail_loop.py — Shiva Sniper v6.5 (PINE-EXACT-v11)
+monitor/trail_loop.py — Shiva Sniper v6.5 (PINE-EXACT-v13)
 
-FIX-TRAIL-12 | Correct trail_points-only SL and remove false activation gate
-──────────────────────────────────────────────────────────────────────
-ROOT CAUSE (two bugs introduced by FIX-TRAIL-11):
+═══════════════════════════════════════════════════════════════════════
+THREE CRITICAL BUGS FIXED IN THIS VERSION (vs Bot-v10 on Hostinger)
+═══════════════════════════════════════════════════════════════════════
 
-  BUG A — Wrong SL formula in _compute_trail_sl():
-    The function returned:
-      peak - active_pts_val - active_off_val   (pts + off combined)
-    Pine Script strategy.exit(trail_points=X, trail_offset=Y) means:
-      trail_points = distance of the stop BELOW peak  (the actual SL level)
-      trail_offset = how far from the SL to place the LIMIT exit order
-                     (execution slippage allowance only — does NOT move the SL)
-    Correct formula: peak - trail_points only.
-    With Stage 1 values (pts=0.70, off=0.55) the bug placed the stop at
-    peak - 1.25*ATR instead of peak - 0.70*ATR — far too loose.
+BUG-1 (PRIMARY) — ENTRY_GUARD_MS = 5000 blocks same-candle exits
+─────────────────────────────────────────────────────────────────────
+ROOT CAUSE:
+  ENTRY_GUARD_MS = 5000 imposed a 5-second hard window after entry
+  during which ALL exits (SL, TP, trail) were suppressed. _in_entry_guard()
+  returned True for 5 seconds and the TP / Max-SL / SL checks all had
+  `if not self._in_entry_guard(now_ms):` guards wrapping them.
 
-  BUG B — False activation gate using trail_offset:
-    FIX-TRAIL-11 gated trail ratcheting on peak_profit_dist >= active_off.
-    Pine has NO such gate. strategy.exit(trail_points=X) places the trail
-    stop at peak - trail_points from the very first tick after entry.
-    Initially (no favourable movement): trail_sl = entry - trail_pts.
-    At Stage 1 that equals entry - 0.70*ATR which is TIGHTER than the
-    initial SL (entry - 0.90*ATR).  BUT current_sl = max(trail_sl, old_sl)
-    means the bot correctly keeps the wider 0.90*ATR stop until price moves
-    far enough for the trail to beat it.  No gate is needed — the max/min
-    ratchet logic already handles this correctly.
+  Pine Script's strategy.exit() is active the EXACT millisecond the
+  entry order is confirmed. There is no grace period whatsoever.
+
+SYMPTOM:
+  Bot enters → market spikes → Pine hits trail/SL/TP within first 5s
+  of the candle → Pine closes → bot artificially holds the position,
+  running a diverged calculation for the rest of the candle.
 
 FIX:
-  1. _compute_trail_sl(): return peak - active_pts_val only (not pts+off).
-  2. _on_tick(): remove the `peak_profit_dist >= self._active_off` gate.
-     Trail ratcheting runs every tick; the max/min guard in current_sl
-     ensures it never widens the stop, exactly matching Pine.
+  ENTRY_GUARD_MS set to 0. _in_entry_guard() now always returns False.
+  TP, Max-SL, and SL checks fire from the very first tick. Pine parity.
 
-──────────────────────────────────────────────────────────────────────
+─────────────────────────────────────────────────────────────────────
+BUG-2 (SECONDARY) — _bar_just_closed skips first-tick exit evaluation
+─────────────────────────────────────────────────────────────────────
+ROOT CAUSE:
+  After on_bar_close() ran, it set self._bar_just_closed = True.
+  The very next tick in _on_tick() would hit that guard, skip ALL
+  exit evaluation (returning early after only updating peak), and
+  reset the flag. This suppressed exits on the first poll cycle
+  of every new bar — the exact moment same-candle exits are most
+  likely to fire (e.g., a gap open that immediately hits SL/TP).
 
-FIXES IN THIS VERSION:
-──────────────────────────────────────────────────────────────────────
-FIX-TRAIL-9 | Removed peak_profit_dist gate from _compute_trail_sl()
-  ROOT CAUSE (BUG-TRAIL-GATE-001 — observed 2026-04-17 14:30 Range Short):
-    The gate `if peak_profit_dist < active_pts_val: return None` prevented
-    the trailing stop from being placed until price had already moved the
-    FULL trail_pts distance in our favour.
-    Example: ATR=284, trail1Pts=0.70 → trail_pts=199. Price dipped 168 pts
-    favourably (< 199), so _compute_trail_sl returned None. current_sl stayed
-    at original initial SL (75,949). Price then reversed → bot stopped out
-    at 76,128 (-377 pts). Pine had no gate — it moved trail_sl to
-    peak + 199 = 75,781 and exited there (only -39 pts vs entry).
-  FIX:
-    Removed the gate entirely. Trail SL = peak ± trail_pts always, matching
-    Pine's strategy.exit(trail_points=X) which places the trailing stop from
-    the first tick. Initially trail_sl = entry ± trail_pts = initial SL.
-    As price moves favourably, trail_sl improves. No gate required.
+  Pine has no equivalent suppression. strategy.exit() evaluates on
+  every tick including the first tick of each new bar.
 
-FIX-TRAIL-10 | Never widen SL when ATR grows between bars
-  ROOT CAUSE (BUG-ATR-WIDEN-001):
-    on_bar_close() recalculates SL using current ATR. If ATR grew since
-    entry (e.g. 284→318), new_stop_dist grew, pushing new_sl AWAY from
-    entry for both longs and shorts — widening the stop and diverging from
-    Pine's fixed initial `stop=` parameter.
-  FIX:
-    When trail has not yet moved the SL, only apply new_sl if it is
-    MORE FAVOURABLE (tighter) than current_sl:
-      Long:  current_sl = max(new_sl, current_sl)  — never lower
-      Short: current_sl = min(new_sl, current_sl)  — never higher
+FIX:
+  Entire `if self._bar_just_closed:` block removed from _on_tick().
+  Peak tracking in that block is redundant — step 1 of _on_tick()
+  already updates state.peak_price on every tick.
+  The `_bar_just_closed` attribute is retained in __init__ / start()
+  for backward compatibility but is no longer used.
 
-──────────────────────────────────────────────────────────────────────
-PRESERVED FROM v8 (PINE-EXACT-v7 renamed v8 after prior patches):
-──────────────────────────────────────────────────────────────────────
-  ROOT CAUSE of early exits vs TradingView:
-    Pine Script runs with calc_on_every_tick=false.
-    The strategy block (where trail stage logic lives) executes ONLY at
-    bar close — NOT on every tick. OPTION-B-1 was upgrading stages
-    mid-bar every 0.5s, tightening the trail prematurely and causing
-    exits up to 229 pts before Pine's exit price.
-  FIX:
-    Removed live_profit_dist + _calc_new_stage() block from _on_tick().
-    Stage upgrades now happen ONLY in on_bar_close() — Pine parity.
-    Trail execution (SL check) still runs every tick — correct.
+─────────────────────────────────────────────────────────────────────
+BUG-3 (PRIMARY) — FIX-TRAIL-13 froze TP at entry (WRONG diagnosis)
+─────────────────────────────────────────────────────────────────────
+ROOT CAUSE (BUG-TP-FROZEN-001):
+  FIX-TRAIL-13 claimed "Pine's strategy.exit(limit=longTP) is set ONCE
+  at entry and never changes." This is FALSE.
 
-FIX-TRAIL-8 | Peak price preserves intra-bar extremes (BUG-PEAK-RESET-001)
-  ROOT CAUSE:
-    state.peak_price = bar_close at every bar boundary discarded
-    intra-bar highs (longs) / lows (shorts) tracked during the tick loop.
-    If price hit 75,800 mid-bar but closed at 75,600, trail was computed
-    from 75,600 instead of 75,800 — understating the peak by up to bar range.
-  FIX:
-    Long:  state.peak_price = max(state.peak_price, bar_high, bar_close)
-    Short: state.peak_price = min(state.peak_price, bar_low,  bar_close)
-    bar_high / bar_low already passed into on_bar_close() — no API change.
+  In Pine Script these lines are OUTSIDE any `if` block and therefore
+  execute on EVERY bar close, including every bar after entry:
 
-PRESERVED FROM v6:
-──────────────────────────────────────────────────────────────────────
-OPTION-A-1 | Poll every TRAIL_LOOP_SEC seconds (0.1s from .env)
-OPTION-A-2 | Persistent exchange connection (no reconnect per bar)
-OPTION-B-2 | Trail SL uses live peak_profit_dist (Pine parity)
-FIX-TRAIL-1..6 | All prior peak-reset and race-condition fixes
-──────────────────────────────────────────────────────────────────────
+      stopDist = math.min(atr * atrMult, maxSLPoints)   ← current ATR
+      longSL   = entryPrice - stopDist
+      longTP   = entryPrice + stopDist * rr
+      strategy.exit("Exit TL", stop=longSL, limit=longTP,
+                    trail_points=activePts, trail_offset=activeOff)
+
+  Each call REPLACES the existing exit order with freshly computed SL
+  and TP. Both float with ATR each bar; only entryPrice is anchored.
+
+SYMPTOM:
+  ATR shrinks after entry → Pine's TP moves CLOSER to entry.
+  Price reaches Pine's new (closer) TP → Pine exits.
+  Bot's TP was frozen at original (far) value → bot holds with a
+  "totally different" TP, sitting in a position Pine already closed.
+
+  ATR grows after entry → opposite: bot's frozen TP is hit first,
+  causing premature exit relative to Pine.
+
+FIX (FIX-TRAIL-14):
+  Remove frozen_tp. Recalculate new_tp alongside new_sl every bar
+  close using current ATR, exactly matching Pine's per-bar
+  strategy.exit() call. Both new_sl and new_tp use:
+      new_stop_dist = min(current_atr * atr_mult, MAX_SL_POINTS)
+  The trail-SL ratchet (state.current_sl) is unchanged — it only
+  tightens via the tick loop's max/min ratchet guard.
+
+═══════════════════════════════════════════════════════════════════════
+PRESERVED FIXES (unchanged from v10/v11)
+═══════════════════════════════════════════════════════════════════════
+FIX-TRAIL-12 | trail_points-only SL formula (_compute_trail_sl)
+FIX-TRAIL-10 | Never widen state.current_sl when ATR grows between bars
+FIX-TRAIL-9  | Removed peak_profit_dist gate from _compute_trail_sl
+FIX-TRAIL-8  | Preserve intra-bar peak extremes at bar boundary
+FIX-TRAIL-7  | Stage upgrades only at bar close (OPTION-B-1 removed)
+FIX-TRAIL-6  | (guard removed but attribute kept for API compat)
+FIX-TRAIL-5  | Cancel/restart tick task at bar boundary
+OPTION-A-1   | Poll every TRAIL_LOOP_SEC seconds
+OPTION-A-2   | Persistent exchange connection (no reconnect per bar)
+FIX-TRAIL-1..4 | Prior peak-reset and race-condition fixes
+═══════════════════════════════════════════════════════════════════════
 """
 
 import asyncio
@@ -119,7 +118,10 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-ENTRY_GUARD_MS = 5 * 1000
+# BUG-1 FIX: Was 5 * 1000 (5 seconds). Set to 0 — exits fire immediately,
+# matching Pine Script's strategy.exit() which is active from the first
+# millisecond after entry confirmation. No grace period.
+ENTRY_GUARD_MS = 0
 
 
 # ─── Stage helpers ────────────────────────────────────────────────────────────
@@ -151,27 +153,24 @@ def _compute_trail_sl(
     atr: float,
 ) -> Optional[float]:
     """
-    Pine-exact trail stop: SL = peak - trail_POINTS only.
+    Pine-exact trail stop: SL = peak ± trail_POINTS only.
 
     FIX-TRAIL-12A: Use active_pts_val only (not pts + off combined).
 
     Pine Script strategy.exit(trail_points=X, trail_offset=Y):
-      trail_points = distance of the trailing STOP below the peak price.
+      trail_points = distance of the trailing STOP below/above the peak.
       trail_offset = limit-order execution slippage allowance ONLY.
                      Does NOT move the SL level.
 
-    Correct formula:  SL = peak - trail_points.
-
     Stage SL distances from peak:
-      Stage 0/1 : peak - 0.70 ATR
-      Stage 2   : peak - 0.55 ATR
-      Stage 3   : peak - 0.45 ATR
-      Stage 4   : peak - 0.30 ATR
-      Stage 5   : peak - 0.20 ATR
+      Stage 0/1 : peak ± 0.70 ATR
+      Stage 2   : peak ± 0.55 ATR
+      Stage 3   : peak ± 0.45 ATR
+      Stage 4   : peak ± 0.30 ATR
+      Stage 5   : peak ± 0.20 ATR
 
-    No gate on peak_profit_dist needed. Pine applies trail from tick 1.
-    The max/min ratchet in _on_tick() ensures the trail never widens —
-    it only tightens once it beats the initial SL.
+    No gate on peak_profit_dist. Pine applies trail from tick 1.
+    The max/min ratchet in _on_tick() ensures the trail never widens.
     """
     _, active_pts, _ = TRAIL_STAGES[max(stage - 1, 0)]
     active_pts_val = atr * active_pts
@@ -199,7 +198,9 @@ class TrailMonitor:
 
         self._active_pts: float = 0.0
         self._active_off: float = 0.0
-        self._bar_just_closed: bool = False  # FIX-TRAIL-6
+        # BUG-2 FIX: _bar_just_closed attribute kept for API/recovery compat
+        # but the guard block in _on_tick() has been fully removed.
+        self._bar_just_closed: bool = False
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -241,7 +242,8 @@ class TrailMonitor:
             f"TrailMonitor started | entry={risk_levels.entry_price:.2f} "
             f"sl={risk_levels.sl:.2f} tp={risk_levels.tp:.2f} "
             f"atr={risk_levels.atr:.2f} long={risk_levels.is_long} "
-            f"poll_interval={TRAIL_LOOP_SEC}s [OPTION-A-1]"
+            f"poll_interval={TRAIL_LOOP_SEC}s [OPTION-A-1] "
+            f"[ENTRY_GUARD_MS={ENTRY_GUARD_MS} — exits fire immediately]"
         )
 
     def stop(self):
@@ -274,41 +276,41 @@ class TrailMonitor:
             self._task.cancel()
             self._task = None
 
-        # FIX-TRAIL-6
+        # BUG-2 FIX: _bar_just_closed is set but the guard that used it has
+        # been removed from _on_tick(). Setting it here is harmless / compat.
         self._bar_just_closed = True
 
-        # FIX-TRAIL-13: TP is fixed at entry. Only update ATR and recalculate SL.
+        # BUG-3 FIX (FIX-TRAIL-14): Recalculate BOTH SL and TP every bar
+        # with current ATR — matching Pine's per-bar strategy.exit() call.
         #
-        # ROOT CAUSE (BUG-TP-DRIFT-001):
-        #   The old code recalculated BOTH new_sl and new_tp from current_atr
-        #   every bar. Pine's strategy.exit(limit=longTP) is set ONCE at entry
-        #   and never changes. When ATR shrinks after entry, new_tp moves CLOSER
-        #   to entry — the bot hits TP bars before Pine does. When ATR grows,
-        #   new_tp moves further — the bot misses Pine's TP hit entirely.
+        # Pine Script (outside any `if` block, runs every bar close):
+        #     stopDist = math.min(atr * atrMult, maxSLPoints)   ← current ATR
+        #     longSL   = entryPrice - stopDist
+        #     longTP   = entryPrice + stopDist * rr
+        #     strategy.exit("Exit TL", stop=longSL, limit=longTP, ...)
         #
-        # FIX:
-        #   Preserve risk.tp (entry TP) across bars — never overwrite it.
-        #   Only recalculate new_sl (from current ATR) for the ratchet guard below.
-        #   The RiskLevels object is rebuilt each bar for ATR tracking, but TP
-        #   is always copied from the previous bar's risk.tp.
+        # Both longSL and longTP float with ATR; only entryPrice is anchored.
+        # Freezing TP (FIX-TRAIL-13) was a misdiagnosis — removed here.
         old_atr       = self.risk.atr
         old_sl        = self.risk.sl
-        frozen_tp     = self.risk.tp          # Pine: TP is fixed at entry, never changes
         atr_mult      = TREND_ATR_MULT if self.risk.is_trend else RANGE_ATR_MULT
         rr            = TREND_RR       if self.risk.is_trend else RANGE_RR
         new_stop_dist = min(current_atr * atr_mult, MAX_SL_POINTS)
         entry_price_  = self.risk.entry_price
         is_long_      = self.risk.is_long
 
+        # Pine: SL and TP both use the SAME new_stop_dist (current ATR)
         if is_long_:
             new_sl = entry_price_ - new_stop_dist
+            new_tp = entry_price_ + new_stop_dist * rr
         else:
             new_sl = entry_price_ + new_stop_dist
+            new_tp = entry_price_ - new_stop_dist * rr
 
         self.risk = RiskLevels(
             entry_price = entry_price_,
             sl          = new_sl,
-            tp          = frozen_tp,          # FIX-TRAIL-13: keep original entry TP
+            tp          = new_tp,    # FIX-TRAIL-14: recalculated every bar (Pine parity)
             stop_dist   = new_stop_dist,
             atr         = current_atr,
             is_long     = is_long_,
@@ -320,19 +322,13 @@ class TrailMonitor:
             (not is_long_ and self.state.current_sl < old_sl - 1.0)
         )
         if not trail_has_moved_sl:
-            # FIX-TRAIL-10: Never widen the initial SL when ATR increases.
-            #
-            # ROOT CAUSE OF THIS BUG:
-            #   If ATR grows between bars, new_stop_dist grows, so:
-            #     Long:  new_sl = entry - new_stop_dist  (goes DOWN  = wider)
-            #     Short: new_sl = entry + new_stop_dist  (goes UP    = wider)
-            #   The old code blindly set current_sl = new_sl, effectively giving
-            #   the market more room to hit the SL — diverging from Pine where
-            #   the initial `stop=` parameter is fixed at entry and never changes.
-            #
-            # FIX: Only apply the recalculated SL if it is MORE FAVOURABLE
-            # (tighter) than the current SL. This matches Pine: initial SL is a
-            # one-way ratchet — it can only improve, never widen.
+            # FIX-TRAIL-10: Never widen state.current_sl when ATR increases.
+            # Pine DOES update its stop= every bar (risk.sl correctly reflects
+            # Pine's formula). But state.current_sl is the ratcheted effective
+            # stop — it should only improve (tighten), never widen.
+            # Once the first tick fires, trail_sl is already tighter than the
+            # initial SL and trail_has_moved_sl = True, so this guard is a no-op
+            # in steady state; it only protects the pre-first-tick window.
             if is_long_:
                 self.state.current_sl = max(new_sl, self.state.current_sl)
             else:
@@ -341,8 +337,8 @@ class TrailMonitor:
         logger.info(
             f"[BAR CLOSE] ATR {old_atr:.2f}→{current_atr:.2f} | "
             f"stop_dist={new_stop_dist:.2f} | "
-            f"sl={new_sl:.2f} tp={frozen_tp:.2f}(fixed) | "
-            f"current_sl={'kept at trail ' + str(round(self.state.current_sl,2)) if trail_has_moved_sl else str(round(new_sl,2))}"
+            f"sl={new_sl:.2f} tp={new_tp:.2f}(pine-recalc) | "
+            f"current_sl={'trail=' + str(round(self.state.current_sl,2)) if trail_has_moved_sl else str(round(new_sl,2))}"
         )
 
         risk, state = self.risk, self.state
@@ -376,8 +372,7 @@ class TrailMonitor:
                     f"| close_profit_dist={close_profit_dist:.2f}"
                 )
 
-        # FIX-TRAIL-8: Preserve intra-bar peak extremes — do NOT discard
-        # highs/lows seen during tick loop by resetting to bar_close only.
+        # FIX-TRAIL-8: Preserve intra-bar peak extremes.
         # Long:  keep highest of current peak, bar_high, bar_close
         # Short: keep lowest  of current peak, bar_low,  bar_close
         if is_long:
@@ -386,7 +381,7 @@ class TrailMonitor:
             state.peak_price = min(state.peak_price, bar_low, bar_close)
 
         logger.info(
-            f"[BAR CLOSE] stage={state.stage} peak updated to {state.peak_price:.2f} "
+            f"[BAR CLOSE] stage={state.stage} peak={state.peak_price:.2f} "
             f"(bar_high={bar_high:.2f} bar_low={bar_low:.2f} bar_close={bar_close:.2f}) "
             f"current_sl={state.current_sl:.2f} be_done={state.be_done} atr={atr:.2f}"
         )
@@ -428,15 +423,11 @@ class TrailMonitor:
         if not self._running or self.risk is None or self.state is None:
             return
 
-        # FIX-TRAIL-6: Skip exit eval on first tick after bar boundary
-        if self._bar_just_closed:
-            self._bar_just_closed = False
-            logger.debug(f"[TICK] Bar-boundary guard — skipping eval | price={current_price:.2f}")
-            if self.risk.is_long:
-                self.state.peak_price = max(self.state.peak_price, current_price)
-            else:
-                self.state.peak_price = min(self.state.peak_price, current_price)
-            return
+        # BUG-2 FIX: _bar_just_closed guard block REMOVED.
+        # The old guard skipped ALL exit evaluation on the first tick after
+        # each bar boundary. Pine has no equivalent suppression — strategy.exit()
+        # evaluates on every tick including the first tick of each new bar.
+        # Peak tracking in that guard was redundant (step 1 below covers it).
 
         risk, state = self.risk, self.state
         now_ms      = int(time.time() * 1000)
@@ -457,21 +448,20 @@ class TrailMonitor:
             else (entry_price - state.peak_price)
         )
 
-        # NOTE: FIX-TRAIL-7 — OPTION-B-1 intra-bar stage upgrade removed.
-        # Pine's calc_on_every_tick=false means the strategy block (stage logic)
-        # only runs at bar close. Stage upgrades happen exclusively in
-        # on_bar_close() above. Trail SL execution still runs every tick.
+        # NOTE: FIX-TRAIL-7 — Stage upgrades happen exclusively at bar close
+        # (on_bar_close()). Pine's calc_on_every_tick=false means the strategy
+        # block only runs at bar close. Trail SL execution runs every tick here.
 
-        # 3. TP check
-        if not self._in_entry_guard(now_ms):
-            if (is_long and current_price >= risk.tp) or \
-               (not is_long and current_price <= risk.tp):
-                logger.info(f"[TICK] Target Profit hit | price={current_price:.2f} tp={risk.tp:.2f}")
-                await self._execute_exit(current_price, "Target Profit")
-                return
+        # 3. TP check — BUG-1 FIX: _in_entry_guard now always returns False
+        #    (ENTRY_GUARD_MS = 0), so this fires from the very first tick.
+        if (is_long and current_price >= risk.tp) or \
+           (not is_long and current_price <= risk.tp):
+            logger.info(f"[TICK] Target Profit hit | price={current_price:.2f} tp={risk.tp:.2f}")
+            await self._execute_exit(current_price, "Target Profit")
+            return
 
-        # 4. Max SL check
-        if not self._in_entry_guard(now_ms) and not state.max_sl_fired:
+        # 4. Max SL check — fires immediately (ENTRY_GUARD_MS = 0)
+        if not state.max_sl_fired:
             if max_sl_hit(current_price, entry_price, atr, is_long):
                 state.max_sl_fired = True
                 logger.info(f"[TICK] Max SL hit | price={current_price:.2f}")
@@ -479,15 +469,9 @@ class TrailMonitor:
                 return
 
         # 5. Ratchet trail SL — FIX-TRAIL-12B: No activation gate (Pine-exact).
-        #
-        # Pine strategy.exit(trail_points=X) places the trailing stop at
-        # peak - trail_points from the very FIRST tick after entry.
-        # There is no activation threshold. trail_offset is a limit-order
-        # execution parameter only and does NOT gate the trail.
-        #
-        # The current_sl = max(trail_sl, old_sl) ratchet below ensures the
-        # trail never WIDENS the stop — it can only tighten once it beats
-        # the initial SL. So no gate is needed; Pine parity is maintained.
+        #    Pine strategy.exit(trail_points=X) places the trailing stop at
+        #    peak - trail_points from the very FIRST tick after entry.
+        #    The max/min ratchet below ensures trail never widens the stop.
         trail_sl = _compute_trail_sl(
             state.stage, state.peak_price, peak_profit_dist, is_long, atr
         )
@@ -501,8 +485,8 @@ class TrailMonitor:
                     f"stage={state.stage})"
                 )
 
-        # 6. SL check
-        if state.current_sl > 0 and not self._in_entry_guard(now_ms):
+        # 6. SL check — fires immediately (ENTRY_GUARD_MS = 0)
+        if state.current_sl > 0:
             sl_hit = (
                 (is_long  and current_price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER) or
                 (not is_long and current_price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
@@ -528,6 +512,10 @@ class TrailMonitor:
     # ── Guards ────────────────────────────────────────────────────────────────
 
     def _in_entry_guard(self, now_ms: int) -> bool:
+        """
+        BUG-1 FIX: ENTRY_GUARD_MS = 0, so this always returns False.
+        Kept for reference; all callers removed from _on_tick() above.
+        """
         if self.entry_bar_time_ms is None:
             return False
         return (now_ms - self.entry_bar_time_ms) < ENTRY_GUARD_MS
