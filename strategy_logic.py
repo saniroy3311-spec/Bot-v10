@@ -12,7 +12,7 @@ from config import (
     EMA_TREND_LEN, EMA_FAST_LEN, ATR_LEN,
     DI_LEN, ADX_SMOOTH, ADX_EMA, RSI_LEN,
     ADX_TREND_TH, ADX_RANGE_TH,
-    FILTER_ATR_MULT, FILTER_BODY_MULT, FILTER_VOL_ENABLED,
+    FILTER_ATR_MULT, FILTER_BODY_MULT, FILTER_VOL_ENABLED, FILTER_VOL_MULT,
     RSI_OB, RSI_OS,
     TREND_RR, RANGE_RR, TREND_ATR_MULT, RANGE_ATR_MULT,
     MAX_SL_MULT, MAX_SL_POINTS, TRAIL_STAGES, BE_MULT,
@@ -219,7 +219,7 @@ def compute(df: pd.DataFrame) -> IndicatorSnapshot:
     body_ok = bool(abs(close_v - open_v) > atr_v * FILTER_BODY_MULT)
 
     if FILTER_VOL_ENABLED:
-        vol_ok = bool(bar_vol > 0 and vol_sma > 0 and bar_vol > vol_sma)
+        vol_ok = bool(bar_vol > 0 and vol_sma > 0 and bar_vol > vol_sma * FILTER_VOL_MULT)
     else:
         vol_ok = True
 
@@ -343,18 +343,24 @@ def upgrade_trail_stage(current_stage: int, peak_profit_dist: float, atr: float)
 
 
 def compute_trail_sl(stage: int, peak_price: float, peak_profit_dist: float, is_long: bool, atr: float) -> Optional[float]:
-    # FIX-TRAIL-PTS: Use active_pts (trail_POINTS) not active_off (trail_offset).
-    # Pine Script SL = peak - trail_points.  active_off is Pine's limit-order
-    # slippage parameter only and does NOT affect the SL price.
+    # FIX-TRAIL-15: Pine fires the exit at peak ± (trail_pts - trail_off).
+    # trail_offset is a PRE-FIRE BUFFER: Pine places the stop at peak ± trail_pts
+    # but triggers trail_offset points BEFORE that level is crossed.
+    # Net effective exit from peak = trail_pts - trail_off = net_dist.
     #
-    # FIX-TRAIL-GATE: Removed `if peak_profit_dist < active_pts: return None`.
-    # Pine strategy.exit(trail_points=X) places the trailing stop at
-    # peak - trail_points from the FIRST tick — there is NO activation gate.
-    # Initially trail_sl = entry ± trail_pts. The ratchet (max/min guard in
-    # the caller) ensures the trail never widens — it only tightens once it
-    # beats the initial SL. Matches trail_loop.py _compute_trail_sl() exactly.
-    active_pts, _ = get_trail_params(stage, atr)
-    return (peak_price - active_pts) if is_long else (peak_price + active_pts)
+    # Stage net distances from peak (trail_pts - trail_off):
+    #   Stage 0/1 : (0.70 - 0.55) ATR = 0.15 ATR
+    #   Stage 2   : (0.55 - 0.45) ATR = 0.10 ATR
+    #   Stage 3   : (0.45 - 0.35) ATR = 0.10 ATR
+    #   Stage 4   : (0.30 - 0.25) ATR = 0.05 ATR
+    #   Stage 5   : (0.20 - 0.15) ATR = 0.05 ATR
+    #
+    # OLD WRONG: used trail_pts only → exits trail_off (~165 pts) LATER than Pine.
+    # This matches monitor/trail_loop.py _compute_trail_sl() exactly.
+    # No gate on peak_profit_dist — Pine applies trail from tick 1.
+    _, pts_mult, off_mult = TRAIL_STAGES[max(stage - 1, 0)]
+    net_dist = atr * (pts_mult - off_mult)
+    return (peak_price - net_dist) if is_long else (peak_price + net_dist)
 
 
 def should_trigger_be(profit_dist: float, atr: float) -> bool:
