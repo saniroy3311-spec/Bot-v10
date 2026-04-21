@@ -336,6 +336,31 @@ class TrailMonitor:
         if self._exchange:
             asyncio.create_task(self._close_exchange())
 
+    # ── WS intrabar peak injection ────────────────────────────────────────────
+    # FIX-PEAK-WS: Called by CandleFeed on every same-candle WS update.
+    # Pine's broker emulator tracks the exact tick-level peak intrabar.
+    # The REST poll (fetch_ticker every 0.1s) can miss brief price spikes
+    # that last < 100ms, causing peak_price to be set too low, which shifts
+    # the trail SL level lower, and causes the bot to exit later (and worse)
+    # than Pine. Injecting the WS candle's live high/low directly into
+    # peak_price gives near-tick resolution without any extra API calls.
+
+    def update_intrabar_high(self, high: float) -> None:
+        """Push live WS candle high into peak_price for long positions."""
+        if not self._running or self.state is None or self.risk is None:
+            return
+        if self.risk.is_long and high > self.state.peak_price:
+            self.state.peak_price = high
+            logger.debug(f"[WS-PEAK] peak_price updated → {high:.2f} (long)")
+
+    def update_intrabar_low(self, low: float) -> None:
+        """Push live WS candle low into peak_price for short positions."""
+        if not self._running or self.state is None or self.risk is None:
+            return
+        if not self.risk.is_long and low < self.state.peak_price:
+            self.state.peak_price = low
+            logger.debug(f"[WS-PEAK] peak_price updated → {low:.2f} (short)")
+
     async def _close_exchange(self):
         try:
             if self._exchange:
