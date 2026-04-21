@@ -134,6 +134,28 @@ BUG-5 FIX    | trail_loop exchange missing load_markets() — markets
                injected from order_manager.exchange.markets at start()
                so fetch_ticker(SYMBOL) resolves correctly without an
                extra API call.
+
+─────────────────────────────────────────────────────────────────────
+BUG-BE-001 (THIS VERSION) — Breakeven only checked at bar close
+─────────────────────────────────────────────────────────────────────
+ROOT CAUSE:
+  state.be_done / state.current_sl = entry_price was only set inside
+  on_bar_close(). Pine Script evaluates the breakeven condition on
+  every tick. In fast trades (< 30 seconds) that reach the BE profit
+  level mid-candle and then reverse, the bot had NOT moved its SL to
+  entry yet — so it exited at a loss while Pine exited flat.
+
+SYMPTOM:
+  Trade opens → price spikes to breakeven profit level → Pine moves
+  SL to entry → price falls → Pine exits flat at entry.
+  Bot exits at the original initial SL (a loss), because on_bar_close
+  hadn't fired yet and the mid-candle BE trigger was missing.
+
+FIX:
+  Added current_profit_dist check inside _on_tick() between steps 4
+  and 5. Matches Pine's tick-level evaluation exactly. on_bar_close()
+  retains its own BE check as a safety net for the stage/ATR update
+  path; the tick-level check fires first in practice.
 ═══════════════════════════════════════════════════════════════════════
 """
 
@@ -530,6 +552,28 @@ class TrailMonitor:
                 logger.info(f"[TICK] Max SL hit | price={current_price:.2f}")
                 await self._execute_exit(current_price, "Max SL Hit")
                 return
+
+        # 4b. Breakeven check — mid-candle (BUG-BE-001 FIX)
+        # ROOT CAUSE: Breakeven was only checked in on_bar_close(). Pine Script
+        # evaluates breakeven on every tick. In fast trades (< 30 seconds) that
+        # hit the BE profit level and then reverse, the bot would NOT have moved
+        # the SL to entry yet — so it exits at a loss while Pine exits flat.
+        # FIX: Mirror the same BE check here on every tick, exactly like Pine.
+        current_profit_dist = max(
+            0.0,
+            (current_price - entry_price) if is_long
+            else (entry_price - current_price)
+        )
+        if not state.be_done and current_profit_dist >= atr * BE_MULT:
+            state.be_done = True
+            if (is_long  and entry_price > state.current_sl) or \
+               (not is_long and entry_price < state.current_sl):
+                state.current_sl = entry_price
+                logger.info(
+                    f"[TICK] Breakeven SL → entry={entry_price:.2f} "
+                    f"| profit_dist={current_profit_dist:.2f} atr={atr:.2f} "
+                    f"(BUG-BE-001 FIX — mid-candle, Pine-exact)"
+                )
 
         # 5. Ratchet trail SL — FIX-TRAIL-12B: No activation gate (Pine-exact).
         #    Pine strategy.exit(trail_points=X) places the trailing stop at
