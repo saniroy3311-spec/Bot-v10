@@ -14,10 +14,24 @@ logger = logging.getLogger(__name__)
 class Telegram:
     BASE = "https://api.telegram.org/bot"
 
+    # Placeholder values that mean "not configured"
+    _PLACEHOLDERS = {"YOUR_BOT_TOKEN", "YOUR_CHAT_ID", "", None}
+
     def __init__(self):
         self._session: aiohttp.ClientSession | None = None
+        self._enabled = (
+            TELEGRAM_BOT_TOKEN not in self._PLACEHOLDERS
+            and TELEGRAM_CHAT_ID not in self._PLACEHOLDERS
+        )
+        if not self._enabled:
+            logger.warning(
+                "Telegram disabled — set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID "
+                "in your .env to enable notifications."
+            )
 
     async def _send(self, text: str) -> None:
+        if not self._enabled:
+            return
         try:
             if not self._session or self._session.closed:
                 self._session = aiohttp.ClientSession()
