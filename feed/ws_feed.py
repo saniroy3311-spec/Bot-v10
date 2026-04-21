@@ -153,6 +153,11 @@ class CandleFeed:
         # Debug: count messages received (for startup diagnostics)
         self._msg_count    = 0
 
+        # FIX-PEAK-WS: injected by main.py after entry so WS intrabar
+        # high/low can be pushed directly into TrailMonitor.state.peak_price,
+        # giving near-tick peak resolution without extra REST API calls.
+        self.trail_monitor = None
+
     # ── Public entry point ────────────────────────────────────────────────────
 
     async def start(self) -> None:
@@ -414,6 +419,13 @@ class CandleFeed:
                 self._df.at[idx, "low"]    = l
                 self._df.at[idx, "close"]  = c
                 self._df.at[idx, "volume"] = v
+
+            # FIX-PEAK-WS: push live candle high/low into TrailMonitor so
+            # peak_price tracks the true intrabar extreme to near-tick
+            # resolution, matching Pine's broker emulator behaviour.
+            if self.trail_monitor is not None:
+                self.trail_monitor.update_intrabar_high(h)
+                self.trail_monitor.update_intrabar_low(l)
 
     # ── REST polling fallback ──────────────────────────────────────────────────
 
