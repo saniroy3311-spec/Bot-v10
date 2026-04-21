@@ -260,6 +260,22 @@ class ShivaSniperBot:
 
     async def _on_feed_ready(self) -> None:
         logger.info("Feed ready — Shiva Sniper is LIVE 🚀")
+        await self.telegram.notify_start()
+
+    async def shutdown(self) -> None:
+        """Clean shutdown: close all sessions gracefully."""
+        try:
+            await self.telegram.notify_stop()
+        except Exception:
+            pass
+        try:
+            await self.telegram.close()
+        except Exception:
+            pass
+        try:
+            await self.order_mgr.close_exchange()
+        except Exception:
+            pass
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -274,10 +290,7 @@ async def _main() -> None:
         logger.error(f"Bot crashed: {e}", exc_info=True)
         raise
     finally:
-        try:
-            await bot.order_mgr.close_exchange()
-        except Exception:
-            pass
+        await bot.shutdown()
 
 
 if __name__ == "__main__":
