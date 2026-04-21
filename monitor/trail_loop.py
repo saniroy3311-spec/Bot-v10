@@ -136,6 +136,33 @@ BUG-5 FIX    | trail_loop exchange missing load_markets() — markets
                extra API call.
 
 ─────────────────────────────────────────────────────────────────────
+BUG-001 (THIS VERSION) — Trail S0 ratchets SL from tick 1 (too tight)
+─────────────────────────────────────────────────────────────────────
+ROOT CAUSE:
+  _compute_trail_sl() had no activation gate for Stage 0. With stage=0,
+  it immediately returned peak_price - 0.15*ATR. On the very first tick
+  after entry, peak ≈ entry, so trail_sl = entry - 0.15*ATR. The ratchet
+  in _on_tick() saw this was ABOVE the initial current_sl (entry - 0.9*ATR)
+  and moved the stop up — from 0.9 ATR away to only 0.15 ATR away — within
+  the first 0.1s polling cycle.
+
+SYMPTOM:
+  Any normal intrabar retrace of ~47 pts (0.15 ATR on 30m) triggered
+  "Trail S0 hit" and closed the position seconds after entry. Pine never
+  saw these sub-bar moves (calc_on_every_tick=false), so its trade
+  survived to bar close and exited via the normal Exit TL logic.
+
+  Trade 2 example: bot entered 76,716.50 and was stopped at 76,669.00
+  (20s later, Trail S0). Pine held to 17:00 bar close at 76,409.6.
+
+FIX:
+  Added S0_ACTIVATION_ATR_MULTIPLE = 0.5 constant. _compute_trail_sl()
+  now returns None for stage 0 until peak_profit_dist >= 0.5*ATR.
+  Returning None leaves current_sl at the initial hard stop in _on_tick().
+  Once price earns the 0.5 ATR milestone the stage 0 trail activates
+  normally. Stages 1–5 are completely unaffected.
+
+─────────────────────────────────────────────────────────────────────
 BUG-BE-001 (THIS VERSION) — Breakeven only checked at bar close
 ─────────────────────────────────────────────────────────────────────
 ROOT CAUSE:
@@ -183,6 +210,15 @@ logger = logging.getLogger(__name__)
 # matching Pine Script's strategy.exit() which is active from the first
 # millisecond after entry confirmation. No grace period.
 ENTRY_GUARD_MS = 0
+
+# BUG-001 FIX: Stage 0 activation threshold.
+# The trail is only allowed to tighten from the initial hard stop AFTER price
+# has moved this many ATR units above entry (for longs) / below entry (for shorts).
+# Without this gate, _compute_trail_sl returns peak - 0.15*ATR from tick 1,
+# which ratchets current_sl from 0.9 ATR below entry to 0.15 ATR below entry
+# within the first polling cycle — any ~47pt intrabar noise hits it and exits.
+# Pine never sees sub-bar retraces (calc_on_every_tick=false), so it survives.
+S0_ACTIVATION_ATR_MULTIPLE = 0.5
 
 
 # ─── Stage helpers ────────────────────────────────────────────────────────────
@@ -243,9 +279,24 @@ def _compute_trail_sl(
       Result: bot held losing positions ~trail_off (≈0.55 ATR ≈165 pts on 30m)
       longer than Pine, producing bigger losses than the backtest showed.
 
-    No gate on peak_profit_dist. Pine applies trail from tick 1.
+    BUG-001 FIX: Stage 0 is a fixed hard stop until S0_ACTIVATION_ATR_MULTIPLE
+    is reached. Previously "No gate on peak_profit_dist" was correct for stages
+    1–5 (Pine applies trail from tick 1 on those stages), but Stage 0 is special:
+    its 0.15 ATR net-trail from tick 1 would immediately ratchet current_sl from
+    0.9 ATR below entry to only 0.15 ATR below entry, causing exits on any ~47pt
+    intrabar noise. Pine never sees such sub-bar moves (calc_on_every_tick=false),
+    so it holds while the bot exits spuriously.
+
+    The fix: return None for stage 0 until peak_profit_dist >= 0.5 ATR, keeping
+    the SL locked at the initial hard level. Once the activation threshold is
+    crossed the trail tightens normally. Stages 1–5 are unaffected.
     The max/min ratchet in _on_tick() ensures the trail never widens.
     """
+    # BUG-001 FIX: Stage 0 must not trail until price confirms a minimum profit.
+    # Returning None tells _on_tick() to leave current_sl at the initial hard stop.
+    if stage == 0 and peak_profit_dist < S0_ACTIVATION_ATR_MULTIPLE * atr:
+        return None
+
     _, pts_mult, off_mult = TRAIL_STAGES[max(stage - 1, 0)]
     net_dist = atr * (pts_mult - off_mult)   # e.g. (0.70-0.55)*ATR = 0.15*ATR
     return (peak_price - net_dist) if is_long else (peak_price + net_dist)
