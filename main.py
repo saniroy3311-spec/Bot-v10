@@ -87,10 +87,12 @@ class ShivaSniperBot:
         self.journal     = Journal()
         self.trail_mon   = TrailMonitor(self.order_mgr, self.telegram, self.journal)
 
-        self.in_position : bool                 = False
-        self.risk        : Optional[RiskLevels] = None
-        self.trail_state : Optional[TrailState] = None
-        self._entry_lock : asyncio.Lock         = asyncio.Lock()
+        self.in_position  : bool                 = False
+        self.risk         : Optional[RiskLevels] = None
+        self.trail_state  : Optional[TrailState] = None
+        self._entry_lock  : asyncio.Lock         = asyncio.Lock()
+        self._feed        : Optional[CandleFeed] = None   # FIX-PEAK-WS
+        self._signal_type : str                  = ""     # for journal/telegram
 
     # ── Initialisation ────────────────────────────────────────────────────────
 
@@ -205,7 +207,33 @@ class ShivaSniperBot:
                 current_sl = risk.sl,
                 peak_price = fill,
             )
-            self.in_position = True
+            self.in_position  = True
+            self._signal_type = sig.signal_type.value
+
+            # ── Notify Telegram + write open trade to journal ─────────────────
+            try:
+                await self.telegram.notify_entry(
+                    signal_type = sig.signal_type.value,
+                    entry_price = fill,
+                    sl          = risk.sl,
+                    tp          = risk.tp,
+                    atr         = snap.atr,
+                )
+            except Exception as e:
+                logger.error(f"[ENTRY] Telegram notify failed: {e}")
+
+            try:
+                self.journal.open_trade(
+                    signal_type = sig.signal_type.value,
+                    is_long     = sig.is_long,
+                    entry_price = fill,
+                    sl          = risk.sl,
+                    tp          = risk.tp,
+                    atr         = snap.atr,
+                    qty         = ALERT_QTY,
+                )
+            except Exception as e:
+                logger.error(f"[ENTRY] Journal open_trade failed: {e}")
 
             # 4d. Start tick-resolution trail monitor
             self.trail_mon.start(
@@ -214,6 +242,11 @@ class ShivaSniperBot:
                 entry_bar_time_ms = int(time.time() * 1000),
                 on_trail_exit     = self._on_trail_exit,
             )
+
+            # FIX-PEAK-WS: wire the live feed to the trail monitor so every
+            # intrabar WS candle update pushes the current high/low directly
+            # into TrailMonitor.state.peak_price. Cleared on exit below.
+            self._feed.trail_monitor = self.trail_mon
 
             logger.info(
                 f"[ENTRY ✅] {sig.signal_type.value} | "
@@ -228,20 +261,67 @@ class ShivaSniperBot:
         if not self.in_position:
             return
 
-        entry_px = self.risk.entry_price if self.risk else 0.0
-        is_long  = self.risk.is_long     if self.risk else True
+        entry_px    = self.risk.entry_price if self.risk else 0.0
+        is_long     = self.risk.is_long     if self.risk else True
+        sl          = self.risk.sl          if self.risk else 0.0
+        tp          = self.risk.tp          if self.risk else 0.0
+        atr         = self.risk.atr         if self.risk else 0.0
+        trail_stage = self.trail_state.stage if self.trail_state else 0
+        signal_type = self._signal_type or "Unknown"
 
-        pl_sign = "+" if ((exit_price - entry_px) > 0) == is_long else "-"
         logger.info(
             f"[EXIT ✅] reason={reason} | "
             f"entry={entry_px:.2f} exit={exit_price:.2f} | "
             f"{'LONG' if is_long else 'SHORT'}"
         )
 
+        # ── Compute real P/L ──────────────────────────────────────────────────
+        from risk.calculator import calc_real_pl
+        real_pl = calc_real_pl(entry_px, exit_price, is_long, ALERT_QTY)
+
+        # ── Telegram exit notification ────────────────────────────────────────
+        try:
+            await self.telegram.notify_exit(
+                reason      = reason,
+                entry_price = entry_px,
+                exit_price  = exit_price,
+                real_pl     = real_pl,
+                is_long     = is_long,
+            )
+        except Exception as e:
+            logger.error(f"[EXIT] Telegram notify failed: {e}")
+
+        # ── Journal: log completed trade + clear open trade ───────────────────
+        try:
+            self.journal.log_trade(
+                signal_type = signal_type,
+                is_long     = is_long,
+                entry_price = entry_px,
+                exit_price  = exit_price,
+                sl          = sl,
+                tp          = tp,
+                atr         = atr,
+                qty         = ALERT_QTY,
+                real_pl     = real_pl,
+                exit_reason = reason,
+                trail_stage = trail_stage,
+            )
+        except Exception as e:
+            logger.error(f"[EXIT] Journal log_trade failed: {e}")
+
+        try:
+            self.journal.close_open_trade()
+        except Exception as e:
+            logger.error(f"[EXIT] Journal close_open_trade failed: {e}")
+
         # Reset state — next bar close evaluates fresh entry
-        self.in_position = False
-        self.risk        = None
-        self.trail_state = None
+        self.in_position  = False
+        self.risk         = None
+        self.trail_state  = None
+        self._signal_type = ""
+        # FIX-PEAK-WS: disconnect trail monitor from the feed on exit
+        if self._feed is not None:
+            self._feed.trail_monitor = None
 
     # ── Run ───────────────────────────────────────────────────────────────────
 
@@ -252,6 +332,7 @@ class ShivaSniperBot:
             on_bar_close  = self.on_bar_close,
             on_feed_ready = self._on_feed_ready,
         )
+        self._feed = feed   # FIX-PEAK-WS: needed for trail_monitor wiring
         logger.info(
             f"Starting Shiva Sniper v6.5 | "
             f"symbol={SYMBOL} tf={CANDLE_TIMEFRAME} qty={ALERT_QTY} lots"
