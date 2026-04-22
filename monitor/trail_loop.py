@@ -565,8 +565,68 @@ class TrailMonitor:
             f"current_sl={state.current_sl:.2f} be_done={state.be_done} atr={atr:.2f}"
         )
 
-        # FIX-TRAIL-5 + OPTION-A-2: Restart task coroutine, NOT the exchange
-        if self._running:
+        # ── SAME-BAR-EXIT FIX ─────────────────────────────────────────────────
+        # Pine's broker emulator checks bar OHLC inline: if bar_high crosses TP
+        # or bar_low breaches SL, the exit fires atomically within bar-close
+        # evaluation. The first _on_tick() poll happens 100ms AFTER this method
+        # returns — too late for a same-bar re-entry signal to fire.
+        #
+        # Fix: check bar_high / bar_low against TP and current_sl right here,
+        # before restarting the tick task. If an exit condition is met, schedule
+        # _execute_exit() as a task and skip restarting the tick loop (it will
+        # be a no-op anyway since _running will be False after exit fires).
+        bar_exited = False
+        if self._running and not self._exit_triggered:
+            tp_ = risk.tp
+            sl_ = state.current_sl
+            if is_long:
+                if bar_high >= tp_:
+                    logger.info(
+                        f"[BAR-EXIT] TP crossed in closed bar | "
+                        f"bar_high={bar_high:.2f} tp={tp_:.2f}"
+                    )
+                    asyncio.create_task(self._execute_exit(bar_high, "Target Profit"))
+                    bar_exited = True
+                elif bar_low <= sl_ + TRAIL_SL_PRE_FIRE_BUFFER:
+                    trail_active = state.current_sl > risk.sl
+                    if state.be_done and abs(state.current_sl - entry_price) < 1.0:
+                        sl_reason = "Breakeven SL"
+                    elif trail_active:
+                        sl_reason = f"Trail S{state.stage}"
+                    else:
+                        sl_reason = "Initial SL"
+                    logger.info(
+                        f"[BAR-EXIT] SL crossed in closed bar | "
+                        f"bar_low={bar_low:.2f} sl={sl_:.2f} reason={sl_reason}"
+                    )
+                    asyncio.create_task(self._execute_exit(bar_low, sl_reason))
+                    bar_exited = True
+            else:
+                if bar_low <= tp_:
+                    logger.info(
+                        f"[BAR-EXIT] TP crossed in closed bar | "
+                        f"bar_low={bar_low:.2f} tp={tp_:.2f}"
+                    )
+                    asyncio.create_task(self._execute_exit(bar_low, "Target Profit"))
+                    bar_exited = True
+                elif bar_high >= sl_ - TRAIL_SL_PRE_FIRE_BUFFER:
+                    trail_active = state.current_sl < risk.sl
+                    if state.be_done and abs(state.current_sl - entry_price) < 1.0:
+                        sl_reason = "Breakeven SL"
+                    elif trail_active:
+                        sl_reason = f"Trail S{state.stage}"
+                    else:
+                        sl_reason = "Initial SL"
+                    logger.info(
+                        f"[BAR-EXIT] SL crossed in closed bar | "
+                        f"bar_high={bar_high:.2f} sl={sl_:.2f} reason={sl_reason}"
+                    )
+                    asyncio.create_task(self._execute_exit(bar_high, sl_reason))
+                    bar_exited = True
+
+        # FIX-TRAIL-5 + OPTION-A-2: Restart task coroutine only if not already exiting.
+        # If bar_exited is True, _execute_exit will set _running=False — no tick loop needed.
+        if self._running and not bar_exited:
             self._task = asyncio.create_task(self._run())
             logger.debug("[BAR CLOSE] Tick task restarted (exchange reused — no reconnect)")
 
