@@ -42,6 +42,8 @@ import asyncio
 import logging
 import sys
 import time
+import traceback
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from config import (
@@ -338,11 +340,38 @@ class ShivaSniperBot:
             f"Starting Shiva Sniper v6.5 | "
             f"symbol={SYMBOL} tf={CANDLE_TIMEFRAME} qty={ALERT_QTY} lots"
         )
-        await feed.start()   # Runs forever
+        await asyncio.gather(
+            feed.start(),
+            self._daily_summary_loop(),
+        )
 
     async def _on_feed_ready(self) -> None:
         logger.info("Feed ready — Shiva Sniper is LIVE 🚀")
         await self.telegram.notify_start()
+
+    async def _daily_summary_loop(self) -> None:
+        IST = timezone(timedelta(hours=5, minutes=30))
+        while True:
+            try:
+                now      = datetime.now(IST)
+                tomorrow = (now + timedelta(days=1)).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+                wait_sec = (tomorrow - now).total_seconds()
+                logger.info(
+                    f"[DAILY] Next summary in {wait_sec/3600:.1f}h "
+                    f"({tomorrow.strftime('%Y-%m-%d 00:00 IST')})"
+                )
+                await asyncio.sleep(wait_sec)
+                date_str = now.strftime("%Y-%m-%d")
+                summary  = self.journal.get_daily_summary(date_str)
+                logger.info(f"[DAILY] Sending summary for {date_str}: {summary}")
+                await self.telegram.notify_daily_summary(summary)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[DAILY] Summary loop error: {e}", exc_info=True)
+                await asyncio.sleep(60)
 
     async def shutdown(self) -> None:
         """Clean shutdown: close all sessions gracefully."""
@@ -369,7 +398,12 @@ async def _main() -> None:
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
+        tb = traceback.format_exc()
         logger.error(f"Bot crashed: {e}", exc_info=True)
+        try:
+            await bot.telegram.notify_crash(tb)
+        except Exception:
+            pass
         raise
     finally:
         await bot.shutdown()

@@ -7,6 +7,8 @@ import asyncio
 import logging
 from typing import Optional
 
+import socket
+import aiohttp
 import ccxt.async_support as ccxt
 
 from config import (
@@ -29,6 +31,12 @@ def build_exchange() -> ccxt.delta:
         "urls": {"api": {"public": base_url, "private": base_url}},
     }
     exchange = ccxt.delta(params)
+
+    # Force IPv4 — VPS is dual-stack, aiohttp resolves IPv6 by default.
+    # Delta API keys are IPv4-whitelisted only; IPv6 gets rejected.
+    connector = aiohttp.TCPConnector(family=socket.AF_INET, force_close=True)
+    exchange.session = aiohttp.ClientSession(connector=connector)
+
     logger.info(
         f"Exchange built → {'TESTNET' if DELTA_TESTNET else 'LIVE'} | "
         f"endpoint={base_url} | qty={ALERT_QTY} lots | mode=NO-BRACKET"
