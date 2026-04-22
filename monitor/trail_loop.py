@@ -250,56 +250,76 @@ def _compute_trail_sl(
     atr: float,
 ) -> Optional[float]:
     """
-    Pine-exact trail stop: SL fires at peak ± (trail_pts - trail_off).
+    Pine-exact trail stop.
 
-    FIX-TRAIL-15: Restore trail_offset into the SL fire-level formula.
+    ═══════════════════════════════════════════════════════════════
+    ROOT-BUG-TRAIL — All prior versions had the WRONG formula
+    ═══════════════════════════════════════════════════════════════
 
     Pine Script strategy.exit(trail_points=X, trail_offset=Y):
-      trail_points  = distance from peak at which the trailing STOP ORDER is placed.
-      trail_offset  = pre-fire buffer. Pine activates the exit order when price
-                      reaches (stop_price - trail_offset) for longs or
-                      (stop_price + trail_offset) for shorts — i.e. trail_offset
-                      points BEFORE the trailing stop placement level.
 
-    Net effective exit level from peak:
-      LONG  : peak - trail_pts + trail_off   (= peak - net_dist)
-      SHORT : peak + trail_pts - trail_off   (= peak + net_dist)
-      where  net_dist = trail_pts - trail_off
+      trail_points = ACTIVATION THRESHOLD (not distance from peak).
+        The trailing stop order is NOT placed at all until the
+        position's profit reaches trail_points ticks from entry.
+        Source: Pine docs — "a trailing stop order will be submitted
+        when the position's profit reaches trail_points number of ticks."
 
-    Stage net distances from peak (trail_pts - trail_off):
-      Stage 0/1 : (0.70 - 0.55) ATR = 0.15 ATR
-      Stage 2   : (0.55 - 0.45) ATR = 0.10 ATR
-      Stage 3   : (0.45 - 0.35) ATR = 0.10 ATR
-      Stage 4   : (0.30 - 0.25) ATR = 0.05 ATR
-      Stage 5   : (0.20 - 0.15) ATR = 0.05 ATR
+      trail_offset = TRAIL DISTANCE from peak (not a "pre-fire buffer").
+        Once activated, the stop order is placed trail_offset ticks
+        below the peak (for longs) / above the peak (for shorts).
+        Source: Pine docs — "submit trailing stop loss order at
+        trail_offset ticks from the lowest low / highest high reached."
 
-    WHY THIS WAS WRONG BEFORE (FIX-TRAIL-12A):
-      The prior formula used trail_pts only → fires at peak ± trail_pts.
-      Pine fires trail_offset points earlier → fires at peak ± (trail_pts - trail_off).
-      Result: bot held losing positions ~trail_off (≈0.55 ATR ≈165 pts on 30m)
-      longer than Pine, producing bigger losses than the backtest showed.
+    Correct formula:
+      Activation : peak_profit_dist >= trail_points  (= pts_mult * ATR)
+      Trail SL   : peak - trail_offset               (= peak - off_mult * ATR)
 
-    BUG-001 FIX: Stage 0 is a fixed hard stop until S0_ACTIVATION_ATR_MULTIPLE
-    is reached. Previously "No gate on peak_profit_dist" was correct for stages
-    1–5 (Pine applies trail from tick 1 on those stages), but Stage 0 is special:
-    its 0.15 ATR net-trail from tick 1 would immediately ratchet current_sl from
-    0.9 ATR below entry to only 0.15 ATR below entry, causing exits on any ~47pt
-    intrabar noise. Pine never sees such sub-bar moves (calc_on_every_tick=false),
-    so it holds while the bot exits spuriously.
+    Stage distances from peak once activated:
+      Stage 0/1 : peak - 0.55 ATR  (off_mult = 0.55)
+      Stage 2   : peak - 0.45 ATR  (off_mult = 0.45)
+      Stage 3   : peak - 0.35 ATR  (off_mult = 0.35)
+      Stage 4   : peak - 0.25 ATR  (off_mult = 0.25)
+      Stage 5   : peak - 0.15 ATR  (off_mult = 0.15)
 
-    The fix: return None for stage 0 until peak_profit_dist >= 0.5 ATR, keeping
-    the SL locked at the initial hard level. Once the activation threshold is
-    crossed the trail tightens normally. Stages 1–5 are unaffected.
-    The max/min ratchet in _on_tick() ensures the trail never widens.
+    WHY ALL PRIOR VERSIONS WERE WRONG:
+      FIX-TRAIL-15 / BUG-001 / net_dist formula all misread Pine docs.
+      They computed: fire level = peak - (trail_pts - trail_off) * ATR
+                                = peak - 0.15 ATR  (for stage 0/1)
+      Correct Pine : fire level = peak - trail_offset * ATR
+                                = peak - 0.55 ATR  (for stage 0/1)
+
+      The bot was firing exits when price retraced only 0.15 ATR from
+      peak. Pine does not fire until price retraces 0.55 ATR from peak.
+      This caused the bot to exit on normal intrabar wicks that Pine
+      ignores — splitting one TV trade into multiple bot trades.
+
+    SYMPTOM OF THE OLD BUG (from today's live log):
+      Trade 284 — entry 17:00 @ 78,284.5, ATR=300.78
+        Peak reached 78,481 (profit = 196.75 pts)
+        Old activation = 0.5 * ATR = 150.39 → ACTIVATED (wrong)
+        Old trail SL   = peak - 0.15 * ATR = 78,481 - 45 = 78,436
+        Bot exited at 17:47 when price touched 78,400 ← premature exit
+
+        Correct activation = pts_mult * ATR = 0.70 * 300.78 = 210.55
+        196.75 < 210.55 → NOT activated → bot should have stayed in trade.
+        Pine held all the way to 19:30 exit @ 78,776. ✅
+
+    Stage 0 uses Stage 1 parameters because Pine's ternary chain
+    (trailStage==5 ? ... : atr*trail1Pts) falls through to trail1Pts/Off
+    when trailStage==0.
     """
-    # BUG-001 FIX: Stage 0 must not trail until price confirms a minimum profit.
-    # Returning None tells _on_tick() to leave current_sl at the initial hard stop.
-    if stage == 0 and peak_profit_dist < S0_ACTIVATION_ATR_MULTIPLE * atr:
+    _, pts_mult, off_mult = TRAIL_STAGES[max(stage - 1, 0)]
+
+    # ACTIVATION GATE — Pine does not place the trailing stop until
+    # profit from entry reaches trail_points (= pts_mult * ATR).
+    # Returning None leaves current_sl at the initial hard stop in _on_tick().
+    if peak_profit_dist < atr * pts_mult:
         return None
 
-    _, pts_mult, off_mult = TRAIL_STAGES[max(stage - 1, 0)]
-    net_dist = atr * (pts_mult - off_mult)   # e.g. (0.70-0.55)*ATR = 0.15*ATR
-    return (peak_price - net_dist) if is_long else (peak_price + net_dist)
+    # TRAIL STOP — placed at trail_offset distance below/above peak.
+    # Pine: "submit trailing stop at trail_offset ticks from high/low"
+    trail_dist = atr * off_mult
+    return (peak_price - trail_dist) if is_long else (peak_price + trail_dist)
 
 
 # ─── TrailMonitor ─────────────────────────────────────────────────────────────
