@@ -314,6 +314,55 @@ class Journal:
         except Exception as e:
             logger.error(f"log_event failed: {e}")
 
+    def get_daily_summary(self, date_str: str = None) -> dict:
+        """Return trade stats for a single calendar day (IST, YYYY-MM-DD)."""
+        from datetime import timezone, timedelta
+        IST = timezone(timedelta(hours=5, minutes=30))
+        if date_str is None:
+            date_str = datetime.now(IST).strftime("%Y-%m-%d")
+        try:
+            cur = self._cursor()
+            p   = self._ph()
+            if self._driver == "postgres":
+                cur.execute(f"""
+                    SELECT
+                        COUNT(*),
+                        SUM(CASE WHEN real_pl > 0 THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN real_pl < 0 THEN 1 ELSE 0 END),
+                        COALESCE(SUM(real_pl), 0),
+                        COALESCE(MAX(real_pl), 0),
+                        COALESCE(MIN(real_pl), 0)
+                    FROM trades
+                    WHERE (ts AT TIME ZONE 'Asia/Kolkata')::date = {p}::date
+                """, (date_str,))
+            else:
+                cur.execute(f"""
+                    SELECT
+                        COUNT(*),
+                        SUM(CASE WHEN real_pl > 0 THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN real_pl < 0 THEN 1 ELSE 0 END),
+                        COALESCE(SUM(real_pl), 0),
+                        COALESCE(MAX(real_pl), 0),
+                        COALESCE(MIN(real_pl), 0)
+                    FROM trades
+                    WHERE date(datetime(ts, '+5 hours', '+30 minutes')) = {p}
+                """, (date_str,))
+            row = cur.fetchone()
+            total, wins, losses, total_pl, best, worst = row
+            return {
+                "date"    : date_str,
+                "total"   : total    or 0,
+                "wins"    : wins     or 0,
+                "losses"  : losses   or 0,
+                "total_pl": round(float(total_pl or 0), 4),
+                "best"    : round(float(best     or 0), 4),
+                "worst"   : round(float(worst    or 0), 4),
+                "win_rate": round((wins / total * 100), 1) if total else 0.0,
+            }
+        except Exception as e:
+            logger.error(f"get_daily_summary failed: {e}")
+            return {}
+
     def get_summary(self) -> dict:
         try:
             cur = self._cursor()
