@@ -195,6 +195,7 @@ class ShivaSniperBot:
                 )
             except Exception as e:
                 logger.error(f"[ENTRY] Order failed: {e}", exc_info=True)
+                await self.telegram.notify_error(f"⚠️ Entry FAILED ({sig.signal_type.value}): {str(e)[:300]}")
                 return
 
             # 4c. Re-anchor SL/TP to ACTUAL fill price (not bar close estimate)
