@@ -95,6 +95,11 @@ class ShivaSniperBot:
         self._entry_lock  : asyncio.Lock         = asyncio.Lock()
         self._feed        : Optional[CandleFeed] = None   # FIX-PEAK-WS
         self._signal_type : str                  = ""     # for journal/telegram
+        # SAME-BAR-REENTRY FIX: buffer the last evaluated (sig, snap) so that
+        # if a same-bar exit fires (bar_high/bar_low crosses TP/SL atomically in
+        # trail_loop.on_bar_close), _on_trail_exit can immediately place the
+        # pending entry without waiting for the next 30-minute bar.
+        self._pending_signal: Optional[tuple]    = None   # (Signal, IndicatorSnapshot)
 
     # ── Initialisation ────────────────────────────────────────────────────────
 
@@ -121,7 +126,28 @@ class ShivaSniperBot:
             logger.error(f"Indicator compute failed: {e}", exc_info=True)
             return
 
-        # ── 2. If in position: notify trail monitor (FIX-TRAIL-14 parity) ────
+        # ── 2. Evaluate entry signal (always — even while in position) ─────────
+        #
+        # SAME-BAR-REENTRY FIX: Pine's bar-close evaluation is atomic. When a
+        # trail exit fires on the same bar as a new entry signal (same bar_high
+        # crosses TP AND the bar-close condition generates a new Trend Long),
+        # Pine processes both in one synchronous frame. The bot must buffer the
+        # signal here so _on_trail_exit() can fire the entry immediately after
+        # the exit clears in_position, rather than waiting for the next bar.
+        sig = evaluate(snap, has_position=False)
+        if sig.signal_type != SignalType.NONE:
+            self._pending_signal = (sig, snap)
+        else:
+            self._pending_signal = None
+
+        logger.info(
+            f"[BAR] signal={sig.signal_type.value} | "
+            f"adx={snap.adx:.2f} trend={snap.trend_regime} "
+            f"range={snap.range_regime} filters={snap.filters_ok} | "
+            f"close={snap.close:.2f} atr={snap.atr:.2f}"
+        )
+
+        # ── 3. If in position: notify trail monitor (FIX-TRAIL-14 parity) ────
         #
         # Pine runs strategy.exit() on every bar close, recomputing SL/TP with
         # the current ATR. trail_mon.on_bar_close() mirrors that:
@@ -129,6 +155,7 @@ class ShivaSniperBot:
         #   - Upgrades trail stage from bar close profit_dist (FIX-TRAIL-7)
         #   - Updates breakeven state (Pine parity)
         #   - Preserves intra-bar peak extremes (FIX-TRAIL-8)
+        #   - Synchronous bar-boundary exit check (SAME-BAR-EXIT FIX)
         if self.in_position:
             if self.trail_mon._running:
                 self.trail_mon.on_bar_close(
@@ -153,23 +180,28 @@ class ShivaSniperBot:
                 self.risk        = None
                 self.trail_state = None
             return   # Pine: no new entry while in position
+            # NOTE: if trail_mon.on_bar_close() fired a same-bar exit above,
+            # _on_trail_exit will be called async and will consume _pending_signal.
 
-        # ── 3. No position: evaluate entry signal ─────────────────────────────
-        #
-        # Pine: if newBar and noPosition { if trendLong ... else if trendShort ... }
-        sig = evaluate(snap, has_position=False)
-
-        logger.info(
-            f"[BAR] signal={sig.signal_type.value} | "
-            f"adx={snap.adx:.2f} trend={snap.trend_regime} "
-            f"range={snap.range_regime} filters={snap.filters_ok} | "
-            f"close={snap.close:.2f} atr={snap.atr:.2f}"
-        )
-
-        if sig.signal_type == SignalType.NONE:
+        # ── 4. No position: enter via buffered signal ─────────────────────────
+        if self._pending_signal is None:
             return
+        sig, snap = self._pending_signal
+        self._pending_signal = None
+        await self._enter(sig, snap)
 
-        # ── 4. Entry guard ────────────────────────────────────────────────────
+    # ── Entry helper ──────────────────────────────────────────────────────────
+
+    async def _enter(self, sig, snap) -> None:
+        """
+        Place a bracket entry order and start the trail monitor.
+
+        Extracted from on_bar_close() so it can be called from two places:
+          1. on_bar_close() — normal path (no prior position on this bar)
+          2. _on_trail_exit() — SAME-BAR-REENTRY FIX: a same-bar exit fired
+             (trail_loop.on_bar_close detected bar_high/bar_low crossing TP/SL)
+             and _pending_signal was set for this bar's close signal.
+        """
         if self._entry_lock.locked():
             logger.warning("[ENTRY] Lock held — skipping duplicate entry")
             return
@@ -249,7 +281,8 @@ class ShivaSniperBot:
             # FIX-PEAK-WS: wire the live feed to the trail monitor so every
             # intrabar WS candle update pushes the current high/low directly
             # into TrailMonitor.state.peak_price. Cleared on exit below.
-            self._feed.trail_monitor = self.trail_mon
+            if self._feed is not None:
+                self._feed.trail_monitor = self.trail_mon
 
             logger.info(
                 f"[ENTRY ✅] {sig.signal_type.value} | "
@@ -325,6 +358,21 @@ class ShivaSniperBot:
         # FIX-PEAK-WS: disconnect trail monitor from the feed on exit
         if self._feed is not None:
             self._feed.trail_monitor = None
+
+        # SAME-BAR-REENTRY FIX: if trail_loop.on_bar_close() fired this exit
+        # synchronously (bar_high/bar_low crossed TP/SL on the just-closed bar),
+        # and a new entry signal was buffered for that same bar, fire it now.
+        # Without this, the bot would wait a full 30-minute bar to re-enter —
+        # exactly the same gap Pine closes atomically within one bar-close frame.
+        pending = self._pending_signal
+        self._pending_signal = None
+        if pending is not None:
+            sig, snap = pending
+            logger.info(
+                f"[SAME-BAR-REENTRY] Firing buffered {sig.signal_type.value} "
+                f"signal after same-bar exit (reason={reason})"
+            )
+            await self._enter(sig, snap)
 
     # ── Run ───────────────────────────────────────────────────────────────────
 
