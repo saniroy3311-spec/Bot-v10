@@ -1,439 +1,206 @@
-"""
-monitor/trail_loop.py — Shiva Sniper v6.5 (PINE-EXACT ALIGNED)
+from __future__ import annotations
 
-═══════════════════════════════════════════════════════════════════════
-LOGIC PARITY FIXES (Aligning Bot exits to Pine Script)
-═══════════════════════════════════════════════════════════════════════
-1. Breakeven (BE) Timing: Removed tick-level BE evaluation. Pine
-   evaluates BE strictly on the closing price of a completed bar.
-2. Max SL Timing & Entry Block: Removed tick-level Max SL evaluation.
-   Pine evaluates Max SL strictly at bar close, and explicitly uses 
-   `blockExitMaxSL` to ensure it never fires on the entry bar itself.
-═══════════════════════════════════════════════════════════════════════
-"""
+import math
+from dataclasses import dataclass
+from enum import Enum
+from typing import Optional
 
-import asyncio
-import logging
-import time
-from typing import Optional, Callable
+import numpy as np
+import pandas as pd
+from numba import njit
 
-import ccxt.async_support as ccxt
-
-from risk.calculator import (
-    RiskLevels, TrailState, calc_real_pl,
-    max_sl_hit,
-)
 from config import (
-    SYMBOL, DELTA_API_KEY, DELTA_API_SECRET, DELTA_TESTNET,
-    ALERT_QTY, TRAIL_SL_PRE_FIRE_BUFFER, TRAIL_LOOP_SEC,
-    TRAIL_STAGES, BE_MULT,
-    TREND_RR, RANGE_RR, TREND_ATR_MULT, RANGE_ATR_MULT, MAX_SL_POINTS,
+    EMA_TREND_LEN, EMA_FAST_LEN, ATR_LEN,
+    DI_LEN, ADX_SMOOTH, ADX_EMA, RSI_LEN,
+    ADX_TREND_TH, ADX_RANGE_TH,
+    FILTER_ATR_MULT, FILTER_BODY_MULT, FILTER_VOL_ENABLED, FILTER_VOL_MULT,
+    RSI_OB, RSI_OS,
+    TREND_RR, RANGE_RR, TREND_ATR_MULT, RANGE_ATR_MULT,
+    MAX_SL_MULT, MAX_SL_POINTS, TRAIL_STAGES, BE_MULT,
+    COMMISSION_PCT,
 )
 
-logger = logging.getLogger(__name__)
+class SignalType(Enum):
+    NONE        = "None"
+    TREND_LONG  = "Trend Long"
+    TREND_SHORT = "Trend Short"
+    RANGE_LONG  = "Range Long"
+    RANGE_SHORT = "Range Short"
 
-ENTRY_GUARD_MS = 0
-S0_ACTIVATION_ATR_MULTIPLE = 0.5
+@dataclass
+class Signal:
+    signal_type: SignalType
+    is_long:     bool
+    is_trend:    bool
+    regime:      str
 
-# ─── Stage helpers ────────────────────────────────────────────────────────────
+@dataclass
+class IndicatorSnapshot:
+    ema_trend: float; ema_fast: float; atr: float; rsi: float
+    dip: float; dim: float; adx: float; adx_raw: float
+    vol_sma: float; atr_sma: float
+    trend_regime: bool; range_regime: bool; filters_ok: bool
+    atr_ok: bool; vol_ok: bool; body_ok: bool
+    open: float; high: float; low: float; close: float; volume: float
+    prev_high: float; prev_low: float; timestamp: int
 
-def _get_active_params(stage: int, atr: float):
-    idx = max(stage - 1, 0)
-    _, pts_mult, off_mult = TRAIL_STAGES[idx]
-    return atr * pts_mult, atr * off_mult
+# ─── PINE SCRIPT EXACT MATH REPLICATION (JIT COMPILED) ────────────────────────
 
-def _calc_new_stage(profit_dist: float, atr: float) -> int:
-    for i in range(len(TRAIL_STAGES) - 1, -1, -1):
-        trigger_mult, _, _ = TRAIL_STAGES[i]
-        if profit_dist >= atr * trigger_mult:
-            return i + 1
-    return 0
+@njit(cache=True)
+def _rma_njit(arr: np.ndarray, length: int) -> np.ndarray:
+    n = len(arr)
+    out = np.full(n, np.nan)
+    start = -1
+    for i in range(n):
+        if not np.isnan(arr[i]):
+            start = i
+            break
+    if start < 0 or n - start < length:
+        return out
+    
+    seed_sum = 0.0
+    for i in range(start, start + length):
+        seed_sum += arr[i]
+    out[start + length - 1] = seed_sum / length
+    
+    alpha = 1.0 / length
+    for i in range(start + length, n):
+        v = arr[i]
+        out[i] = out[i - 1] if np.isnan(v) else out[i - 1] * (1.0 - alpha) + v * alpha
+    return out
 
-def _compute_trail_sl(
-    stage: int,
-    peak_price: float,
-    peak_profit_dist: float,
-    is_long: bool,
-    atr: float,
-) -> Optional[float]:
-    _, pts_mult, off_mult = TRAIL_STAGES[max(stage - 1, 0)]
-    if peak_profit_dist < atr * pts_mult:
-        return None
-    trail_dist = atr * off_mult
-    return (peak_price - trail_dist) if is_long else (peak_price + trail_dist)
-
-
-# ─── TrailMonitor ─────────────────────────────────────────────────────────────
-
-class TrailMonitor:
-    def __init__(self, order_manager, telegram, journal):
-        self.order_mgr = order_manager
-        self.telegram  = telegram
-        self.journal   = journal
-
-        self.risk:  Optional[RiskLevels] = None
-        self.state: Optional[TrailState] = None
-
-        self._running        = False
-        self._task: Optional[asyncio.Task] = None
-        self._exchange: Optional[ccxt.delta] = None   
-        self._exit_triggered = False
-
-        self.on_trail_exit: Optional[Callable] = None
-        self.entry_bar_time_ms: Optional[int] = None
-
-        self._active_pts: float = 0.0
-        self._active_off: float = 0.0
-        self._bar_just_closed: bool = False
+@njit(cache=True)
+def _ema_njit(arr: np.ndarray, length: int) -> np.ndarray:
+    n = len(arr)
+    out = np.full(n, np.nan)
+    start = -1
+    for i in range(n):
+        if not np.isnan(arr[i]):
+            start = i
+            break
+    if start < 0 or n - start < length:
+        return out
         
-        # FIX: Track the first bar close to mirror Pine's `blockExitMaxSL` logic
-        self._is_first_bar_close: bool = True
+    seed_sum = 0.0
+    for i in range(start, start + length):
+        seed_sum += arr[i]
+    out[start + length - 1] = seed_sum / length
+    
+    alpha = 2.0 / (length + 1.0)
+    for i in range(start + length, n):
+        v = arr[i]
+        out[i] = out[i - 1] if np.isnan(v) else out[i - 1] * (1.0 - alpha) + v * alpha
+    return out
 
-    # ── Public API ────────────────────────────────────────────────────────────
+def _ema(series: pd.Series, length: int) -> pd.Series:
+    return pd.Series(_ema_njit(series.to_numpy(dtype=np.float64), length), index=series.index)
 
-    def start(
-        self,
-        risk_levels: RiskLevels,
-        trail_state: TrailState,
-        entry_bar_time_ms: Optional[int] = None,
-        on_trail_exit: Optional[Callable] = None,
-    ):
-        self.risk            = risk_levels
-        self.state           = trail_state
-        self.on_trail_exit   = on_trail_exit
-        self._exit_triggered = False
-        self._bar_just_closed = False
-        self._is_first_bar_close = True  # Reset on new trade
-        self.entry_bar_time_ms = entry_bar_time_ms or int(time.time() * 1000)
+def _rma(series: pd.Series, length: int) -> pd.Series:
+    return pd.Series(_rma_njit(series.to_numpy(dtype=np.float64), length), index=series.index)
 
-        if self.state.peak_price == 0.0:
-            self.state.peak_price = risk_levels.entry_price
+def _true_range(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
+    prev_close = close.shift(1)
+    tr = pd.concat([high - low, (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(axis=1)
+    tr.iloc[0] = high.iloc[0] - low.iloc[0]
+    return tr
 
-        self._active_pts, self._active_off = _get_active_params(0, risk_levels.atr)
-        self._running = True
+def _atr(high: pd.Series, low: pd.Series, close: pd.Series, length: int) -> pd.Series:
+    return _rma(_true_range(high, low, close), length)
 
-        _base_url = (
-            "https://testnet-api.india.delta.exchange"
-            if DELTA_TESTNET
-            else "https://api.india.delta.exchange"
-        )
-        self._exchange = ccxt.delta({
-            "apiKey"         : DELTA_API_KEY,
-            "secret"         : DELTA_API_SECRET,
-            "enableRateLimit": True,
-            "urls"           : {"api": {"public": _base_url, "private": _base_url}},
-        })
+def _rsi(close: pd.Series, length: int) -> pd.Series:
+    delta = close.diff()
+    gain = _rma(delta.clip(lower=0.0).fillna(0.0), length)
+    loss = _rma((-delta.clip(upper=0.0)).fillna(0.0), length)
+    rs = gain / loss.replace(0.0, np.nan)
+    return 100.0 - (100.0 / (1.0 + rs)).where(loss != 0.0, 100.0)
 
-        self._exchange.markets = self.order_mgr.exchange.markets
-        self._task = asyncio.create_task(self._run())
-        logger.info(
-            f"TrailMonitor started | entry={risk_levels.entry_price:.2f} "
-            f"sl={risk_levels.sl:.2f} tp={risk_levels.tp:.2f} "
-            f"atr={risk_levels.atr:.2f} long={risk_levels.is_long} "
-            f"poll_interval={TRAIL_LOOP_SEC}s [ENTRY_GUARD_MS={ENTRY_GUARD_MS}]"
-        )
+def _dmi(high: pd.Series, low: pd.Series, close: pd.Series, di_len: int, adx_smooth: int):
+    up, down = high.diff(), -low.diff()
+    plus_dm = pd.Series(np.where((up > down) & (up > 0), up, 0.0), index=high.index)
+    minus_dm = pd.Series(np.where((down > up) & (down > 0), down, 0.0), index=high.index)
 
-    def stop(self):
-        self._running = False
-        if self._task:
-            self._task.cancel()
-        if self._exchange:
-            asyncio.create_task(self._close_exchange())
+    atr_di = _rma(_true_range(high, low, close), di_len).replace(0.0, np.nan)
+    plus_di = (100.0 * _rma(plus_dm, di_len) / atr_di).fillna(0.0)
+    minus_di = (100.0 * _rma(minus_dm, di_len) / atr_di).fillna(0.0)
 
-    # ── WS intrabar peak injection ────────────────────────────────────────────
+    dx = (100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0.0, np.nan)).fillna(0.0)
+    return plus_di, minus_di, _rma(dx, adx_smooth)
 
-    def update_intrabar_high(self, high: float) -> None:
-        if not self._running or self.state is None or self.risk is None:
-            return
-        if self.risk.is_long and high > self.state.peak_price:
-            self.state.peak_price = high
-            logger.debug(f"[WS-PEAK] peak_price updated → {high:.2f} (long)")
+# ─── CORE STRATEGY CALCULATION ────────────────────────────────────────────────
 
-    def update_intrabar_low(self, low: float) -> None:
-        if not self._running or self.state is None or self.risk is None:
-            return
-        if not self.risk.is_long and low < self.state.peak_price:
-            self.state.peak_price = low
-            logger.debug(f"[WS-PEAK] peak_price updated → {low:.2f} (short)")
+def compute_full_series(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    op, hi, lo, cl, vol = df['open'], df['high'], df['low'], df['close'], df['volume']
 
-    async def _close_exchange(self):
-        try:
-            if self._exchange:
-                await self._exchange.close()
-                self._exchange = None
-        except Exception as e:
-            logger.debug(f"Exchange close: {e}")
+    df['ema_trend'] = _ema(cl, EMA_TREND_LEN)
+    df['ema_fast']  = _ema(cl, EMA_FAST_LEN)
+    df['atr']       = _atr(hi, lo, cl, ATR_LEN)
+    df['rsi']       = _rsi(cl, RSI_LEN)
+    
+    dip, dim, adx_raw = _dmi(hi, lo, cl, DI_LEN, ADX_SMOOTH)
+    df['dip'], df['dim'], df['adx_raw'] = dip, dim, adx_raw
+    df['adx']       = _ema(df['adx_raw'], ADX_EMA)
 
-    def on_bar_close(
-        self,
-        bar_close: float,
-        bar_high: float,
-        bar_low: float,
-        current_atr: float,
-    ):
-        if not self._running or self.risk is None or self.state is None:
-            return
+    df['atr_sma']   = df['atr'].rolling(50).mean()
+    df['vol_sma']   = vol.rolling(20).mean()
 
-        if self._task and not self._task.done():
-            self._task.cancel()
-            self._task = None
+    df['prev_high'] = hi.shift(1)
+    df['prev_low']  = lo.shift(1)
 
-        self._bar_just_closed = True
-        is_entry_bar = self._is_first_bar_close
-        self._is_first_bar_close = False
+    df['body_abs']  = (cl - op).abs()
+    
+    return df
 
-        old_atr       = self.risk.atr
-        old_sl        = self.risk.sl
-        atr_mult      = TREND_ATR_MULT if self.risk.is_trend else RANGE_ATR_MULT
-        rr            = TREND_RR       if self.risk.is_trend else RANGE_RR
-        new_stop_dist = min(current_atr * atr_mult, MAX_SL_POINTS)
-        entry_price_  = self.risk.entry_price
-        is_long_      = self.risk.is_long
+def compute(df: pd.DataFrame) -> IndicatorSnapshot:
+    df_calc = compute_full_series(df)
+    row = df_calc.iloc[-1]
 
-        if is_long_:
-            new_sl = entry_price_ - new_stop_dist
-            new_tp = entry_price_ + new_stop_dist * rr
-        else:
-            new_sl = entry_price_ + new_stop_dist
-            new_tp = entry_price_ - new_stop_dist * rr
+    trend_regime = row['adx'] > ADX_TREND_TH
+    range_regime = row['adx'] < ADX_RANGE_TH
 
-        self.risk = RiskLevels(
-            entry_price = entry_price_,
-            sl          = new_sl,
-            tp          = new_tp,    
-            stop_dist   = new_stop_dist,
-            atr         = current_atr,
-            is_long     = is_long_,
-            is_trend    = self.risk.is_trend,
-        )
+    atr_ok  = row['atr'] < (row['atr_sma'] * FILTER_ATR_MULT)
+    vol_ok  = (row['volume'] > row['vol_sma'] * FILTER_VOL_MULT) if FILTER_VOL_ENABLED else True
+    body_ok = row['body_abs'] > (row['atr'] * FILTER_BODY_MULT)
+    filters_ok = atr_ok and vol_ok and body_ok
 
-        trail_has_moved_sl = (
-            (is_long_  and self.state.current_sl > old_sl + 1.0) or
-            (not is_long_ and self.state.current_sl < old_sl - 1.0)
-        )
-        if not trail_has_moved_sl:
-            if is_long_:
-                self.state.current_sl = max(new_sl, self.state.current_sl)
-            else:
-                self.state.current_sl = min(new_sl, self.state.current_sl)
+    return IndicatorSnapshot(
+        ema_trend=row['ema_trend'], ema_fast=row['ema_fast'],
+        atr=row['atr'], rsi=row['rsi'], dip=row['dip'], dim=row['dim'],
+        adx=row['adx'], adx_raw=row['adx_raw'],
+        vol_sma=row['vol_sma'], atr_sma=row['atr_sma'],
+        trend_regime=trend_regime, range_regime=range_regime,
+        filters_ok=filters_ok, atr_ok=atr_ok, vol_ok=vol_ok, body_ok=body_ok,
+        open=row['open'], high=row['high'], low=row['low'], close=row['close'],
+        volume=row['volume'], prev_high=row['prev_high'], prev_low=row['prev_low'],
+        timestamp=int(df.index[-1].timestamp() * 1000)
+    )
 
-        logger.info(
-            f"[BAR CLOSE] ATR {old_atr:.2f}→{current_atr:.2f} | "
-            f"stop_dist={new_stop_dist:.2f} | "
-            f"sl={new_sl:.2f} tp={new_tp:.2f}(pine-recalc) | "
-            f"current_sl={'trail=' + str(round(self.state.current_sl,2)) if trail_has_moved_sl else str(round(new_sl,2))}"
-        )
+def evaluate_entry(inds: IndicatorSnapshot) -> Signal:
+    if inds.trend_regime and inds.ema_fast > inds.ema_trend and inds.dip > inds.dim and inds.close > inds.prev_high and inds.filters_ok:
+        return Signal(SignalType.TREND_LONG, True, True, "TREND")
+    if inds.trend_regime and inds.ema_fast < inds.ema_trend and inds.dim > inds.dip and inds.close < inds.prev_low and inds.filters_ok:
+        return Signal(SignalType.TREND_SHORT, False, True, "TREND")
+    if inds.range_regime and inds.rsi < RSI_OS and inds.filters_ok:
+        return Signal(SignalType.RANGE_LONG, True, False, "RANGE")
+    if inds.range_regime and inds.rsi > RSI_OB and inds.filters_ok:
+        return Signal(SignalType.RANGE_SHORT, False, False, "RANGE")
+    return Signal(SignalType.NONE, False, False, "NONE")
 
-        risk, state = self.risk, self.state
-        is_long     = risk.is_long
-        entry_price = risk.entry_price
-        atr         = risk.atr
+def calc_levels(entry_price: float, is_long: bool, is_trend: bool, current_atr: float) -> RiskLevels:
+    atr_mult = TREND_ATR_MULT if is_trend else RANGE_ATR_MULT
+    rr       = TREND_RR       if is_trend else RANGE_RR
 
-        close_profit_dist = (bar_close - entry_price) if is_long else (entry_price - bar_close)
-        close_profit_dist = max(0.0, close_profit_dist)
+    stop_dist = min(current_atr * atr_mult, MAX_SL_POINTS)
 
-        new_stage = max(state.stage, _calc_new_stage(close_profit_dist, atr))
-        if new_stage > state.stage:
-            old_stage   = state.stage
-            state.stage = new_stage
-            self._active_pts, self._active_off = _get_active_params(new_stage, atr)
-            logger.info(
-                f"[BAR CLOSE] Trail stage {old_stage}→{new_stage} "
-                f"| close={bar_close:.2f} profit_dist={close_profit_dist:.2f} "
-                f"active_off={self._active_off:.2f}"
-            )
-        else:
-            self._active_pts, self._active_off = _get_active_params(state.stage, atr)
+    if is_long:
+        sl = entry_price - stop_dist
+        tp = entry_price + (stop_dist * rr)
+    else:
+        sl = entry_price + stop_dist
+        tp = entry_price - (stop_dist * rr)
 
-        # ── FIX: BREAKEVEN ALIGNED TO PINE BAR CLOSE ──
-        if not state.be_done and close_profit_dist > atr * BE_MULT:
-            state.be_done = True
-            if (is_long and entry_price > state.current_sl) or \
-               (not is_long and entry_price < state.current_sl):
-                state.current_sl = entry_price
-                logger.info(
-                    f"[BAR CLOSE] Breakeven SL set to entry={entry_price:.2f} "
-                    f"| close_profit_dist={close_profit_dist:.2f}"
-                )
-
-        if is_long:
-            state.peak_price = max(state.peak_price, bar_high, bar_close)
-        else:
-            state.peak_price = min(state.peak_price, bar_low, bar_close)
-
-        logger.info(
-            f"[BAR CLOSE] stage={state.stage} peak={state.peak_price:.2f} "
-            f"(bar_high={bar_high:.2f} bar_low={bar_low:.2f} bar_close={bar_close:.2f}) "
-            f"current_sl={state.current_sl:.2f} be_done={state.be_done} atr={atr:.2f}"
-        )
-
-        bar_exited = False
-        
-        # ── FIX: MAX SL ALIGNED TO PINE BAR CLOSE ──
-        # Evaluates strictly on candle close and blocks firing on the entry candle
-        if not is_entry_bar and not state.max_sl_fired:
-            if max_sl_hit(bar_close, entry_price, atr, is_long):
-                state.max_sl_fired = True
-                logger.info(f"[BAR CLOSE] Max SL hit on close={bar_close:.2f}")
-                asyncio.create_task(self._execute_exit(bar_close, "Max SL Hit"))
-                bar_exited = True
-
-        if self._running and not self._exit_triggered and not bar_exited:
-            tp_ = risk.tp
-            sl_ = state.current_sl
-            if is_long:
-                if bar_high >= tp_:
-                    asyncio.create_task(self._execute_exit(bar_high, "Target Profit"))
-                    bar_exited = True
-                elif bar_low <= sl_ + TRAIL_SL_PRE_FIRE_BUFFER:
-                    trail_active = state.current_sl > risk.sl
-                    if state.be_done and abs(state.current_sl - entry_price) < 1.0:
-                        sl_reason = "Breakeven SL"
-                    elif trail_active:
-                        sl_reason = f"Trail S{state.stage}"
-                    else:
-                        sl_reason = "Initial SL"
-                    asyncio.create_task(self._execute_exit(bar_low, sl_reason))
-                    bar_exited = True
-            else:
-                if bar_low <= tp_:
-                    asyncio.create_task(self._execute_exit(bar_low, "Target Profit"))
-                    bar_exited = True
-                elif bar_high >= sl_ - TRAIL_SL_PRE_FIRE_BUFFER:
-                    trail_active = state.current_sl < risk.sl
-                    if state.be_done and abs(state.current_sl - entry_price) < 1.0:
-                        sl_reason = "Breakeven SL"
-                    elif trail_active:
-                        sl_reason = f"Trail S{state.stage}"
-                    else:
-                        sl_reason = "Initial SL"
-                    asyncio.create_task(self._execute_exit(bar_high, sl_reason))
-                    bar_exited = True
-
-        if self._running and not bar_exited:
-            self._task = asyncio.create_task(self._run())
-            logger.debug("[BAR CLOSE] Tick task restarted (exchange reused — no reconnect)")
-
-    # ── Internal tick loop ────────────────────────────────────────────────────
-
-    async def _run(self):
-        try:
-            while self._running:
-                await asyncio.sleep(TRAIL_LOOP_SEC)
-                if not self._running:
-                    break
-                try:
-                    ticker = await self._exchange.fetch_ticker(SYMBOL)
-                    current_price = float(
-                        ticker.get("last")
-                        or ticker.get("info", {}).get("mark_price")
-                        or 0
-                    )
-                    if current_price > 0:
-                        await self._on_tick(current_price)
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.warning(f"Tick fetch error: {e}")
-        except asyncio.CancelledError:
-            pass  
-
-    async def _on_tick(self, current_price: float):
-        if not self._running or self.risk is None or self.state is None:
-            return
-
-        risk, state = self.risk, self.state
-        now_ms      = int(time.time() * 1000)
-        is_long     = risk.is_long
-        entry_price = risk.entry_price
-        atr         = risk.atr
-
-        # 1. Update intrabar peak
-        if is_long:
-            state.peak_price = max(state.peak_price, current_price)
-        else:
-            state.peak_price = min(state.peak_price, current_price)
-
-        # 2. Peak profit dist (from peak to entry)
-        peak_profit_dist = max(
-            0.0,
-            (state.peak_price - entry_price) if is_long
-            else (entry_price - state.peak_price)
-        )
-
-        # 3. TP check — Pine executes TP intrabar via Strategy Tester limit orders.
-        if (is_long and current_price >= risk.tp) or \
-           (not is_long and current_price <= risk.tp):
-            logger.info(f"[TICK] Target Profit hit | price={current_price:.2f} tp={risk.tp:.2f}")
-            await self._execute_exit(current_price, "Target Profit")
-            return
-
-        # 4. Ratchet trail SL — Pine trails natively intrabar.
-        trail_sl = _compute_trail_sl(
-            state.stage, state.peak_price, peak_profit_dist, is_long, atr
-        )
-        if trail_sl is not None:
-            if (is_long and trail_sl > state.current_sl) or \
-               (not is_long and trail_sl < state.current_sl):
-                state.current_sl = trail_sl
-                logger.debug(
-                    f"[TICK] Trail SL ratcheted → {state.current_sl:.2f} "
-                    f"(peak={state.peak_price:.2f} peak_profit={peak_profit_dist:.2f} "
-                    f"stage={state.stage})"
-                )
-
-        # 5. SL check — Pine executes standard strategy.exit SL intrabar.
-        if state.current_sl > 0:
-            sl_hit = (
-                (is_long  and current_price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER) or
-                (not is_long and current_price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
-            )
-            if sl_hit:
-                trail_active = (
-                    (is_long  and state.current_sl > risk.sl) or
-                    (not is_long and state.current_sl < risk.sl)
-                )
-                if state.be_done and abs(state.current_sl - entry_price) < 1.0:
-                    reason = "Breakeven SL"
-                elif trail_active:
-                    reason = f"Trail S{state.stage}"
-                else:
-                    reason = "Initial SL"
-
-                logger.info(
-                    f"[TICK] {reason} hit | price={current_price:.2f} "
-                    f"sl={state.current_sl:.2f} stage={state.stage}"
-                )
-                await self._execute_exit(current_price, reason)
-
-    # ── Guards ────────────────────────────────────────────────────────────────
-
-    def _in_entry_guard(self, now_ms: int) -> bool:
-        if self.entry_bar_time_ms is None:
-            return False
-        return (now_ms - self.entry_bar_time_ms) < ENTRY_GUARD_MS
-
-    # ── Exit execution ────────────────────────────────────────────────────────
-
-    async def _execute_exit(self, price: float, reason: str):
-        if self._exit_triggered:
-            return
-        self._exit_triggered = True
-        self._running = False
-
-        try:
-            exit_order = await self.order_mgr.close_at_trail_sl(reason=reason)
-            fill_price = float(
-                exit_order.get("average") or exit_order.get("price") or price
-            )
-        except Exception as e:
-            logger.error(f"close_at_trail_sl failed: {e}")
-            fill_price = price
-
-        logger.info(
-            f"Exit executed | reason={reason} "
-            f"price={price:.2f} fill={fill_price:.2f}"
-        )
-
-        if self.on_trail_exit:
-            await self.on_trail_exit(fill_price, reason)
+    return RiskLevels(
+        entry_price=entry_price, sl=sl, tp=tp,
+        stop_dist=stop_dist, atr=current_atr,
+        is_long=is_long, is_trend=is_trend
+    )
