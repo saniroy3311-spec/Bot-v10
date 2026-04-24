@@ -121,8 +121,66 @@ class OrderManager:
         self.position = None
         return order
 
-    async def close_position(self, reason: str = "Max SL Hit") -> dict:
-        return await self.close_at_trail_sl(reason=reason)
+    async def close_position(
+        self,
+        is_long: Optional[bool] = None,
+        reason: str = "Max SL Hit",
+    ) -> dict:
+        """
+        Close any open position with a reduce-only market order.
+
+        FIX: previously accepted only `reason`. trail_loop._fire_exit() calls
+        this with keyword `is_long=...` — the old signature raised TypeError,
+        which was silently swallowed, and the exchange position was never
+        closed. `is_long` here is the authoritative direction from trail_loop
+        (sourced from risk.is_long, frozen at entry). If None, falls back to
+        self.position tracked at entry time.
+        """
+        if is_long is None:
+            if not self.position:
+                logger.warning(f"close_position({reason}) called but no position tracked")
+                return {}
+            is_long = self.position["is_long"]
+
+        side = "sell" if is_long else "buy"
+        logger.info(
+            f"Market close ({reason}) | side={side} qty={ALERT_QTY} lots is_long={is_long}"
+        )
+        order = await _retry(lambda: self.exchange.create_order(
+            symbol = SYMBOL,
+            type   = "market",
+            side   = side,
+            amount = ALERT_QTY,
+            params = {"reduce_only": True},
+        ))
+        self.position = None
+        return order
+
+    async def cancel_all_orders(self) -> None:
+        """
+        Cancel every open order on SYMBOL.
+
+        FIX: trail_loop._fire_exit() was calling this method, which did not
+        exist on OrderManager — AttributeError was swallowed by try/except.
+        In NO-BRACKET mode there are normally no standing SL/TP orders, so
+        this is usually a no-op; but it's required by the exit path and is
+        safe to call on bracket-mode migrations or after a crash that left
+        orphan orders on the book.
+        """
+        try:
+            orders = await _retry(lambda: self.exchange.fetch_open_orders(SYMBOL))
+        except Exception as e:
+            logger.debug(f"cancel_all_orders: fetch_open_orders failed: {e}")
+            return
+        for o in orders or []:
+            oid = o.get("id")
+            if not oid:
+                continue
+            try:
+                await _retry(lambda _oid=oid: self.exchange.cancel_order(_oid, SYMBOL))
+                logger.info(f"Cancelled open order {oid}")
+            except Exception as e:
+                logger.warning(f"cancel_order({oid}) failed: {e}")
 
     async def fetch_position(self) -> Optional[dict]:
         positions = await _retry(
