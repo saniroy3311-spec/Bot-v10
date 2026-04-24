@@ -162,6 +162,7 @@ class ShivaSniperBot:
                     bar_close   = snap.close,
                     bar_high    = snap.high,
                     bar_low     = snap.low,
+                    bar_open    = snap.open,    # FIX-TRAIL-02: TP-vs-SL priority
                     current_atr = snap.atr,
                 )
                 logger.debug(
