@@ -410,25 +410,53 @@ class TrailMonitor:
     # ── Exit helper ───────────────────────────────────────────────────────────
 
     async def _fire_exit(self, exit_price: float, reason: str) -> None:
-        """Fire exit once. Idempotent — second call is a no-op."""
+        """
+        Fire exit once. Idempotent on success.
+
+        CRITICAL FIX: previously, _exit_fired was set to True and _on_exit_cb
+        was called UNCONDITIONALLY — even if close_position() raised (the old
+        close_position had signature (self, reason=...) and this method calls
+        it with is_long=... which raised TypeError, silently swallowed). The
+        bot would then reset in_position=False while the exchange position
+        stayed open — classic "bot thinks flat, exchange still long" desync.
+
+        New behaviour:
+          1. Set _exit_fired so re-entry into this method is blocked
+             during the in-flight close.
+          2. cancel_all_orders() — best-effort, warnings only.
+          3. close_position() — MUST succeed. On failure, reset _exit_fired
+             so the next tick/bar retries, and DO NOT call _on_exit_cb
+             (which would reset bot.in_position=False and strand the position).
+          4. Only on success: set _running=False and call _on_exit_cb.
+        """
         if self._exit_fired:
             return
-        self._exit_fired = True
-        self._running    = False
+        self._exit_fired = True   # block concurrent re-entry while close is in flight
 
         logger.info(f"[TRAIL] Exit fired: reason={reason} price={exit_price:.2f}")
 
+        # 1. Cancel any standing orders (no-op in NO-BRACKET mode)
         try:
             await self._order_mgr.cancel_all_orders()
         except Exception as e:
             logger.warning(f"[TRAIL] cancel_all_orders failed: {e}")
 
+        # 2. Close the position on the exchange (reduce-only market order)
+        is_long = self._risk.is_long if self._risk else True
         try:
-            is_long = self._risk.is_long if self._risk else True
-            await self._order_mgr.close_position(is_long=is_long)
+            await self._order_mgr.close_position(is_long=is_long, reason=reason)
         except Exception as e:
-            logger.error(f"[TRAIL] close_position failed: {e}", exc_info=True)
+            # DO NOT proceed to callback — bot state must stay in_position=True
+            # so the next tick re-attempts. Reset _exit_fired to allow retry.
+            logger.error(
+                f"[TRAIL] close_position failed — will retry next tick: {e}",
+                exc_info=True,
+            )
+            self._exit_fired = False
+            return
 
+        # 3. Exchange close succeeded — stop the monitor and notify bot to reset state
+        self._running = False
         if self._on_exit_cb is not None:
             try:
                 await self._on_exit_cb(exit_price, reason)
