@@ -1,142 +1,119 @@
-//@version=5
-// ─────────────────────────────────────────────
-// Name    : Shiva Sniper
-// Version : 6.5-30M — Optimized for 30-Minute Timeframe
-//
-// ALERT FIXES (this version)
-// ─────────────────────────────────────────────
-// ALERT-FIX-001 | calc_on_every_tick = false
-//   Was TRUE → strategy recalculated every tick, signal could flip mid-bar
-//   causing alerts to fire at wrong tick or duplicate. Now fires ONLY on
-//   bar close, matching exactly when the signal plots on the chart.
-//
-// ALERT-FIX-002 | Removed all `if liveBar` gates from alert() calls
-//   `barstate.isrealtime` is only true on the single live bar right now.
-//   Wrapping alert() in `if liveBar` means: signal plots → no alert sent.
-//   Fix: gate alerts on `newBar` (barstate.isconfirmed) which is the same
-//   gate that controls strategy.entry(). Alert now fires EXACTLY when the
-//   entry shape plots on the chart.
-//
-// ALERT-FIX-003 | Exit alert gated on newBar, not liveBar
-//   Same issue: closedtrades increments on confirmed bar; liveBar gate
-//   caused exit alerts to be silently dropped. Now fires on bar close.
-//
-// ALERT-FIX-004 | Max SL alert de-gated from liveBar
-//   Max SL check runs every bar. Alert now fires immediately on the
-//   confirmed bar where price crosses the max SL level.
-//
-// ALERT-FIX-005 | maxSLFired flag scoped correctly
-//   Previously could remain true across position resets. Now explicitly
-//   cleared when a new position opens on the confirmed bar.
-// ─────────────────────────────────────────────
-//
-// PRESERVED FROM v6.5-30M:
-//   30M-OPT-001..008 | All 30M parameter changes
-//   FIX-007 | Same-bar entry+exit guard (entryBar + entryAlertBar)
-//   FIX-008 | Real alert P/L display
-//   FIX-009 | QTY / slippage config
-// ─────────────────────────────────────────────
+//@version=6
+// ═══════════════════════════════════════════════════════════════════════════════
+// Script  : Shiva Sniper — Bot-v10  (1:1 Python Bot Parity)
+// Version : v10-PINE-EXACT (Visuals Cleaned)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// ======================
+// ═══════════════════════════════════════════════════════════════════════════════
 // DELTA LIVE ALERT CONFIG
-// ======================
-alertSymbol = input.string("BTCUSD.P", "Delta Symbol",          tooltip="Must match Delta Exchange symbol exactly")
-alertQty    = input.int(30,            "Live Alert Qty (Delta)", minval=1, tooltip="ONLY used in live alert JSON.")
+// ═══════════════════════════════════════════════════════════════════════════════
+alertSymbol = input.string("BTCUSD.P",                          "Delta Symbol",
+     tooltip = "Must match Delta Exchange symbol exactly (e.g. BTCUSD.P)")
+alertQty    = input.int(1,                                      "Live Alert Qty (lots)",
+     minval = 1,
+     tooltip = "ALERT_QTY in config.py — only used inside the JSON alert body")
 strategyId  = input.string("4e34d08f83a61dfbfa91ad47717b8ed2", "Delta Webhook strategy_id")
-showRealPL  = input.bool(true,         "Show Real Alert P/L")
 
-strategy("BTCUSDT Sniper v6.5-30M (5-Stage Trail + Micro SL + Real P/L)",
+strategy(
+     title              = "Shiva Sniper — Bot-v10  (1:1 Pine Parity)",
      overlay            = true,
      pyramiding         = 0,
      initial_capital    = 10000,
      default_qty_type   = strategy.fixed,
-     default_qty_value  = 30,
+     default_qty_value  = 1,
      commission_type    = strategy.commission.percent,
-     commission_value   = 0.05,
+     commission_value   = 0.059, // 0.059% taker fees
      slippage           = 10,
-     // ALERT-FIX-001: Changed from true → false
-     // true caused strategy to recalculate on every tick, making signals
-     // unstable within a bar and causing duplicate / mis-timed alerts.
      calc_on_every_tick = false)
 
-// ======================
-// INPUTS
-// ======================
-emaTrendLen   = input.int(200,   "EMA Trend Length",          minval=50,  maxval=500)
-emaFastLen    = input.int(50,    "EMA Fast Length",           minval=10,  maxval=200)
-atrLen        = input.int(14,    "ATR Length",                minval=5,   maxval=50)
-diLen         = input.int(14,    "DI Length",                 minval=5,   maxval=50)
-adxSmooth     = input.int(14,    "ADX Smoothing",             minval=5,   maxval=50)
-adxEMA        = input.int(5,     "ADX EMA",                   minval=1,   maxval=20)
-rsiLen        = input.int(14,    "RSI Length",                minval=5,   maxval=50)
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── INPUTS  (mirrors config.py defaults exactly) ───────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 
-adxTrendTh    = input.int(20,    "ADX Trend Threshold",       minval=15,  maxval=40)
-adxRangeTh    = input.int(18,    "ADX Range Threshold",       minval=10,  maxval=30)
+emaTrendLen = input.int(200, "EMA Trend Length",   minval=50,  maxval=500)
+emaFastLen  = input.int(50,  "EMA Fast Length",    minval=10,  maxval=200)
+atrLen      = input.int(14,  "ATR Length",         minval=5,   maxval=50)
+diLen       = input.int(14,  "DI Length",          minval=5,   maxval=50)
+adxSmooth   = input.int(14,  "ADX Smoothing",      minval=5,   maxval=50)
+adxEMALen   = input.int(5,   "ADX EMA Smoothing",  minval=1,   maxval=20)
+rsiLen      = input.int(14,  "RSI Length",         minval=5,   maxval=50)
 
-filterATRmul  = input.float(1.6, "Filter ATR Mult",           minval=1.0, maxval=3.0,  step=0.1)
-filterBody    = input.float(0.4, "Filter Body (ATR)",         minval=0.1, maxval=2.0,  step=0.1)
+adxTrendTh  = input.int(20,  "ADX Trend Threshold (≥ = trend)", minval=15, maxval=40)
+adxRangeTh  = input.int(18,  "ADX Range Threshold (< = range)", minval=10, maxval=30)
 
-trendRR       = input.float(5.0, "Trend RR (wide TP)",        minval=1.0, maxval=10.0, step=0.1)
-rangeRR       = input.float(3.0, "Range RR",                  minval=1.0, maxval=5.0,  step=0.1)
+filterATRmul = input.float(1.6, "Filter: ATR < SMA(ATR,50) × Mult", minval=1.0, maxval=3.0, step=0.1)
+filterBody   = input.float(0.4, "Filter: Body > ATR × Mult",        minval=0.1, maxval=2.0, step=0.1)
 
-trendATRmul   = input.float(0.9, "Trend ATR SL Mult",         minval=0.3, maxval=2.0,  step=0.1)
-rangeATRmul   = input.float(0.7, "Range ATR SL Mult",         minval=0.3, maxval=2.0,  step=0.1)
+rsiOB = input.int(70, "RSI Overbought", minval=55, maxval=95)
+rsiOS = input.int(30, "RSI Oversold",   minval=5,  maxval=45)
 
-trail1Trigger = input.float(1.0,  "Stage 1 Trigger (ATR)",   minval=0.3,  maxval=3.0,  step=0.1)
-trail1Pts     = input.float(0.70, "Stage 1 Trail Pts",       minval=0.1,  maxval=3.0,  step=0.05)
-trail1Off     = input.float(0.55, "Stage 1 Trail Off",       minval=0.1,  maxval=3.0,  step=0.05)
-trail2Trigger = input.float(2.0,  "Stage 2 Trigger (ATR)",   minval=0.5,  maxval=5.0,  step=0.1)
-trail2Pts     = input.float(0.55, "Stage 2 Trail Pts",       minval=0.1,  maxval=3.0,  step=0.05)
-trail2Off     = input.float(0.45, "Stage 2 Trail Off",       minval=0.1,  maxval=3.0,  step=0.05)
-trail3Trigger = input.float(3.0,  "Stage 3 Trigger (ATR)",   minval=1.0,  maxval=8.0,  step=0.1)
-trail3Pts     = input.float(0.45, "Stage 3 Trail Pts",       minval=0.1,  maxval=3.0,  step=0.05)
-trail3Off     = input.float(0.35, "Stage 3 Trail Off",       minval=0.1,  maxval=3.0,  step=0.05)
-trail4Trigger = input.float(5.0,  "Stage 4 Trigger (ATR)",   minval=2.0,  maxval=12.0, step=0.1)
-trail4Pts     = input.float(0.30, "Stage 4 Trail Pts",       minval=0.1,  maxval=3.0,  step=0.05)
-trail4Off     = input.float(0.25, "Stage 4 Trail Off",       minval=0.1,  maxval=3.0,  step=0.05)
-trail5Trigger = input.float(8.0,  "Stage 5 Trigger (ATR)",   minval=3.0,  maxval=20.0, step=0.1)
-trail5Pts     = input.float(0.20, "Stage 5 Trail Pts",       minval=0.05, maxval=2.0,  step=0.05)
-trail5Off     = input.float(0.15, "Stage 5 Trail Off",       minval=0.05, maxval=2.0,  step=0.05)
+trendRR = input.float(5.0, "Trend R:R", minval=1.0, maxval=10.0, step=0.1)
+rangeRR = input.float(3.0, "Range R:R", minval=1.0, maxval=5.0,  step=0.1)
 
-beMult        = input.float(1.0,   "Breakeven ATR Mult",     minval=0.3, maxval=3.0,  step=0.1)
-maxSLmult     = input.float(2.0,   "Dynamic Max SL (ATR)",   minval=1.0, maxval=5.0,  step=0.1)
-maxSLPoints   = input.float(1500.0,"Hard Max SL (Points)",   minval=50,  maxval=5000, step=50.0)
+trendATRmul = input.float(0.9, "Trend ATR × SL Mult", minval=0.3, maxval=2.0, step=0.1)
+rangeATRmul = input.float(0.7, "Range ATR × SL Mult", minval=0.3, maxval=2.0, step=0.1)
 
-rsiOB         = input.int(70,      "RSI Overbought",         minval=55,  maxval=95)
-rsiOS         = input.int(30,      "RSI Oversold",           minval=5,   maxval=45)
+maxSLmult   = input.float(2.0,    "Dynamic Max SL (ATR ×)", minval=1.0, maxval=5.0, step=0.1)
+maxSLPoints = input.float(1500.0, "Hard Max SL (Points)",   minval=50,  maxval=5000, step=50.0)
 
-// ======================
-// INDICATORS
-// ======================
+beMult = input.float(1.0, "Breakeven ATR Mult", minval=0.3, maxval=3.0, step=0.1)
+
+trail1Trigger = input.float(1.0,  "Stage 1 Trigger (ATR ×)", minval=0.3,  maxval=3.0,  step=0.1)
+trail1Pts     = input.float(0.70, "Stage 1 trail_points ×",  minval=0.1,  maxval=3.0,  step=0.05)
+trail1Off     = input.float(0.55, "Stage 1 trail_offset ×",  minval=0.1,  maxval=3.0,  step=0.05)
+
+trail2Trigger = input.float(2.0,  "Stage 2 Trigger (ATR ×)", minval=0.5,  maxval=5.0,  step=0.1)
+trail2Pts     = input.float(0.55, "Stage 2 trail_points ×",  minval=0.1,  maxval=3.0,  step=0.05)
+trail2Off     = input.float(0.45, "Stage 2 trail_offset ×",  minval=0.1,  maxval=3.0,  step=0.05)
+
+trail3Trigger = input.float(3.0,  "Stage 3 Trigger (ATR ×)", minval=1.0,  maxval=8.0,  step=0.1)
+trail3Pts     = input.float(0.45, "Stage 3 trail_points ×",  minval=0.1,  maxval=3.0,  step=0.05)
+trail3Off     = input.float(0.35, "Stage 3 trail_offset ×",  minval=0.1,  maxval=3.0,  step=0.05)
+
+trail4Trigger = input.float(5.0,  "Stage 4 Trigger (ATR ×)", minval=2.0,  maxval=12.0, step=0.1)
+trail4Pts     = input.float(0.30, "Stage 4 trail_points ×",  minval=0.1,  maxval=3.0,  step=0.05)
+trail4Off     = input.float(0.25, "Stage 4 trail_offset ×",  minval=0.1,  maxval=3.0,  step=0.05)
+
+trail5Trigger = input.float(8.0,  "Stage 5 Trigger (ATR ×)", minval=3.0,  maxval=20.0, step=0.1)
+trail5Pts     = input.float(0.20, "Stage 5 trail_points ×",  minval=0.05, maxval=2.0,  step=0.05)
+trail5Off     = input.float(0.15, "Stage 5 trail_offset ×",  minval=0.05, maxval=2.0,  step=0.05)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── INDICATORS ──────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 emaTrend = ta.ema(close, emaTrendLen)
 emaFast  = ta.ema(close, emaFastLen)
 atr      = ta.atr(atrLen)
 rsi      = ta.rsi(close, rsiLen)
-[dip, dim, adxRaw] = ta.dmi(diLen, adxSmooth)
-adx      = ta.ema(adxRaw, adxEMA)
 
-// ======================
-// REGIME
-// ======================
+[dip, dim, adxRaw] = ta.dmi(diLen, adxSmooth)
+adx = ta.ema(adxRaw, adxEMALen)
+
+atrSMA = ta.sma(atr, 50)
+volSMA = ta.sma(volume, 20)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── REGIME ──────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 trendRegime = adx > adxTrendTh
 rangeRegime = adx < adxRangeTh
 
-// ======================
-// FILTERS
-// ======================
-filters = atr < ta.sma(atr, 50) * filterATRmul and volume > ta.sma(volume, 20) and math.abs(close - open) > atr * filterBody
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── FILTERS ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+filters = atr < atrSMA * filterATRmul and volume > volSMA and math.abs(close - open) > atr * filterBody
 
-// ======================
-// ENTRY CONDITIONS
-// ======================
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── ENTRY CONDITIONS ────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 trendLong  = trendRegime and emaFast > emaTrend and dip > dim and close > high[1] and filters
 trendShort = trendRegime and emaFast < emaTrend and dim > dip and close < low[1]  and filters
 rangeLong  = rangeRegime and rsi < rsiOS and filters
 rangeShort = rangeRegime and rsi > rsiOB and filters
 
-// ======================
-// DELTA JSON BUILDERS
-// ======================
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── DELTA JSON BUILDERS (Single Line to prevent CE10156) ────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 qtyStr = str.tostring(alertQty)
 
 deltaEntry(side) =>
@@ -145,34 +122,26 @@ deltaEntry(side) =>
 deltaClose(side) =>
     '{"symbol":"' + alertSymbol + '","side":"' + side + '","qty":' + qtyStr + ',"order_type":"market_order","reduce_only":true,"strategy_id":"' + strategyId + '"}'
 
-// ======================
-// HELPER: Commission-adjusted P/L
-// ======================
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── COMMISSION-ADJUSTED P/L (0% Maker Exit Adjusted) ────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 calcRealPL(entryPx, exitPx, qty, isLong) =>
     rawPL = isLong ? (exitPx - entryPx) * qty : (entryPx - exitPx) * qty
-    comm  = (entryPx + exitPx) * qty * 0.001
+    comm  = (entryPx * qty * 0.00059)   // 0.059% taker on entry, 0% maker on exit
     rawPL - comm
 
-// ======================
-// SHARED STATE
-// ======================
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── SHARED BAR-CLOSE STATE ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 noPosition = strategy.position_size == 0
-// ALERT-FIX-001: newBar now reliably = bar close event since calc_on_every_tick=false
 newBar     = barstate.isconfirmed
 
-// ======================
-// ENTRY BAR TRACKER — FIX-007
-// ======================
 var int entryBar      = na
 var int entryAlertBar = na
 
-// ======================
-// ENTRY + ENTRY ALERT
-// ALERT-FIX-002: Removed `if liveBar` inner gate.
-//   Gate is now solely `newBar` (barstate.isconfirmed).
-//   Alert fires on the same bar that the entry signal plots — guaranteed.
-//   alert.freq_once_per_bar_close still deduplicates within a bar.
-// ======================
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── ENTRIES + WEBHOOK ALERTS ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 if newBar and noPosition
     if trendLong
         strategy.entry("Trend Long",  strategy.long)
@@ -191,9 +160,9 @@ if newBar and noPosition
         alert(deltaEntry("sell"), alert.freq_once_per_bar_close)
         entryAlertBar := bar_index
 
-// ======================
-// TRADE STATE
-// ======================
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── TRADE STATE ─────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 var float entryPrice = na
 var bool  beDone     = false
 var int   trailStage = 0
@@ -210,21 +179,23 @@ if strategy.position_size == 0
     trailStage    := 0
     entryAlertBar := na
 
-// ======================
-// STOP / TARGET
-// ======================
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── STOP / TARGET ───────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 isTrend  = strategy.opentrades > 0 and (strategy.opentrades.entry_id(0) == "Trend Long" or strategy.opentrades.entry_id(0) == "Trend Short")
-rr       = isTrend ? trendRR     : rangeRR
-atrMult  = isTrend ? trendATRmul : rangeATRmul
-stopDist = math.min(atr * atrMult, maxSLPoints)
-longSL   = entryPrice - stopDist
-longTP   = entryPrice + stopDist * rr
-shortSL  = entryPrice + stopDist
-shortTP  = entryPrice - stopDist * rr
 
-// ======================
-// 5-STAGE TRAIL ENGINE
-// ======================
+rrActive       = isTrend ? trendRR     : rangeRR
+atrMultActive  = isTrend ? trendATRmul : rangeATRmul
+stopDist       = math.min(atr * atrMultActive, maxSLPoints)
+
+longSL  = entryPrice - stopDist
+longTP  = entryPrice + stopDist * rrActive
+shortSL = entryPrice + stopDist
+shortTP = entryPrice - stopDist * rrActive
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── 5-STAGE TRAIL ENGINE ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 profitDist = not na(entryPrice) ? (strategy.position_size > 0 ? close - entryPrice : entryPrice - close) : 0.0
 
 if not na(entryPrice) and strategy.position_size != 0
@@ -239,21 +210,20 @@ if not na(entryPrice) and strategy.position_size != 0
     else if trailStage < 1 and profitDist >= atr * trail1Trigger
         trailStage := 1
 
-activePts  = trailStage == 5 ? atr * trail5Pts : trailStage == 4 ? atr * trail4Pts : trailStage == 3 ? atr * trail3Pts : trailStage == 2 ? atr * trail2Pts : atr * trail1Pts
-activeOff  = trailStage == 5 ? atr * trail5Off : trailStage == 4 ? atr * trail4Off : trailStage == 3 ? atr * trail3Off : trailStage == 2 ? atr * trail2Off : atr * trail1Off
-stageColor = trailStage == 5 ? color.fuchsia : trailStage == 4 ? color.red : trailStage == 3 ? color.orange : trailStage == 2 ? color.yellow : trailStage == 1 ? color.lime : color.gray
+activePts = trailStage == 5 ? atr * trail5Pts : trailStage == 4 ? atr * trail4Pts : trailStage == 3 ? atr * trail3Pts : trailStage == 2 ? atr * trail2Pts : atr * trail1Pts
+activeOff = trailStage == 5 ? atr * trail5Off : trailStage == 4 ? atr * trail4Off : trailStage == 3 ? atr * trail3Off : trailStage == 2 ? atr * trail2Off : atr * trail1Off
 
-// ======================
-// PRIMARY EXITS
-// ======================
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── PRIMARY EXITS ───────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 strategy.exit("Exit TL", from_entry="Trend Long",  stop=longSL,  limit=longTP,  trail_points=activePts, trail_offset=activeOff)
 strategy.exit("Exit TS", from_entry="Trend Short", stop=shortSL, limit=shortTP, trail_points=activePts, trail_offset=activeOff)
 strategy.exit("Exit RL", from_entry="Range Long",  stop=longSL,  limit=longTP,  trail_points=activePts, trail_offset=activeOff)
 strategy.exit("Exit RS", from_entry="Range Short", stop=shortSL, limit=shortTP, trail_points=activePts, trail_offset=activeOff)
 
-// ======================
-// BREAKEVEN
-// ======================
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── BREAKEVEN ───────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 beTrigger = atr * beMult
 
 if not beDone and not na(entryPrice)
@@ -266,43 +236,32 @@ if not beDone and not na(entryPrice)
         strategy.exit("BE-SR", from_entry="Range Short", stop=entryPrice, trail_points=activePts, trail_offset=activeOff)
         beDone := true
 
-// ======================
-// MAX SL — FIX-007 + ALERT-FIX-004
-// ALERT-FIX-004: Removed `if liveBar` from alert() inside Max SL block.
-//   Max SL evaluates on bar close. Alert now fires on that same bar.
-// ALERT-FIX-005: maxSLFired cleared when new position opens (not just
-//   when position_size flips from non-zero → non-zero).
-// ======================
-maxSLdynPts = atr * maxSLmult
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── MAX SL ──────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+maxSLthresh = math.min(atr * maxSLmult, maxSLPoints)
 var bool maxSLFired = false
 
-// ALERT-FIX-005: Clear maxSLFired on new position open
 if strategy.position_size != 0 and strategy.position_size[1] == 0
     maxSLFired := false
 
 blockExitMaxSL = (not na(entryBar) and bar_index == entryBar) or (not na(entryAlertBar) and bar_index == entryAlertBar)
 
 if not na(entryPrice) and not blockExitMaxSL
-    if strategy.position_size > 0 and close <= entryPrice - math.min(maxSLdynPts, maxSLPoints)
+    if strategy.position_size > 0 and close <= entryPrice - maxSLthresh
         strategy.close_all(comment="Max SL Hit")
-        // ALERT-FIX-004: alert fires on confirmed bar, not gated by liveBar
         if not maxSLFired
             alert(deltaClose("sell"), alert.freq_once_per_bar_close)
             maxSLFired := true
-    if strategy.position_size < 0 and close >= entryPrice + math.min(maxSLdynPts, maxSLPoints)
+    if strategy.position_size < 0 and close >= entryPrice + maxSLthresh
         strategy.close_all(comment="Max SL Hit")
-        // ALERT-FIX-004: alert fires on confirmed bar, not gated by liveBar
         if not maxSLFired
             alert(deltaClose("buy"), alert.freq_once_per_bar_close)
             maxSLFired := true
 
-// ======================
-// EXIT ALERT DETECTOR — FIX-008 + ALERT-FIX-003
-// ALERT-FIX-003: Removed `if liveBar` gate.
-//   strategy.closedtrades increments on the confirmed bar where the exit
-//   was triggered. Alert now fires on that same bar via newBar gate below.
-//   This syncs exit alert exactly to when the exit plots on the chart.
-// ======================
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── EXIT ALERT DETECTOR ─────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
 var int  prevClosedTrades = 0
 var bool exitAlertFired   = false
 
@@ -314,64 +273,39 @@ if strategy.position_size != 0 and strategy.position_size[1] == 0
 
 blockExit = (not na(entryBar) and bar_index == entryBar) or (not na(entryAlertBar) and bar_index == entryAlertBar)
 
-// ALERT-FIX-003: Use `newBar` instead of `liveBar` — fires on bar close
+// FLATTENED IF STATEMENT to prevent CE10156
 if strategy.closedtrades > prevClosedTrades and newBar and not maxSLFired and not exitAlertFired and not blockExit
-    idx  = strategy.closedtrades - 1
-    enid = strategy.closedtrades.entry_id(idx)
-    wasL = str.contains(enid, "Long")
+    idx   = strategy.closedtrades - 1
+    enid  = strategy.closedtrades.entry_id(idx)
+    wasL  = str.contains(enid, "Long")
 
-    exitPrice = close
-    entryPx   = strategy.closedtrades.entry_price(idx)
-    qty       = alertQty
-    isLong    = wasL
-    realPL    = calcRealPL(entryPx, exitPrice, qty, isLong)
+    entryPx  = strategy.closedtrades.entry_price(idx)
+    exitPx   = close
+    realPL   = calcRealPL(entryPx, exitPx, alertQty, wasL)
 
-    alertMsg = deltaClose(isLong ? "sell" : "buy")
-    alert(alertMsg, alert.freq_once_per_bar_close)
-
-    if showRealPL
-        label.new(bar_index, isLong ? low : high,
-             "🎯 Delta P/L\nEntry: " + str.tostring(entryPx, "#.##") +
-             "\nExit: " + str.tostring(exitPrice, "#.##") +
-             "\nQty: " + str.tostring(qty) +
-             "\nReal P/L: " + str.tostring(realPL, "#.##") + " USDT",
-             color = realPL >= 0 ? color.green : color.red,
-             textcolor = color.white,
-             style = isLong ? label.style_label_up : label.style_label_down,
-             size = size.small)
-
+    alert(deltaClose(wasL ? "sell" : "buy"), alert.freq_once_per_bar_close)
     exitAlertFired := true
 
 prevClosedTrades := strategy.closedtrades
 
-// ======================
-// VISUALS
-// ======================
-plot(emaTrend, color=color.orange, linewidth=2)
-plot(emaFast,  color=color.blue,   linewidth=1)
-plotshape(strategy.position_size != 0, title="Trail Stage", style=shape.circle, location=location.belowbar, color=stageColor, size=size.tiny)
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── VISUALS ─────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+plot(emaTrend, "EMA 200",     color=color.orange,              linewidth=2)
+plot(emaFast,  "EMA 50",      color=color.new(color.blue, 20), linewidth=1)
 
-stageChanged = trailStage != trailStage[1]
-if stageChanged and strategy.position_size != 0
-    label.new(bar_index, low, "S" + str.tostring(trailStage), color=stageColor, textcolor=color.black, style=label.style_label_up, size=size.small)
+plotshape(trendLong  and newBar and noPosition, "Trend Long ▲",  shape.triangleup,   location.belowbar, color.lime,   size=size.small)
+plotshape(trendShort and newBar and noPosition, "Trend Short ▼", shape.triangledown, location.abovebar, color.red,    size=size.small)
+plotshape(rangeLong  and newBar and noPosition, "Range Long ▲",  shape.triangleup,   location.belowbar, color.aqua,   size=size.small)
+plotshape(rangeShort and newBar and noPosition, "Range Short ▼", shape.triangledown, location.abovebar, color.purple, size=size.small)
 
-if strategy.position_size != 0 and showRealPL
-    currentExitPrice = close
-    isLong = strategy.position_size > 0
-    currentRealPL = calcRealPL(entryPrice, currentExitPrice, alertQty, isLong)
-    labelColor = currentRealPL >= 0 ? color.green : color.red
-    label.new(bar_index, isLong ? low * 0.999 : high * 1.001,
-         "📊 Live P/L\n" + str.tostring(currentRealPL, "#.##") + " USDT",
-         color = labelColor, textcolor = color.white,
-         style = isLong ? label.style_label_up : label.style_label_down,
-         size = size.tiny)
+bgcolor(trendRegime ? color.new(color.blue,   93) : na, title="Trend Regime BG")
+bgcolor(rangeRegime ? color.new(color.yellow, 93) : na, title="Range Regime BG")
 
-// ======================
-// ALERTCONDITION BACKUP
-// These fire on bar close automatically — no liveBar gate needed.
-// NOTE: qty hardcoded to 30. If you change alertQty input, update these too.
-// ======================
-alertcondition(trendLong  and newBar and noPosition, "Delta: Trend Long Buy",   '{"symbol":"BTCUSD.P","side":"buy","qty":30,"order_type":"market_order","strategy_id":"4e34d08f83a61dfbfa91ad47717b8ed2"}')
-alertcondition(trendShort and newBar and noPosition, "Delta: Trend Short Sell", '{"symbol":"BTCUSD.P","side":"sell","qty":30,"order_type":"market_order","strategy_id":"4e34d08f83a61dfbfa91ad47717b8ed2"}')
-alertcondition(rangeLong  and newBar and noPosition, "Delta: Range Long Buy",   '{"symbol":"BTCUSD.P","side":"buy","qty":30,"order_type":"market_order","strategy_id":"4e34d08f83a61dfbfa91ad47717b8ed2"}')
-alertcondition(rangeShort and newBar and noPosition, "Delta: Range Short Sell", '{"symbol":"BTCUSD.P","side":"sell","qty":30,"order_type":"market_order","strategy_id":"4e34d08f83a61dfbfa91ad47717b8ed2"}')
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── ALERTCONDITION BACKUP ───────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+alertcondition(trendLong  and newBar and noPosition, "Delta: Trend Long Buy",   '{"symbol":"BTCUSD.P","side":"buy","qty":1,"order_type":"market_order","strategy_id":"4e34d08f83a61dfbfa91ad47717b8ed2"}')
+alertcondition(trendShort and newBar and noPosition, "Delta: Trend Short Sell", '{"symbol":"BTCUSD.P","side":"sell","qty":1,"order_type":"market_order","strategy_id":"4e34d08f83a61dfbfa91ad47717b8ed2"}')
+alertcondition(rangeLong  and newBar and noPosition, "Delta: Range Long Buy",   '{"symbol":"BTCUSD.P","side":"buy","qty":1,"order_type":"market_order","strategy_id":"4e34d08f83a61dfbfa91ad47717b8ed2"}')
+alertcondition(rangeShort and newBar and noPosition, "Delta: Range Short Sell", '{"symbol":"BTCUSD.P","side":"sell","qty":1,"order_type":"market_order","strategy_id":"4e34d08f83a61dfbfa91ad47717b8ed2"}')
