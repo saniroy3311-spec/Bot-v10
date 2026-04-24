@@ -343,24 +343,27 @@ def upgrade_trail_stage(current_stage: int, peak_profit_dist: float, atr: float)
 
 
 def compute_trail_sl(stage: int, peak_price: float, peak_profit_dist: float, is_long: bool, atr: float) -> Optional[float]:
-    # FIX-TRAIL-15: Pine fires the exit at peak ± (trail_pts - trail_off).
-    # trail_offset is a PRE-FIRE BUFFER: Pine places the stop at peak ± trail_pts
-    # but triggers trail_offset points BEFORE that level is crossed.
-    # Net effective exit from peak = trail_pts - trail_off = net_dist.
+    # Pine Script exact parity (matches monitor/trail_loop.py _compute_trail_sl):
+    #   trail_points (pts_mult) = ACTIVATION threshold — profit must reach this first.
+    #   trail_offset (off_mult) = DISTANCE stop is placed from the peak price.
     #
-    # Stage net distances from peak (trail_pts - trail_off):
-    #   Stage 0/1 : (0.70 - 0.55) ATR = 0.15 ATR
-    #   Stage 2   : (0.55 - 0.45) ATR = 0.10 ATR
-    #   Stage 3   : (0.45 - 0.35) ATR = 0.10 ATR
-    #   Stage 4   : (0.30 - 0.25) ATR = 0.05 ATR
-    #   Stage 5   : (0.20 - 0.15) ATR = 0.05 ATR
+    # If peak profit has not yet reached the activation threshold for this stage,
+    # return None (trail not yet active). Once activated, stop = peak ± offset.
     #
-    # OLD WRONG: used trail_pts only → exits trail_off (~165 pts) LATER than Pine.
-    # This matches monitor/trail_loop.py _compute_trail_sl() exactly.
-    # No gate on peak_profit_dist — Pine applies trail from tick 1.
+    # Stage activation / offset (ATR multiples from config TRAIL_STAGES):
+    #   Stage 1: activate at 0.70 ATR profit, stop 0.55 ATR from peak
+    #   Stage 2: activate at 0.55 ATR profit, stop 0.45 ATR from peak
+    #   Stage 3: activate at 0.45 ATR profit, stop 0.35 ATR from peak
+    #   Stage 4: activate at 0.30 ATR profit, stop 0.25 ATR from peak
+    #   Stage 5: activate at 0.20 ATR profit, stop 0.15 ATR from peak
+    if stage == 0:
+        return None
     _, pts_mult, off_mult = TRAIL_STAGES[max(stage - 1, 0)]
-    net_dist = atr * (pts_mult - off_mult)
-    return (peak_price - net_dist) if is_long else (peak_price + net_dist)
+    activation = atr * pts_mult   # profit must be >= this to trail
+    offset     = atr * off_mult   # stop placed this far from peak
+    if peak_profit_dist < activation:
+        return None  # trail not yet activated for this stage
+    return (peak_price - offset) if is_long else (peak_price + offset)
 
 
 def should_trigger_be(profit_dist: float, atr: float) -> bool:
@@ -379,8 +382,12 @@ def max_sl_hit(current_price: float, entry_price: float, atr: float, is_long: bo
 
 
 def calc_real_pl(entry_price: float, exit_price: float, is_long: bool, qty: int) -> float:
+    # FIX-COMM: Exit orders on Delta India are bracket/limit → maker fee = 0%.
+    # Only the entry leg incurs a taker fee (COMMISSION_PCT).
+    # Old code charged BOTH legs: (entry+exit) * qty * (COMMISSION_PCT*2) — WRONG.
+    # This matches risk/calculator.py calc_real_pl exactly.
     raw_pl = (exit_price - entry_price) * qty if is_long else (entry_price - exit_price) * qty
-    comm   = (entry_price + exit_price) * qty * (COMMISSION_PCT * 2)
+    comm   = entry_price * qty * COMMISSION_PCT
     return raw_pl - comm
 
 
