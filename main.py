@@ -1,38 +1,24 @@
 """
-main.py — Shiva Sniper v6.5 Entry Point
+main.py — Shiva Sniper v10 — BUG-FIX-AUDIT-v1
 ════════════════════════════════════════════════════════════════════════
 
-FIXES IN THIS FILE (replaces the broken main.py that had no entry point):
+FIXES IN THIS VERSION (on top of FIX-MAIN-001 through FIX-MAIN-004):
 ──────────────────────────────────────────────────────────────────────
-FIX-MAIN-001 | This file was main.py = orders/manager.py (just a class
-  definition, no async main(), no if __name__ == '__main__':).
-  Running `python3 main.py` defined the OrderManager class and exited.
-  The bot NEVER RAN. This replaces it with the correct entry point.
+FIX-AUDIT-03 | HIGH — _on_trail_exit() updated to accept `source` param.
+  trail_loop._fire_exit() now passes source="bar_close" or source="tick"
+  to the exit callback. main.py uses source to decide whether to consume
+  _pending_signal:
 
-FIX-MAIN-002 | Correct module wiring:
-  CandleFeed (ws_feed.py)
-    → on_bar_close(df)
-      → indicators/engine.compute(df)        → IndicatorSnapshot
-      → strategy/signal.evaluate(snap)       → Signal
-      → risk/calculator.calc_levels()        → RiskLevels (pre-fill)
-      → orders/manager.place_entry(sl, tp)   → fill price
-      → risk/calculator.recalc_levels_from_fill(fill) → RiskLevels (actual)
-      → monitor/trail_loop.TrailMonitor.start(risk, state)
-      → each bar while in position:
-          → trail_loop.on_bar_close(close, high, low, atr)
+    source="bar_close" → same-bar exit: signal is fresh (same bar's snap),
+      Pine would fire immediately → consume _pending_signal and enter now.
 
-FIX-MAIN-003 | orders/manager.py (BRACKET mode) is used:
-  - Exchange-side SL/TP bracket orders as hard safety net.
-  - Python trail loop dynamically tightens on top.
-  - If Python crashes, exchange bracket prevents catastrophic loss.
+    source="tick" → intrabar exit: _pending_signal snap is from the
+      PREVIOUS bar close (could be 29 minutes stale). Pine would NOT enter
+      until the NEXT bar close (newBar and noPosition guard). Discard the
+      stale signal and let the next on_bar_close() evaluate fresh indicators.
 
-FIX-MAIN-004 | Position state correctly reset on exit via on_trail_exit
-  callback. Next bar close will evaluate fresh entry signals.
-
-NOTE: execution.py is a PARALLEL implementation that was never wired
-  to a working entry point. It has 5 critical bugs (see AUDIT below).
-  Do NOT use execution.py. This file uses the correct modular path:
-  orders/ + monitor/ + strategy/ + indicators/ + risk/
+  The old code consumed _pending_signal unconditionally on any exit, causing
+  entries with stale ATR / EMA / risk levels on all intrabar tick-loop exits.
 ════════════════════════════════════════════════════════════════════════
 """
 
@@ -63,7 +49,6 @@ from monitor.trail_loop import TrailMonitor
 from infra.telegram    import Telegram
 from infra.journal     import Journal
 
-# ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -78,9 +63,7 @@ logger = logging.getLogger("main")
 class ShivaSniperBot:
     """
     Top-level bot controller.
-
-    State machine:
-      IDLE → (signal at bar close) → ENTERING → ACTIVE → (exit) → IDLE
+    State machine: IDLE → ENTERING → ACTIVE → (exit) → IDLE
     """
 
     def __init__(self) -> None:
@@ -93,47 +76,41 @@ class ShivaSniperBot:
         self.risk         : Optional[RiskLevels] = None
         self.trail_state  : Optional[TrailState] = None
         self._entry_lock  : asyncio.Lock         = asyncio.Lock()
-        self._feed        : Optional[CandleFeed] = None   # FIX-PEAK-WS
-        self._signal_type : str                  = ""     # for journal/telegram
-        # SAME-BAR-REENTRY FIX: buffer the last evaluated (sig, snap) so that
-        # if a same-bar exit fires (bar_high/bar_low crosses TP/SL atomically in
-        # trail_loop.on_bar_close), _on_trail_exit can immediately place the
-        # pending entry without waiting for the next 30-minute bar.
-        self._pending_signal: Optional[tuple]    = None   # (Signal, IndicatorSnapshot)
+        self._feed        : Optional[CandleFeed] = None
+        self._signal_type : str                  = ""
 
-    # ── Initialisation ────────────────────────────────────────────────────────
+        # SAME-BAR-REENTRY: buffer the last signal from bar-close evaluation.
+        # ONLY consumed when source="bar_close" exits (FIX-AUDIT-03).
+        # For tick-loop exits (source="tick"), this is discarded — the snap
+        # would be stale (from the previous bar close) and Pine would not re-
+        # enter until the next bar close anyway.
+        self._pending_signal: Optional[tuple] = None  # (Signal, IndicatorSnapshot)
 
     async def initialize(self) -> None:
-        """Load market map — must complete before feed starts."""
         await self.order_mgr.initialize()
         logger.info("OrderManager initialized ✅")
 
-    # ── Core bar-close handler ────────────────────────────────────────────────
-
     async def on_bar_close(self, df) -> None:
         """
-        Called by CandleFeed once per confirmed 30-minute bar.
+        Called by CandleFeed once per confirmed candle bar.
 
         Pine parity:
           if newBar and noPosition → evaluate entry
           if in position → strategy.exit() re-evaluated each bar
             → Python equiv: trail_mon.on_bar_close(close, high, low, atr)
         """
-        # ── 1. Compute indicators ─────────────────────────────────────────────
         try:
             snap: IndicatorSnapshot = compute(df)
         except Exception as e:
             logger.error(f"Indicator compute failed: {e}", exc_info=True)
             return
 
-        # ── 2. Evaluate entry signal (always — even while in position) ─────────
-        #
-        # SAME-BAR-REENTRY FIX: Pine's bar-close evaluation is atomic. When a
-        # trail exit fires on the same bar as a new entry signal (same bar_high
-        # crosses TP AND the bar-close condition generates a new Trend Long),
-        # Pine processes both in one synchronous frame. The bot must buffer the
-        # signal here so _on_trail_exit() can fire the entry immediately after
-        # the exit clears in_position, rather than waiting for the next bar.
+        # Evaluate entry signal for same-bar-reentry buffering.
+        # IMPORTANT: always pass has_position=False here so the signal is computed
+        # as if no position exists. This is intentional — we need to know whether
+        # a valid entry signal fires on THIS bar for potential same-bar reentry.
+        # For normal (non-same-bar) entries, the in_position guard below prevents
+        # acting on this signal while a trade is open.
         sig = evaluate(snap, has_position=False)
         if sig.signal_type != SignalType.NONE:
             self._pending_signal = (sig, snap)
@@ -147,22 +124,13 @@ class ShivaSniperBot:
             f"close={snap.close:.2f} atr={snap.atr:.2f}"
         )
 
-        # ── 3. If in position: notify trail monitor (FIX-TRAIL-14 parity) ────
-        #
-        # Pine runs strategy.exit() on every bar close, recomputing SL/TP with
-        # the current ATR. trail_mon.on_bar_close() mirrors that:
-        #   - Recalculates SL + TP with current ATR (FIX-TRAIL-14)
-        #   - Upgrades trail stage from bar close profit_dist (FIX-TRAIL-7)
-        #   - Updates breakeven state (Pine parity)
-        #   - Preserves intra-bar peak extremes (FIX-TRAIL-8)
-        #   - Synchronous bar-boundary exit check (SAME-BAR-EXIT FIX)
         if self.in_position:
             if self.trail_mon._running:
                 self.trail_mon.on_bar_close(
                     bar_close   = snap.close,
                     bar_high    = snap.high,
                     bar_low     = snap.low,
-                    bar_open    = snap.open,    # FIX-TRAIL-02: TP-vs-SL priority
+                    bar_open    = snap.open,
                     current_atr = snap.atr,
                 )
                 logger.debug(
@@ -170,9 +138,6 @@ class ShivaSniperBot:
                     f"close={snap.close:.2f} atr={snap.atr:.2f}"
                 )
             else:
-                # Trail monitor stopped but in_position still True:
-                # exit callback hasn't fired yet or position was manually closed.
-                # Reset state to avoid being stuck.
                 logger.warning(
                     "[BAR CLOSE] in_position=True but trail_mon not running — "
                     "resetting position state"
@@ -180,29 +145,16 @@ class ShivaSniperBot:
                 self.in_position = False
                 self.risk        = None
                 self.trail_state = None
-            return   # Pine: no new entry while in position
-            # NOTE: if trail_mon.on_bar_close() fired a same-bar exit above,
-            # _on_trail_exit will be called async and will consume _pending_signal.
+            return
 
-        # ── 4. No position: enter via buffered signal ─────────────────────────
         if self._pending_signal is None:
             return
         sig, snap = self._pending_signal
         self._pending_signal = None
         await self._enter(sig, snap)
 
-    # ── Entry helper ──────────────────────────────────────────────────────────
-
     async def _enter(self, sig, snap) -> None:
-        """
-        Place a bracket entry order and start the trail monitor.
-
-        Extracted from on_bar_close() so it can be called from two places:
-          1. on_bar_close() — normal path (no prior position on this bar)
-          2. _on_trail_exit() — SAME-BAR-REENTRY FIX: a same-bar exit fired
-             (trail_loop.on_bar_close detected bar_high/bar_low crossing TP/SL)
-             and _pending_signal was set for this bar's close signal.
-        """
+        """Place a bracket entry order and start the trail monitor."""
         if self._entry_lock.locked():
             logger.warning("[ENTRY] Lock held — skipping duplicate entry")
             return
@@ -211,7 +163,6 @@ class ShivaSniperBot:
             if self.in_position:
                 return
 
-            # 4a. Compute risk levels from bar close price (pre-fill estimate)
             risk_pre = calc_levels(snap.close, snap.atr, sig.is_long, sig.is_trend)
 
             logger.info(
@@ -221,7 +172,6 @@ class ShivaSniperBot:
                 f"atr={snap.atr:.2f}"
             )
 
-            # 4b. Place bracket entry order (SL + TP on exchange)
             try:
                 order = await self.order_mgr.place_entry(
                     is_long = sig.is_long,
@@ -233,7 +183,6 @@ class ShivaSniperBot:
                 await self.telegram.notify_error(f"⚠️ Entry FAILED ({sig.signal_type.value}): {str(e)[:300]}")
                 return
 
-            # 4c. Re-anchor SL/TP to ACTUAL fill price (not bar close estimate)
             fill = float(order.get("average") or order.get("price") or snap.close)
             risk = recalc_levels_from_fill(risk_pre, fill)
 
@@ -246,7 +195,6 @@ class ShivaSniperBot:
             self.in_position  = True
             self._signal_type = sig.signal_type.value
 
-            # ── Notify Telegram + write open trade to journal ─────────────────
             try:
                 await self.telegram.notify_entry(
                     signal_type = sig.signal_type.value,
@@ -271,7 +219,6 @@ class ShivaSniperBot:
             except Exception as e:
                 logger.error(f"[ENTRY] Journal open_trade failed: {e}")
 
-            # 4d. Start tick-resolution trail monitor
             self.trail_mon.start(
                 risk_levels       = risk,
                 trail_state       = self.trail_state,
@@ -279,9 +226,6 @@ class ShivaSniperBot:
                 on_trail_exit     = self._on_trail_exit,
             )
 
-            # FIX-PEAK-WS: wire the live feed to the trail monitor so every
-            # intrabar WS candle update pushes the current high/low directly
-            # into TrailMonitor.state.peak_price. Cleared on exit below.
             if self._feed is not None:
                 self._feed.trail_monitor = self.trail_mon
 
@@ -291,10 +235,18 @@ class ShivaSniperBot:
                 f"atr={snap.atr:.2f} qty={ALERT_QTY} lots"
             )
 
-    # ── Exit callback ─────────────────────────────────────────────────────────
+    async def _on_trail_exit(self, exit_price: float, reason: str, source: str = "tick") -> None:
+        """
+        Called by TrailMonitor when any exit condition fires.
 
-    async def _on_trail_exit(self, exit_price: float, reason: str) -> None:
-        """Called by TrailMonitor when any exit condition fires."""
+        FIX-AUDIT-03: Added `source` parameter.
+          source="bar_close" → same-bar exit: _pending_signal is from the same
+            bar's snap — fresh data. Pine fires same-bar reentry atomically.
+            Consume _pending_signal and enter now.
+          source="tick" → intrabar exit: _pending_signal is from the PREVIOUS
+            bar close — stale by up to BAR_PERIOD_MS. Pine would NOT re-enter
+            until the next bar close (newBar guard). Discard the signal.
+        """
         if not self.in_position:
             return
 
@@ -307,16 +259,14 @@ class ShivaSniperBot:
         signal_type = self._signal_type or "Unknown"
 
         logger.info(
-            f"[EXIT ✅] reason={reason} | "
+            f"[EXIT ✅] reason={reason} source={source} | "
             f"entry={entry_px:.2f} exit={exit_price:.2f} | "
             f"{'LONG' if is_long else 'SHORT'}"
         )
 
-        # ── Compute real P/L ──────────────────────────────────────────────────
         from risk.calculator import calc_real_pl
         real_pl = calc_real_pl(entry_px, exit_price, is_long, ALERT_QTY)
 
-        # ── Telegram exit notification ────────────────────────────────────────
         try:
             await self.telegram.notify_exit(
                 reason      = reason,
@@ -328,7 +278,6 @@ class ShivaSniperBot:
         except Exception as e:
             logger.error(f"[EXIT] Telegram notify failed: {e}")
 
-        # ── Journal: log completed trade + clear open trade ───────────────────
         try:
             self.journal.log_trade(
                 signal_type = signal_type,
@@ -351,31 +300,37 @@ class ShivaSniperBot:
         except Exception as e:
             logger.error(f"[EXIT] Journal close_open_trade failed: {e}")
 
-        # Reset state — next bar close evaluates fresh entry
         self.in_position  = False
         self.risk         = None
         self.trail_state  = None
         self._signal_type = ""
-        # FIX-PEAK-WS: disconnect trail monitor from the feed on exit
         if self._feed is not None:
             self._feed.trail_monitor = None
 
-        # SAME-BAR-REENTRY FIX: if trail_loop.on_bar_close() fired this exit
-        # synchronously (bar_high/bar_low crossed TP/SL on the just-closed bar),
-        # and a new entry signal was buffered for that same bar, fire it now.
-        # Without this, the bot would wait a full 30-minute bar to re-enter —
-        # exactly the same gap Pine closes atomically within one bar-close frame.
-        pending = self._pending_signal
-        self._pending_signal = None
-        if pending is not None:
-            sig, snap = pending
-            logger.info(
-                f"[SAME-BAR-REENTRY] Firing buffered {sig.signal_type.value} "
-                f"signal after same-bar exit (reason={reason})"
-            )
-            await self._enter(sig, snap)
-
-    # ── Run ───────────────────────────────────────────────────────────────────
+        # FIX-AUDIT-03: SAME-BAR-REENTRY — only consume _pending_signal for
+        # same-bar exits. For intrabar tick-loop exits, the snap in
+        # _pending_signal is stale. Discard it and wait for the next bar close.
+        if source == "bar_close":
+            pending = self._pending_signal
+            self._pending_signal = None
+            if pending is not None:
+                sig, snap = pending
+                logger.info(
+                    f"[SAME-BAR-REENTRY] Firing buffered {sig.signal_type.value} "
+                    f"signal after same-bar exit (reason={reason})"
+                )
+                await self._enter(sig, snap)
+        else:
+            # Intrabar exit — discard stale signal, wait for next bar close.
+            if self._pending_signal is not None:
+                stale_sig, _ = self._pending_signal
+                logger.info(
+                    f"[TICK EXIT] Discarding stale _pending_signal "
+                    f"({stale_sig.signal_type.value}) — "
+                    f"source={source}, reason={reason}. "
+                    f"Waiting for next bar close to re-evaluate."
+                )
+            self._pending_signal = None
 
     async def run(self) -> None:
         await self.initialize()
@@ -384,9 +339,9 @@ class ShivaSniperBot:
             on_bar_close  = self.on_bar_close,
             on_feed_ready = self._on_feed_ready,
         )
-        self._feed = feed   # FIX-PEAK-WS: needed for trail_monitor wiring
+        self._feed = feed
         logger.info(
-            f"Starting Shiva Sniper v6.5 | "
+            f"Starting Shiva Sniper v10 | "
             f"symbol={SYMBOL} tf={CANDLE_TIMEFRAME} qty={ALERT_QTY} lots"
         )
         await asyncio.gather(
@@ -423,7 +378,6 @@ class ShivaSniperBot:
                 await asyncio.sleep(60)
 
     async def shutdown(self) -> None:
-        """Clean shutdown: close all sessions gracefully."""
         try:
             await self.telegram.notify_stop()
         except Exception:
@@ -437,8 +391,6 @@ class ShivaSniperBot:
         except Exception:
             pass
 
-
-# ── Entry point ───────────────────────────────────────────────────────────────
 
 async def _main() -> None:
     bot = ShivaSniperBot()
