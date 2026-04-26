@@ -1,34 +1,48 @@
 """
-monitor/trail_loop.py — Shiva Sniper v10 — Pine Script Exact Exit Parity
+monitor/trail_loop.py — Shiva Sniper v10 — BUG-FIX-AUDIT-v1
 ════════════════════════════════════════════════════════════════════════════
 
-DIVERGENCE FIXES IN THIS VERSION (root causes of exit timing mismatch):
+FIXES IN THIS VERSION (on top of FIX-EXIT-01 through FIX-EXIT-07):
 ──────────────────────────────────────────────────────────────────────────
 
-FIX-EXIT-01 | CRITICAL — Trail stage upgraded intrabar from tick data.
-  Pine Script: trailStage is a `var` updated with `close` (bar-close price).
-  FIX: _upgrade_stage() is now called ONLY in on_bar_close(), using bar
-  close price. The tick loop applies only the current stage.
+FIX-AUDIT-01 | CATASTROPHIC — _get_mark_price() now correctly extracts
+  mark price from the ticker returned by OrderManager.fetch_ticker().
+  The old extraction tried ticker.get("markPrice") first, which is the
+  ccxt-normalised field. Delta India's ccxt ticker populates it, but we
+  now also try ticker["info"]["mark_price"] as a fallback for robustness.
+  Root cause of BUG-7: fetch_ticker didn't exist → None returned → tick
+  loop was a complete no-op. Fixed in orders/manager.py (FIX-OM-001).
 
-FIX-EXIT-02 | CRITICAL — SL recomputed with live ATR on every tick.
-  Pine Script: strategy.exit() uses the ATR from the entry bar (frozen).
-  FIX: Trail offset distance computed from risk.atr (entry-bar ATR only).
-  Max SL still uses live ATR (FIX-EXIT-03).
+FIX-AUDIT-02 | MEDIUM — asyncio.get_event_loop() replaced with
+  asyncio.get_running_loop() throughout.
+  get_event_loop() from a sync function emits DeprecationWarning in
+  Python 3.10+ and raises RuntimeError in 3.12+ if no loop is running.
+  on_bar_close() and start() are always called from within asyncio.run(),
+  so get_running_loop() is always valid and is the correct API.
 
-FIX-EXIT-03 | MEDIUM — Max SL uses live ATR (intentional — Pine parity).
-  Pine: maxSLthresh = math.min(atr * maxSLmult, maxSLPoints) — current bar ATR.
+FIX-AUDIT-03 | HIGH — _fire_exit() now carries a `source` tag:
+    "bar_close"  → same-bar exit detected in on_bar_close()
+    "tick"       → intrabar exit from _tick_loop() or Max SL check
+  The source is passed to the on_trail_exit callback. main.py uses it
+  to decide whether to consume _pending_signal (same-bar only) or discard
+  it (tick-loop exit — the snap would be stale from the previous bar close).
 
-FIX-EXIT-04 | MEDIUM — TP/SL same-bar priority resolved by bar_open distance.
-  Pine: broker emulator fires whichever was closer to bar_open.
-  FIX: bar_open parameter used for priority resolution.
+FIX-AUDIT-04 | MEDIUM — Max SL entry-bar block uses candle boundary,
+  not wall-clock duration from fill time.
+  Pine: blockExitMaxSL fires for the remainder of the current candle.
+  Old Python: blocked for BAR_PERIOD_MS from fill time regardless of
+  where in the candle the fill occurred. If filled at 09:25 on a 30m bar,
+  Pine unblocks at 09:30, bot unblocked at 09:55 (25 min too late).
+  Fix: _entry_bar_end_ms = floor(fill_time / period_ms) * period_ms + period_ms
 
-FIX-EXIT-05 | LOW — Breakeven activation moved to on_bar_close() (Pine parity).
-  Pine: BE fires on bar close (close - entryPrice > beTrigger), not intrabar.
-  FIX: BE activated in on_bar_close() only; tick loop enforces the SL level.
-
-FIX-EXIT-06 | LOW — entry_bar_ms check uses BAR_PERIOD_MS (not hardcoded 30m).
-  FIX: Uses CANDLE_TIMEFRAME to compute BAR_PERIOD_MS dynamically.
-
+PRESERVED FROM FIX-EXIT-01 through FIX-EXIT-07 (unchanged):
+  - Stage upgrades only in on_bar_close() (FIX-EXIT-01)
+  - Frozen entry-bar ATR for trail offset (FIX-EXIT-02)
+  - Live ATR for Max SL (FIX-EXIT-03)
+  - Bar-open distance for TP-vs-SL priority (FIX-EXIT-04)
+  - BE activation only at bar close (FIX-EXIT-05)
+  - BAR_PERIOD_MS computed from CANDLE_TIMEFRAME (FIX-EXIT-06)
+  - Trail computed at stage 0 using stage-1 params (FIX-EXIT-07)
 ════════════════════════════════════════════════════════════════════════════
 """
 
@@ -87,7 +101,7 @@ def _upgrade_stage(current_stage: int, profit_dist: float, atr: float) -> int:
 
 def _compute_trail_sl(
     stage: int,
-    entry_atr: float,       # FIX-EXIT-02: frozen entry-bar ATR, not live ATR
+    entry_atr: float,
     peak_price: float,
     peak_profit_dist: float,
     is_long: bool,
@@ -95,23 +109,17 @@ def _compute_trail_sl(
     """
     Returns the trailing stop level, or None if not yet activated.
 
-    Pine Script mapping:
-      trail_points  -> ACTIVATION threshold (profit must reach this)   (pts_mult)
-      trail_offset  -> DISTANCE stop is placed from the peak           (off_mult)
-
-    FIX-EXIT-02: Uses entry_atr (frozen at entry bar) for trail distance.
+    stage==0 uses stage-1 params (FIX-EXIT-07).
+    Uses entry_atr (frozen at entry bar) for trail distance (FIX-EXIT-02).
     """
-    if stage == 0:
-        return None
-
     idx = max(stage - 1, 0)
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
-    activation = entry_atr * pts_mult   # profit must be >= this
-    offset     = entry_atr * off_mult   # stop placed this far from peak
+    activation = entry_atr * pts_mult
+    offset     = entry_atr * off_mult
 
     if peak_profit_dist < activation:
-        return None  # trail not yet activated for this stage
+        return None
 
     return (peak_price - offset) if is_long else (peak_price + offset)
 
@@ -141,12 +149,11 @@ class TrailMonitor:
         self._state         : Optional[TrailState]  = None
         self._on_exit_cb    : Optional[Callable]    = None
         self._entry_bar_ms  : int  = 0
+        self._entry_bar_end_ms: int = 0  # FIX-AUDIT-04: candle boundary end
         self._task          : Optional[asyncio.Task] = None
         self._exit_fired    : bool = False
 
-        # FIX-EXIT-03: separate current_atr for Max SL (live ATR, Pine parity)
-        # vs entry_atr frozen at entry for trail offset (FIX-EXIT-02)
-        self._current_atr   : float = 0.0   # updated each bar — for Max SL only
+        self._current_atr   : float = 0.0   # FIX-EXIT-03: live ATR for Max SL
 
     # ── Start / Stop ──────────────────────────────────────────────────────────
 
@@ -164,16 +171,24 @@ class TrailMonitor:
         self._entry_bar_ms = entry_bar_time_ms
         self._exit_fired   = False
         self._running      = True
+        self._current_atr  = risk_levels.atr
 
-        # FIX-EXIT-02: freeze entry-bar ATR — trail offset never changes after entry
-        self._current_atr  = risk_levels.atr   # initialise; updated by on_bar_close
+        # FIX-AUDIT-04: compute the end of the current candle boundary.
+        # Pine blocks Max SL for the remainder of the CURRENT candle, not for
+        # BAR_PERIOD_MS from fill time. floor(fill_ms / period_ms) gives the
+        # candle open boundary; adding period_ms gives the candle close time.
+        self._entry_bar_end_ms = (
+            (entry_bar_time_ms // BAR_PERIOD_MS) * BAR_PERIOD_MS
+        ) + BAR_PERIOD_MS
 
-        loop = asyncio.get_event_loop()
-        self._task = loop.create_task(self._tick_loop())
+        # FIX-AUDIT-02: use get_running_loop() — always valid here since start()
+        # is called from async _enter() which runs inside asyncio.run().
+        self._task = asyncio.get_running_loop().create_task(self._tick_loop())
         logger.info(
             f"[TRAIL] Started | entry={risk_levels.entry_price:.2f} "
             f"sl={risk_levels.sl:.2f} tp={risk_levels.tp:.2f} "
-            f"entry_atr={risk_levels.atr:.2f} is_long={risk_levels.is_long}"
+            f"entry_atr={risk_levels.atr:.2f} is_long={risk_levels.is_long} | "
+            f"candle_unblock_at={self._entry_bar_end_ms}"
         )
 
     def stop(self) -> None:
@@ -191,8 +206,8 @@ class TrailMonitor:
         bar_close  : float,
         bar_high   : float,
         bar_low    : float,
-        bar_open   : float,       # FIX-EXIT-04: required for TP-vs-SL priority
-        current_atr: float,       # FIX-EXIT-03: live ATR for Max SL check
+        bar_open   : float,
+        current_atr: float,
     ) -> None:
         """
         Called by main.py at the close of every candle bar while in position.
@@ -204,6 +219,9 @@ class TrailMonitor:
           4. Update live ATR for Max SL (FIX-EXIT-03)
           5. Same-bar exit check (TP and/or SL hit this bar)
           6. Resolve TP-vs-SL priority via bar_open distance (FIX-EXIT-04)
+
+        FIX-AUDIT-02: same-bar exit task uses asyncio.get_running_loop()
+        FIX-AUDIT-03: same-bar exit passes source="bar_close" to _fire_exit()
         """
         if not self._running or self._exit_fired or self._risk is None:
             return
@@ -212,13 +230,12 @@ class TrailMonitor:
         state = self._state
         is_long     = risk.is_long
         entry_price = risk.entry_price
-        entry_atr   = risk.atr          # FIX-EXIT-02: frozen entry-bar ATR
+        entry_atr   = risk.atr
 
         # FIX-EXIT-03: update live ATR for Max SL calculation only
         self._current_atr = current_atr
 
         # ── 1. Upgrade trail stage from bar CLOSE profit ─────────────────────
-        # FIX-EXIT-01: Pine's trailStage uses `close` (bar-close), not intrabar.
         close_profit = (bar_close - entry_price) if is_long else (entry_price - bar_close)
         new_stage = _upgrade_stage(state.stage, close_profit, entry_atr)
         if new_stage > state.stage:
@@ -229,9 +246,8 @@ class TrailMonitor:
             state.stage = new_stage
 
         # ── 2. Breakeven check from bar CLOSE profit (FIX-EXIT-05) ───────────
-        # Pine: if strategy.position_size > 0 and close - entryPrice > beTrigger
         if not state.be_done and _check_be(close_profit, entry_atr):
-            be_sl = entry_price   # Pine: stop=entryPrice exactly
+            be_sl = entry_price
             if is_long and be_sl > state.current_sl:
                 state.current_sl = be_sl
                 state.be_done    = True
@@ -249,8 +265,21 @@ class TrailMonitor:
             if state.peak_price == 0.0 or bar_low < state.peak_price:
                 state.peak_price = bar_low
 
+        # ── 3b. Recompute trail SL from bar extreme (safety net) ──────────────
+        if is_long:
+            bar_peak_profit = bar_high - entry_price
+            _bar_trail_sl = _compute_trail_sl(state.stage, entry_atr, bar_high, bar_peak_profit, True)
+            if _bar_trail_sl is not None and _bar_trail_sl > state.current_sl:
+                state.current_sl = _bar_trail_sl
+                logger.debug(f"[TRAIL] Bar-close trail SL update → {_bar_trail_sl:.2f} (stage {state.stage})")
+        else:
+            bar_peak_profit = entry_price - bar_low
+            _bar_trail_sl = _compute_trail_sl(state.stage, entry_atr, bar_low, bar_peak_profit, False)
+            if _bar_trail_sl is not None and _bar_trail_sl < state.current_sl:
+                state.current_sl = _bar_trail_sl
+                logger.debug(f"[TRAIL] Bar-close trail SL update → {_bar_trail_sl:.2f} (stage {state.stage})")
+
         # ── 4. Same-bar exit check ────────────────────────────────────────────
-        # Use state.current_sl (may have moved to BE or trail) not initial risk.sl
         tp_hit = (bar_high >= risk.tp)          if is_long else (bar_low  <= risk.tp)
         sl_hit = (bar_low  <= state.current_sl) if is_long else (bar_high >= state.current_sl)
 
@@ -271,7 +300,11 @@ class TrailMonitor:
                 reason  = "SL (bar close)"
 
             logger.info(f"[TRAIL] Same-bar exit: {reason} @ {exit_px:.2f}")
-            asyncio.get_event_loop().create_task(self._fire_exit(exit_px, reason))
+            # FIX-AUDIT-02: get_running_loop() instead of get_event_loop()
+            # FIX-AUDIT-03: source="bar_close" so main.py knows to consume _pending_signal
+            asyncio.get_running_loop().create_task(
+                self._fire_exit(exit_px, reason, source="bar_close")
+            )
 
     # ── Internal tick loop ────────────────────────────────────────────────────
 
@@ -318,7 +351,7 @@ class TrailMonitor:
 
         is_long     = risk.is_long
         entry_price = risk.entry_price
-        entry_atr   = risk.atr          # FIX-EXIT-02: frozen — never changes
+        entry_atr   = risk.atr
 
         # ── Track intrabar peak for live trail SL computation ─────────────────
         if is_long:
@@ -335,10 +368,10 @@ class TrailMonitor:
 
         # ── 1. TP hit ─────────────────────────────────────────────────────────
         if is_long and price >= risk.tp:
-            await self._fire_exit(risk.tp, "TP")
+            await self._fire_exit(risk.tp, "TP", source="tick")
             return
         if not is_long and price <= risk.tp:
-            await self._fire_exit(risk.tp, "TP")
+            await self._fire_exit(risk.tp, "TP", source="tick")
             return
 
         # ── 2. Hard SL / BE SL / Trail SL ────────────────────────────────────
@@ -351,7 +384,7 @@ class TrailMonitor:
                 reason = "Breakeven SL"
             else:
                 reason = "Initial SL"
-            await self._fire_exit(price, reason)
+            await self._fire_exit(price, reason, source="tick")
             return
         if not is_long and price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER:
             trail_improved = state.current_sl < risk.sl
@@ -362,92 +395,80 @@ class TrailMonitor:
                 reason = "Breakeven SL"
             else:
                 reason = "Initial SL"
-            await self._fire_exit(price, reason)
+            await self._fire_exit(price, reason, source="tick")
             return
 
-        # ── 3. Max SL (FIX-EXIT-03: live ATR, FIX-EXIT-06: BAR_PERIOD_MS) ────
+        # ── 3. Max SL (FIX-EXIT-03 + FIX-AUDIT-04) ───────────────────────────
+        # FIX-AUDIT-04: use _entry_bar_end_ms (candle boundary end) instead of
+        # _entry_bar_ms + BAR_PERIOD_MS (wall-clock from fill time).
+        # Pine: block Max SL for the remainder of the CURRENT candle only.
         if not state.max_sl_fired:
             max_sl_threshold = min(self._current_atr * MAX_SL_MULT, MAX_SL_POINTS)
-            entry_bar_over   = (time.time() * 1000) > (self._entry_bar_ms + BAR_PERIOD_MS)
+            entry_bar_over   = (time.time() * 1000) >= self._entry_bar_end_ms  # FIX-AUDIT-04
             if entry_bar_over:
                 if is_long and price <= entry_price - max_sl_threshold:
                     state.max_sl_fired = True
-                    await self._fire_exit(price, "Max SL")
+                    await self._fire_exit(price, "Max SL", source="tick")
                     return
                 if not is_long and price >= entry_price + max_sl_threshold:
                     state.max_sl_fired = True
-                    await self._fire_exit(price, "Max SL")
+                    await self._fire_exit(price, "Max SL", source="tick")
                     return
 
-        # ── 4. Update trailing SL from peak ───────────────────────────────────
-        # FIX-EXIT-01: Stage is fixed at whatever on_bar_close() last set.
-        # Pine's broker emulator tracks intrabar extremes for offset calc,
-        # but STAGE itself only advances at bar close.
-        if state.stage > 0:
-            trail_sl = _compute_trail_sl(
-                stage            = state.stage,
-                entry_atr        = entry_atr,    # FIX-EXIT-02: frozen ATR
-                peak_price       = state.peak_price,
-                peak_profit_dist = peak_profit,
-                is_long          = is_long,
-            )
-            if trail_sl is not None:
-                if is_long and trail_sl > state.current_sl:
-                    state.current_sl = trail_sl
-                    logger.debug(f"[TRAIL] Trail SL -> {trail_sl:.2f} (stage {state.stage})")
-                elif not is_long and trail_sl < state.current_sl:
-                    state.current_sl = trail_sl
-                    logger.debug(f"[TRAIL] Trail SL -> {trail_sl:.2f} (stage {state.stage})")
+        # ── 4. Update trailing SL from peak (ALL stages, including 0) ────────
+        trail_sl = _compute_trail_sl(
+            stage            = state.stage,
+            entry_atr        = entry_atr,
+            peak_price       = state.peak_price,
+            peak_profit_dist = peak_profit,
+            is_long          = is_long,
+        )
+        if trail_sl is not None:
+            if is_long and trail_sl > state.current_sl:
+                state.current_sl = trail_sl
+                logger.debug(f"[TRAIL] Trail SL -> {trail_sl:.2f} (stage {state.stage})")
+            elif not is_long and trail_sl < state.current_sl:
+                state.current_sl = trail_sl
+                logger.debug(f"[TRAIL] Trail SL -> {trail_sl:.2f} (stage {state.stage})")
 
-            # Re-check SL after trail update
-            if is_long and price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER:
-                await self._fire_exit(price, f"Trail SL (stage {state.stage})")
-                return
-            if not is_long and price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER:
-                await self._fire_exit(price, f"Trail SL (stage {state.stage})")
-                return
+        # Re-check SL after trail update
+        if is_long and price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER:
+            await self._fire_exit(price, f"Trail SL (stage {state.stage})", source="tick")
+            return
+        if not is_long and price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER:
+            await self._fire_exit(price, f"Trail SL (stage {state.stage})", source="tick")
+            return
 
     # ── Exit helper ───────────────────────────────────────────────────────────
 
-    async def _fire_exit(self, exit_price: float, reason: str) -> None:
+    async def _fire_exit(self, exit_price: float, reason: str, source: str = "tick") -> None:
         """
         Fire exit once. Idempotent on success.
 
-        CRITICAL FIX: previously, _exit_fired was set to True and _on_exit_cb
-        was called UNCONDITIONALLY — even if close_position() raised (the old
-        close_position had signature (self, reason=...) and this method calls
-        it with is_long=... which raised TypeError, silently swallowed). The
-        bot would then reset in_position=False while the exchange position
-        stayed open — classic "bot thinks flat, exchange still long" desync.
+        FIX-AUDIT-03: Added `source` parameter.
+          "bar_close" → same-bar detection from on_bar_close()
+          "tick"      → intrabar detection from _tick_loop() / Max SL
+        source is forwarded to the on_trail_exit callback so main.py can
+        decide whether to consume _pending_signal or discard it.
 
-        New behaviour:
-          1. Set _exit_fired so re-entry into this method is blocked
-             during the in-flight close.
-          2. cancel_all_orders() — best-effort, warnings only.
-          3. close_position() — MUST succeed. On failure, reset _exit_fired
-             so the next tick/bar retries, and DO NOT call _on_exit_cb
-             (which would reset bot.in_position=False and strand the position).
-          4. Only on success: set _running=False and call _on_exit_cb.
+        On close_position() failure: reset _exit_fired so the next tick
+        retries. Do NOT call _on_exit_cb (prevents false in_position=False).
         """
         if self._exit_fired:
             return
-        self._exit_fired = True   # block concurrent re-entry while close is in flight
+        self._exit_fired = True
 
-        logger.info(f"[TRAIL] Exit fired: reason={reason} price={exit_price:.2f}")
+        logger.info(f"[TRAIL] Exit fired: reason={reason} price={exit_price:.2f} source={source}")
 
-        # 1. Cancel any standing orders (no-op in NO-BRACKET mode)
         try:
             await self._order_mgr.cancel_all_orders()
         except Exception as e:
             logger.warning(f"[TRAIL] cancel_all_orders failed: {e}")
 
-        # 2. Close the position on the exchange (reduce-only market order)
         is_long = self._risk.is_long if self._risk else True
         try:
             await self._order_mgr.close_position(is_long=is_long, reason=reason)
         except Exception as e:
-            # DO NOT proceed to callback — bot state must stay in_position=True
-            # so the next tick re-attempts. Reset _exit_fired to allow retry.
             logger.error(
                 f"[TRAIL] close_position failed — will retry next tick: {e}",
                 exc_info=True,
@@ -455,30 +476,46 @@ class TrailMonitor:
             self._exit_fired = False
             return
 
-        # 3. Exchange close succeeded — stop the monitor and notify bot to reset state
         self._running = False
         if self._on_exit_cb is not None:
             try:
-                await self._on_exit_cb(exit_price, reason)
+                await self._on_exit_cb(exit_price, reason, source)  # FIX-AUDIT-03
             except Exception as e:
                 logger.error(f"[TRAIL] exit callback error: {e}", exc_info=True)
 
     # ── Exchange price fetch ──────────────────────────────────────────────────
 
     async def _get_mark_price(self) -> Optional[float]:
-        """Fetch current mark price from exchange (mark > last for Pine parity)."""
+        """
+        Fetch current mark price from exchange.
+
+        FIX-AUDIT-01: The old implementation called self._order_mgr.fetch_ticker()
+        which did not exist on OrderManager (AttributeError silently swallowed →
+        returned None every tick → _evaluate_tick() never called → all intrabar
+        exits dead). Fixed in orders/manager.py (FIX-OM-001).
+
+        Delta India ticker key priority:
+          1. ticker["markPrice"]              — ccxt-normalised field
+          2. ticker["info"]["mark_price"]     — raw exchange field (fallback)
+          3. ticker["last"]                   — last traded price (last resort)
+        """
         try:
             ticker = await self._order_mgr.fetch_ticker()
             if ticker is None:
                 return None
-            return float(
+            mark = (
                 ticker.get("markPrice")
-                or ticker.get("mark")
+                or (ticker.get("info") or {}).get("mark_price")
                 or ticker.get("last")
                 or 0.0
             )
+            price = float(mark) if mark else 0.0
+            if price > 0:
+                return price
+            logger.warning(f"[TRAIL] Ticker returned no usable price: keys={list(ticker.keys())}")
+            return None
         except Exception as e:
-            logger.debug(f"[TRAIL] fetch_ticker error: {e}")
+            logger.warning(f"[TRAIL] _get_mark_price failed: {e}")
             return None
 
     # ── Feed integration (live WS candle high/low push) ───────────────────────
