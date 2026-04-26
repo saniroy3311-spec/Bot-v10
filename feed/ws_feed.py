@@ -1,61 +1,43 @@
 """
-feed/ws_feed.py  —  Shiva Sniper v6.5  (FIX-WS-v3)
+feed/ws_feed.py  —  Shiva Sniper v10  (BUG-FIX-AUDIT-v1)
 ════════════════════════════════════════════════════════════════════════════════
 
-CHANGES IN THIS VERSION:
+FIXES IN THIS VERSION (on top of FIX-WS-v3):
 ──────────────────────────────────────────────────────────────────────────────
-FIX-WS-3a | REST fallback: boundary comparison used wrong bar (iloc[-2]).
+FIX-AUDIT-02 (WS) | CRITICAL — _poll_rest() now uses asyncio.to_thread()
+  to run the synchronous ccxt fetch_ohlcv() in a thread pool.
 
-  Old REST fallback code:
-      latest    = ohlcv[-2]   # "last confirmed bar"
-      latest_ts = int(latest[0])
-      boundary  = _candle_boundary(latest_ts, period_ms)
-      if boundary > self._last_candle_boundary:
-          fire on_bar_close(df)
+  The original code:
+      ohlcv = self._exchange.fetch_ohlcv(...)  # blocking!
+  called synchronous ccxt inside an async function. This blocked the entire
+  event loop for the duration of each HTTP request (0.5–2s on Delta India).
 
-  Problem: ohlcv[-2] is the SECOND-TO-LAST bar returned, not the last
-  confirmed bar. Delta REST returns bars where ohlcv[-1] is the CURRENT
-  LIVE (open) bar and ohlcv[-2] is the last CLOSED bar. Comparing
-  ohlcv[-2]'s boundary means we fire on a bar that's ALREADY been fired
-  on — or we miss the transition entirely.
+  During that block:
+    - trail_loop._tick_loop() cannot await asyncio.sleep() → no ticks advance
+    - _evaluate_tick() cannot run
+    - All Trail SL, TP, Max SL intrabar exits are paused for 0.5–2s per poll
 
-  Fix: compare ohlcv[-1] boundary (live bar) vs _last_candle_boundary.
-  When the live bar's boundary > last boundary, the previous bar just
-  closed. Fire on_bar_close THEN update last_candle_boundary to live bar.
-  This matches the WS logic exactly.
+  Fix: asyncio.to_thread() offloads the blocking call to a thread pool worker,
+  keeping the event loop free to process trail monitor ticks.
 
-FIX-WS-3b | Startup: _last_candle_boundary initialized from CONFIRMED
-  bar so the NEXT bar boundary correctly triggers the first signal.
+  Note: asyncio.to_thread() requires Python 3.9+. For Python 3.8, use:
+      loop = asyncio.get_running_loop()
+      ohlcv = await loop.run_in_executor(None, self._exchange.fetch_ohlcv,
+                  SYMBOL, CANDLE_TIMEFRAME, None, 5)
 
-  Old: set from df.iloc[-1] (the live/open bar).
-       If bot starts mid-candle, the NEXT closed bar has the same boundary
-       as the already-open bar → first signal is missed.
-
-  Fix: set _last_candle_boundary from df.iloc[-2] (the last CLOSED bar).
-       The NEXT boundary that arrives will always be newer → first signal fires.
-
-FIX-WS-3c | WS message type matching made more robust.
-  Delta India WS sends messages with type = "candlestick_5m" (not "candlestick").
-  Old code checked msg_type in (channel, f"candlestick_{CANDLE_TIMEFRAME}")
-  which was correct, but also silently dropped messages with unknown types.
-  Added debug logging for unexpected message types during the first 10 messages
-  to help diagnose subscription issues.
-
-PRESERVED FROM FIX-WS-v2:
-  - Boundary-based bar detection (fires ONCE per 5m candle, not per 500ms tick)
-  - _processing guard prevents re-entrant on_bar_close
+PRESERVED FROM FIX-WS-v3 (unchanged):
+  - FIX-WS-3a: REST fallback uses ohlcv[-1] (live bar) boundary detection
+  - FIX-WS-3b: Startup boundary initialised from df.iloc[-1] (live bar)
+  - FIX-WS-3c: WS message type matching with debug logging for unknowns
+  - FIX-TS:    Microsecond → millisecond timestamp conversion
+  - FIX-PEAK-WS: push_ws_candle() wired to trail monitor
+  - Boundary-based bar detection (fires once per candle, not per 500ms tick)
   - WS primary, REST fallback after 5 failures
-  - Historical load via REST on startup
+  - Historical load via REST on startup (ccxt.async_support)
   - Heartbeat every 30s
-  - MIN_BARS guard
-  - Same-bar OHLCV in-place update
-──────────────────────────────────────────────────────────────────────────────
-
-ROOT CAUSE SUMMARY (original multiple-entry bug):
-  Log: closed_ts=...503469 | new_ts=...502614 — 500ms gap.
-  Delta India WS pushes tick UPDATES every ~500ms for the current live bar.
-  Old code: if candle_ts_ms > self._last_bar_ts → fires every tick.
-  FIX-WS-v2 (preserved): boundary-based detection — fires once per 5m candle.
+  - MIN_BARS=1500 guard
+  - _processing guard prevents re-entrant on_bar_close
+════════════════════════════════════════════════════════════════════════════════
 """
 
 import asyncio
@@ -77,13 +59,6 @@ from config import (
 
 logger   = logging.getLogger(__name__)
 MIN_BARS = 1500
-# FIX-EMA-001: EMA200 convergence requires 5-10× the EMA length of history.
-# Old value: EMA_TREND_LEN + 10 = 210 bars → EMA200 never converged to Pine's value
-# because Pine uses years of history. With only 210-260 bars, EMA200 is seeded
-# from a cold-start SMA that sits far above the true converged value, causing
-# ema_fast > ema_trend when Pine sees ema_fast < ema_trend → all Trend Short
-# signals blocked, all Trend Long signals blocked.
-# Fix: load 1500 bars (31 days at 30m) → EMA200 converges within ~0.1% of Pine.
 
 _INDIA_LIVE    = "https://api.india.delta.exchange"
 _INDIA_TESTNET = "https://testnet-api.india.delta.exchange"
@@ -96,7 +71,6 @@ _WS_HEARTBEAT_SEC = 30
 
 
 def _timeframe_to_ms(tf: str) -> int:
-    """Convert '5m' → 300_000 ms, '30m' → 1_800_000 ms, '1h' → 3_600_000 ms"""
     tf = tf.strip().lower()
     if tf.endswith("m"):
         return int(tf[:-1]) * 60 * 1000
@@ -108,7 +82,6 @@ def _timeframe_to_ms(tf: str) -> int:
 
 
 def _candle_boundary(ts_ms: int, period_ms: int) -> int:
-    """Return the open-boundary timestamp for the candle containing ts_ms."""
     return (ts_ms // period_ms) * period_ms
 
 
@@ -121,16 +94,12 @@ def _timeframe_to_channel(timeframe: str) -> str:
 
 
 def _ts_to_ms(ts) -> int:
-    # FIX-TS: Delta India WS sends microseconds (16 digits).
-    # Must divide by 1000 to get milliseconds for boundary math.
-    # Without this, boundaries increment by ~1800ms instead of 1,800,000ms
-    # causing bars to fire every tick instead of every 30 minutes.
     ts = int(ts)
-    if ts > 1_000_000_000_000_000:   # microseconds (16 digits)
+    if ts > 1_000_000_000_000_000:
         return ts // 1000
-    if ts > 1_000_000_000_000:        # milliseconds (13 digits)
+    if ts > 1_000_000_000_000:
         return ts
-    return ts * 1000                  # seconds (10 digits)
+    return ts * 1000
 
 
 class CandleFeed:
@@ -140,25 +109,14 @@ class CandleFeed:
         self.on_feed_ready = on_feed_ready or _noop
 
         self._period_ms            = _timeframe_to_ms(CANDLE_TIMEFRAME)
-        # FIX-WS-3b: initialized from CLOSED bar at startup (see _load_history)
         self._last_candle_boundary = 0
-
-        self._df           = pd.DataFrame()
-        self._exchange     = None
-        self._ready_fired  = False
-        self._ws_failures  = 0
-
-        # Guard: prevent concurrent on_bar_close calls
-        self._processing   = False
-        # Debug: count messages received (for startup diagnostics)
-        self._msg_count    = 0
-
-        # FIX-PEAK-WS: injected by main.py after entry so WS intrabar
-        # high/low can be pushed directly into TrailMonitor.state.peak_price,
-        # giving near-tick peak resolution without extra REST API calls.
-        self.trail_monitor = None
-
-    # ── Public entry point ────────────────────────────────────────────────────
+        self._df                   = pd.DataFrame()
+        self._exchange             = None
+        self._ready_fired          = False
+        self._ws_failures          = 0
+        self._processing           = False
+        self._msg_count            = 0
+        self.trail_monitor         = None  # FIX-PEAK-WS
 
     async def start(self) -> None:
         await self._load_history()
@@ -192,14 +150,7 @@ class CandleFeed:
                     logger.error(f"REST poll error: {e}", exc_info=True)
                     await asyncio.sleep(WS_RECONNECT_SEC)
 
-    # ── Historical load ───────────────────────────────────────────────────────
-
     async def _load_history(self) -> None:
-        # FIX-WS-ASYNC: Use ccxt.async_support so load_markets() and
-        # fetch_ohlcv() are awaited and never block the event loop.
-        # Old code used sync ccxt.delta — the blocking load_markets() call
-        # (up to 60s on Delta India) starved the event loop, caused PM2's
-        # health-check to time out, and killed the process every startup.
         base_url = _INDIA_TESTNET if DELTA_TESTNET else _INDIA_LIVE
         params = {
             "apiKey"         : DELTA_API_KEY,
@@ -211,7 +162,6 @@ class CandleFeed:
         try:
             logger.info(f"Loading market map from Delta India ({base_url})...")
             await exchange.load_markets()
-
             if SYMBOL not in exchange.markets:
                 available = [
                     s for s in exchange.markets
@@ -235,8 +185,7 @@ class CandleFeed:
         finally:
             await exchange.close()
 
-        # Store a sync exchange for the REST fallback polling loop.
-        # Inject the already-fetched market map so it never blocks on load_markets() again.
+        # Build a sync exchange for REST fallback — we'll offload it to threads (FIX-AUDIT-02)
         self._exchange = ccxt.delta({
             "apiKey"         : DELTA_API_KEY,
             "secret"         : DELTA_API_SECRET,
@@ -245,12 +194,7 @@ class CandleFeed:
         })
         self._exchange.markets = fetched_markets
 
-        # FIX-WS-3b: set boundary from df.iloc[-1] (the LIVE/current bar).
-        # df.iloc[-1] = the live (open) bar loaded via REST at startup.
-        # Setting _last_candle_boundary to the live bar's boundary means the
-        # NEXT boundary (next candle open) will be strictly greater → correct.
-        # DO NOT change this to iloc[-2] — that would cause the bot to fire a
-        # spurious on_bar_close on the very first WS tick after startup.
+        # FIX-WS-3b: set boundary from live bar so next boundary triggers correctly
         last_closed_ts = int(self._df.iloc[-1]["timestamp"])
         self._last_candle_boundary = _candle_boundary(last_closed_ts, self._period_ms)
 
@@ -260,13 +204,6 @@ class CandleFeed:
             f"(need {MIN_BARS}, have {bar_count} — "
             f"{'OK ✅' if bar_count >= MIN_BARS else 'WARN ⚠️'})"
         )
-        logger.info(
-            f"Boundary tracking: period={self._period_ms}ms "
-            f"last_closed_boundary={self._last_candle_boundary} "
-            f"(will fire when next candle opens)"
-        )
-
-    # ── WebSocket feed ────────────────────────────────────────────────────────
 
     async def _run_websocket(self) -> None:
         ws_url    = _WS_TESTNET if DELTA_TESTNET else _WS_LIVE
@@ -283,17 +220,8 @@ class CandleFeed:
         })
         heartbeat_msg = json.dumps({"type": "heartbeat"})
 
-        logger.info(
-            f"WebSocket connecting → {ws_url} | "
-            f"channel={channel} symbol={ws_symbol}"
-        )
+        logger.info(f"WebSocket connecting → {ws_url} | channel={channel} symbol={ws_symbol}")
 
-        # FIX-WS-PING: ping_interval=None disables WebSocket protocol-level
-        # pings. NAT/firewalls silently kill idle TCP connections after ~10 min
-        # ("no close frame received or sent"). ping_interval=20 sends a WS PING
-        # frame every 20s at the protocol layer, keeping the TCP session alive.
-        # This is separate from the app-level heartbeat_msg (which Delta may
-        # or may not ack). Protocol pings are handled by the OS/network stack.
         async with websockets.connect(
             ws_url,
             ping_interval=20,
@@ -301,11 +229,7 @@ class CandleFeed:
             close_timeout=10,
         ) as ws:
             await ws.send(subscribe_msg)
-            logger.info(
-                f"WebSocket subscribed ✅ | "
-                f"FIX-WS-v3: boundary-based detection, fires once per "
-                f"{CANDLE_TIMEFRAME} candle"
-            )
+            logger.info("WebSocket subscribed ✅")
             self._ws_failures = 0
             self._msg_count   = 0
             last_heartbeat    = time.time()
@@ -323,7 +247,6 @@ class CandleFeed:
 
                 msg_type = msg.get("type", "")
 
-                # FIX-WS-3c: log unexpected message types during startup
                 self._msg_count += 1
                 if self._msg_count <= 10 and msg_type not in (channel, "subscriptions", "heartbeat"):
                     logger.debug(f"WS msg #{self._msg_count} type={msg_type!r}")
@@ -338,14 +261,6 @@ class CandleFeed:
                 await self._process_ws_candle(data)
 
     async def _process_ws_candle(self, data: dict) -> None:
-        """
-        FIX-WS-v2 (preserved): Fire on_bar_close at CANDLE BOUNDARY only.
-
-        Delta India sends tick updates every ~500ms for the current live bar.
-        boundary = floor(candle_ts_ms / period_ms) * period_ms
-        if boundary > _last_candle_boundary → NEW CANDLE = previous bar closed → fire
-        else → same candle ticking → update in-place
-        """
         raw_ts = (
             data.get("timestamp") or
             data.get("start")     or
@@ -373,7 +288,6 @@ class CandleFeed:
         current_boundary = _candle_boundary(candle_ts_ms, self._period_ms)
 
         if current_boundary > self._last_candle_boundary:
-            # ── NEW CANDLE BOUNDARY: previous bar just closed ──────────────
             logger.info(
                 f"✅ Bar confirmed [WS] | "
                 f"closed_boundary={self._last_candle_boundary} | "
@@ -382,10 +296,7 @@ class CandleFeed:
             )
 
             if self._processing:
-                logger.warning(
-                    "⚠️ on_bar_close still processing — skipping this bar "
-                    "(signal evaluation overlap prevented)"
-                )
+                logger.warning("⚠️ on_bar_close still processing — skipping this bar")
                 self._last_candle_boundary = current_boundary
                 return
 
@@ -396,14 +307,11 @@ class CandleFeed:
                 finally:
                     self._processing = False
             else:
-                logger.warning(
-                    f"⚠️ Bar skipped — only {len(self._df)} bars (need {MIN_BARS})."
-                )
+                logger.warning(f"⚠️ Bar skipped — only {len(self._df)} bars (need {MIN_BARS}).")
 
-            # Append new live bar stub
             new_row = pd.DataFrame([{
                 "timestamp": candle_ts_ms,
-                "open" : o, "high": h, "low": l, "close": c, "volume": v,
+                "open": o, "high": h, "low": l, "close": c, "volume": v,
             }])
             self._df = pd.concat(
                 [self._df, new_row], ignore_index=True
@@ -411,7 +319,6 @@ class CandleFeed:
             self._last_candle_boundary = current_boundary
 
         else:
-            # ── SAME CANDLE: update live bar in-place ─────────────────────
             if not self._df.empty:
                 idx = self._df.index[-1]
                 self._df.at[idx, "open"]   = o
@@ -420,9 +327,6 @@ class CandleFeed:
                 self._df.at[idx, "close"]  = c
                 self._df.at[idx, "volume"] = v
 
-            # FIX-PEAK-WS: push live candle high/low into TrailMonitor so
-            # peak_price tracks the true intrabar extreme to near-tick
-            # resolution, matching Pine's broker emulator behaviour.
             if self.trail_monitor is not None:
                 self.trail_monitor.push_ws_candle(h, l)
 
@@ -438,41 +342,52 @@ class CandleFeed:
         while True:
             await asyncio.sleep(sleep_sec)
             try:
-                ohlcv = self._exchange.fetch_ohlcv(
-                    SYMBOL, CANDLE_TIMEFRAME, limit=5
+                # FIX-AUDIT-02: asyncio.to_thread() runs the BLOCKING sync ccxt call
+                # in a thread pool so the event loop remains free between polls.
+                # The old code called self._exchange.fetch_ohlcv() directly inside
+                # this async function, blocking the event loop for 0.5–2s on each
+                # REST round-trip, which starved trail_loop._tick_loop() of CPU time
+                # and caused up to 2s exit lag on every polling cycle.
+                #
+                # Requires Python 3.9+. For Python 3.8 use:
+                #   loop = asyncio.get_running_loop()
+                #   ohlcv = await loop.run_in_executor(
+                #       None, self._exchange.fetch_ohlcv, SYMBOL, CANDLE_TIMEFRAME, None, 5
+                #   )
+                ohlcv = await asyncio.to_thread(
+                    self._exchange.fetch_ohlcv,
+                    SYMBOL,
+                    CANDLE_TIMEFRAME,
+                    None,   # since (unused)
+                    5,      # limit
                 )
+
                 if not ohlcv or len(ohlcv) < 2:
                     continue
 
-                # FIX-WS-3a: compare live bar (ohlcv[-1]) boundary vs last boundary.
-                # When ohlcv[-1]'s boundary > _last_candle_boundary, the previous
-                # candle (ohlcv[-2]) just closed. Fire on_bar_close with the df
-                # whose last row IS the just-closed bar (before appending new stub).
-                live_bar     = ohlcv[-1]
-                live_ts      = int(live_bar[0])
+                # FIX-WS-3a: compare live bar (ohlcv[-1]) boundary vs last boundary
+                live_bar      = ohlcv[-1]
+                live_ts       = int(live_bar[0])
                 live_boundary = _candle_boundary(live_ts, self._period_ms)
 
                 if live_boundary > self._last_candle_boundary:
-                    if len(self._df) >= MIN_BARS:
+                    if len(self._df) >= MIN_BARS and not self._processing:
                         logger.info(
                             f"✅ Bar confirmed [REST fallback] | "
                             f"prev_boundary={self._last_candle_boundary} | "
-                            f"new_boundary={live_boundary} | "
-                            f"bars={len(self._df)} — evaluating signals..."
+                            f"new_boundary={live_boundary}"
                         )
-                        if not self._processing:
-                            self._processing = True
-                            try:
-                                await self.on_bar_close(self._df.copy())
-                            finally:
-                                self._processing = False
+                        self._processing = True
+                        try:
+                            await self.on_bar_close(self._df.copy())
+                        finally:
+                            self._processing = False
                     else:
                         logger.warning(
-                            f"⚠️ Bar skipped — only {len(self._df)} bars "
-                            f"(need {MIN_BARS})."
+                            f"⚠️ Bar skipped — only {len(self._df)} bars (need {MIN_BARS}) "
+                            f"or still processing."
                         )
 
-                    # Append new live bar stub
                     new_row = pd.DataFrame([{
                         "timestamp": live_ts,
                         "open"  : float(live_bar[1]),
@@ -487,7 +402,6 @@ class CandleFeed:
                     self._last_candle_boundary = live_boundary
 
                 else:
-                    # Same candle: update live bar in-place
                     if not self._df.empty:
                         idx = self._df.index[-1]
                         self._df.at[idx, "open"]   = float(live_bar[1])
@@ -502,8 +416,6 @@ class CandleFeed:
             except Exception as e:
                 logger.error(f"REST poll error: {e}", exc_info=True)
                 break
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
 
     @staticmethod
     def _to_df(ohlcv: list) -> pd.DataFrame:
