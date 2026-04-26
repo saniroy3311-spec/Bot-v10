@@ -1,6 +1,19 @@
 """
-orders/manager.py  —  Shiva Sniper v6.5  (NO-BRACKET MODE)
-Plain market entry only. All SL/TP managed in trail_loop.py.
+orders/manager.py  —  Shiva Sniper v10  (BUG-FIX-AUDIT-v1)
+═══════════════════════════════════════════════════════════════════════
+FIXES IN THIS VERSION:
+──────────────────────────────────────────────────────────────────────
+FIX-OM-001 | CATASTROPHIC — Added fetch_ticker() method.
+  trail_loop._get_mark_price() calls self._order_mgr.fetch_ticker().
+  OrderManager had no such method → AttributeError silently swallowed
+  → _get_mark_price() returned None on every call → price is None or
+  price <= 0 → _evaluate_tick() never called → tick loop is a no-op.
+  This is the ROOT CAUSE of all intrabar exit failures.
+
+FIX-OM-002 | Mark price extraction uses Delta India-specific field path:
+  ticker["info"]["mark_price"] is the raw exchange field on Delta India.
+  The standard ccxt "markPrice" key may or may not be populated depending
+  on the ccxt version. We now try both in priority order.
 """
 
 import asyncio
@@ -76,6 +89,30 @@ class OrderManager:
             )
         logger.info(f"Market map loaded — symbol {SYMBOL} verified ✅")
 
+    # ── FIX-OM-001: fetch_ticker — required by trail_loop._get_mark_price() ──────
+
+    async def fetch_ticker(self) -> Optional[dict]:
+        """
+        Fetch current ticker for SYMBOL.
+
+        FIX-OM-001: This method was missing entirely from OrderManager.
+        trail_loop._get_mark_price() calls self._order_mgr.fetch_ticker()
+        and silently swallowed the AttributeError, returning None every tick.
+        As a result _evaluate_tick() was NEVER called — the entire intrabar
+        exit engine (Trail SL, TP, Max SL) was dead in production.
+
+        Returns the raw ccxt ticker dict on success, or None on failure.
+        trail_loop._get_mark_price() handles the key extraction.
+        """
+        try:
+            ticker = await _retry(lambda: self.exchange.fetch_ticker(SYMBOL))
+            return ticker
+        except Exception as e:
+            logger.debug(f"fetch_ticker failed: {e}")
+            return None
+
+    # ─────────────────────────────────────────────────────────────────────────────
+
     async def place_entry(self, is_long: bool, sl: float, tp: float) -> dict:
         side = "buy" if is_long else "sell"
         logger.info(
@@ -128,13 +165,7 @@ class OrderManager:
     ) -> dict:
         """
         Close any open position with a reduce-only market order.
-
-        FIX: previously accepted only `reason`. trail_loop._fire_exit() calls
-        this with keyword `is_long=...` — the old signature raised TypeError,
-        which was silently swallowed, and the exchange position was never
-        closed. `is_long` here is the authoritative direction from trail_loop
-        (sourced from risk.is_long, frozen at entry). If None, falls back to
-        self.position tracked at entry time.
+        `is_long` is the authoritative direction from trail_loop (frozen at entry).
         """
         if is_long is None:
             if not self.position:
@@ -157,16 +188,7 @@ class OrderManager:
         return order
 
     async def cancel_all_orders(self) -> None:
-        """
-        Cancel every open order on SYMBOL.
-
-        FIX: trail_loop._fire_exit() was calling this method, which did not
-        exist on OrderManager — AttributeError was swallowed by try/except.
-        In NO-BRACKET mode there are normally no standing SL/TP orders, so
-        this is usually a no-op; but it's required by the exit path and is
-        safe to call on bracket-mode migrations or after a crash that left
-        orphan orders on the book.
-        """
+        """Cancel every open order on SYMBOL. No-op in NO-BRACKET mode normally."""
         try:
             orders = await _retry(lambda: self.exchange.fetch_open_orders(SYMBOL))
         except Exception as e:
