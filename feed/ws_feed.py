@@ -424,8 +424,7 @@ class CandleFeed:
             # peak_price tracks the true intrabar extreme to near-tick
             # resolution, matching Pine's broker emulator behaviour.
             if self.trail_monitor is not None:
-                self.trail_monitor.update_intrabar_high(h)
-                self.trail_monitor.update_intrabar_low(l)
+                self.trail_monitor.push_ws_candle(h, l)
 
     # ── REST polling fallback ──────────────────────────────────────────────────
 
