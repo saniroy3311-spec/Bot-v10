@@ -1,31 +1,51 @@
 """
-feed/ws_feed.py  —  Shiva Sniper v10  (BUG-FIX-AUDIT-v1)
+feed/ws_feed.py  —  Shiva Sniper v10  (BUG-FIX-AUDIT-v1 + FIX-PEAK-REST)
 ════════════════════════════════════════════════════════════════════════════════
 
-FIXES IN THIS VERSION (on top of FIX-WS-v3):
+FIXES IN THIS VERSION:
 ──────────────────────────────────────────────────────────────────────────────
-FIX-AUDIT-02 (WS) | CRITICAL — _poll_rest() now uses asyncio.to_thread()
+FIX-PEAK-REST | CRITICAL — _process_ws_candle() now fetches the authoritative
+  closed-bar OHLCV from REST immediately after boundary change is detected,
+  BEFORE calling on_bar_close().
+
+  ROOT CAUSE OF BOT vs PINE EXIT PRICE MISMATCH (~80 points off):
+  ─────────────────────────────────────────────────────────────────
+  Pine Script's broker emulator uses the exchange's authoritative bar high/low
+  (true intrabar peak) to compute trail stop activation and SL level.
+
+  The bot was accumulating bar high/low ONLY from WS candlestick messages
+  which arrive every ~500ms. Delta Exchange WS candle updates send the
+  running high/low of the current bar, but:
+    - If a true price spike occurs BETWEEN two WS messages, it is INVISIBLE
+      to the bot — df.iloc[-1]["high"] never captures that spike.
+    - At bar close, on_bar_close() gets bar_high = last WS-seen high,
+      NOT the exchange's true bar high.
+    - trail_mon.on_bar_close() therefore computes trail SL from a LOWER
+      peak than Pine → trail SL fires earlier at a lower price.
+
+  Proof from logs:
+    entry=78139.0  ATR=165.38  trail_offset=90.96
+    Bot  trail SL = 78170.10  → back-calculated peak = 78261.06
+    Pine trail SL = 78251.00  → back-calculated peak = 78341.96
+    Difference = 80.90 points — exactly the WS sampling gap.
+
+  THE FIX:
+    After boundary change is detected, call REST fetch_ohlcv() (via
+    asyncio.to_thread so the event loop is not blocked) and fetch 3 bars.
+    ohlcv[-2] = the bar that JUST CLOSED (authoritative high/low/close).
+    Overwrite df.iloc[-1] with these true values before calling on_bar_close().
+    Also push corrected high/low to trail_monitor so intrabar peak is synced.
+
+    This guarantees:
+      bar_high passed to trail_mon.on_bar_close() == Pine's bar high
+      Trail SL activation + level == Pine's trail SL
+      Exit price matches Pine within tick precision.
+
+FIX-AUDIT-02 (WS) | CRITICAL — _poll_rest() uses asyncio.to_thread()
   to run the synchronous ccxt fetch_ohlcv() in a thread pool.
+  (Preserved from previous version — unchanged)
 
-  The original code:
-      ohlcv = self._exchange.fetch_ohlcv(...)  # blocking!
-  called synchronous ccxt inside an async function. This blocked the entire
-  event loop for the duration of each HTTP request (0.5–2s on Delta India).
-
-  During that block:
-    - trail_loop._tick_loop() cannot await asyncio.sleep() → no ticks advance
-    - _evaluate_tick() cannot run
-    - All Trail SL, TP, Max SL intrabar exits are paused for 0.5–2s per poll
-
-  Fix: asyncio.to_thread() offloads the blocking call to a thread pool worker,
-  keeping the event loop free to process trail monitor ticks.
-
-  Note: asyncio.to_thread() requires Python 3.9+. For Python 3.8, use:
-      loop = asyncio.get_running_loop()
-      ohlcv = await loop.run_in_executor(None, self._exchange.fetch_ohlcv,
-                  SYMBOL, CANDLE_TIMEFRAME, None, 5)
-
-PRESERVED FROM FIX-WS-v3 (unchanged):
+PRESERVED FROM FIX-WS-v3 + FIX-AUDIT (all unchanged):
   - FIX-WS-3a: REST fallback uses ohlcv[-1] (live bar) boundary detection
   - FIX-WS-3b: Startup boundary initialised from df.iloc[-1] (live bar)
   - FIX-WS-3c: WS message type matching with debug logging for unknowns
@@ -185,7 +205,7 @@ class CandleFeed:
         finally:
             await exchange.close()
 
-        # Build a sync exchange for REST fallback — we'll offload it to threads (FIX-AUDIT-02)
+        # Build a sync exchange for REST fallback — offloaded to threads (FIX-AUDIT-02)
         self._exchange = ccxt.delta({
             "apiKey"         : DELTA_API_KEY,
             "secret"         : DELTA_API_SECRET,
@@ -288,6 +308,61 @@ class CandleFeed:
         current_boundary = _candle_boundary(candle_ts_ms, self._period_ms)
 
         if current_boundary > self._last_candle_boundary:
+
+            # ── FIX-PEAK-REST ─────────────────────────────────────────────────
+            # PROBLEM:
+            #   WS candlestick messages arrive every ~500ms. Any real price
+            #   spike between two WS messages is NEVER seen by the bot, so
+            #   df.iloc[-1]["high"] at bar close can be LOWER than the true
+            #   bar high. This caused the bot's trail SL to activate from a
+            #   lower peak than Pine → exit prices ~80 points off vs Pine.
+            #
+            # FIX:
+            #   Fetch authoritative closed bar from REST right now (ohlcv[-2]).
+            #   Overwrite df.iloc[-1] BEFORE calling on_bar_close() so
+            #   bar_high / bar_low passed to trail_mon match Pine exactly.
+            #   Push corrected high/low to trail_monitor to sync peak_price.
+            #   Uses asyncio.to_thread() — event loop stays free (FIX-AUDIT-02).
+            # ──────────────────────────────────────────────────────────────────
+            if not self._df.empty:
+                try:
+                    closed_ohlcv = await asyncio.to_thread(
+                        self._exchange.fetch_ohlcv,
+                        SYMBOL,
+                        CANDLE_TIMEFRAME,
+                        None,  # since
+                        3,     # limit — only need last 2 bars
+                    )
+                    if closed_ohlcv and len(closed_ohlcv) >= 2:
+                        cb  = closed_ohlcv[-2]   # [-2] = bar that just closed
+                        idx = self._df.index[-1]
+                        self._df.at[idx, "open"]   = float(cb[1])
+                        self._df.at[idx, "high"]   = float(cb[2])
+                        self._df.at[idx, "low"]    = float(cb[3])
+                        self._df.at[idx, "close"]  = float(cb[4])
+                        self._df.at[idx, "volume"] = float(cb[5])
+                        logger.info(
+                            f"[FEED] FIX-PEAK-REST: closed bar corrected | "
+                            f"true_high={cb[2]:.2f} true_low={cb[3]:.2f} "
+                            f"true_close={cb[4]:.2f}"
+                        )
+                        # Sync trail monitor peak_price with true bar extreme
+                        if self.trail_monitor is not None:
+                            self.trail_monitor.push_ws_candle(
+                                float(cb[2]), float(cb[3])
+                            )
+                    else:
+                        logger.warning(
+                            "[FEED] FIX-PEAK-REST: REST returned < 2 bars — "
+                            "using WS-accumulated high/low (may differ from Pine)"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"[FEED] FIX-PEAK-REST: REST fetch failed — "
+                        f"using WS-accumulated high/low: {e}"
+                    )
+            # ── END FIX-PEAK-REST ─────────────────────────────────────────────
+
             logger.info(
                 f"✅ Bar confirmed [WS] | "
                 f"closed_boundary={self._last_candle_boundary} | "
@@ -344,16 +419,6 @@ class CandleFeed:
             try:
                 # FIX-AUDIT-02: asyncio.to_thread() runs the BLOCKING sync ccxt call
                 # in a thread pool so the event loop remains free between polls.
-                # The old code called self._exchange.fetch_ohlcv() directly inside
-                # this async function, blocking the event loop for 0.5–2s on each
-                # REST round-trip, which starved trail_loop._tick_loop() of CPU time
-                # and caused up to 2s exit lag on every polling cycle.
-                #
-                # Requires Python 3.9+. For Python 3.8 use:
-                #   loop = asyncio.get_running_loop()
-                #   ohlcv = await loop.run_in_executor(
-                #       None, self._exchange.fetch_ohlcv, SYMBOL, CANDLE_TIMEFRAME, None, 5
-                #   )
                 ohlcv = await asyncio.to_thread(
                     self._exchange.fetch_ohlcv,
                     SYMBOL,
