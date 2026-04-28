@@ -1,8 +1,26 @@
 """
-feed/ws_feed.py  —  Shiva Sniper v10  (BUG-FIX-AUDIT-v1 + FIX-PEAK-REST)
+feed/ws_feed.py  —  Shiva Sniper v10  (FIX-PARITY-v2 + BUG-FIX-AUDIT-v1 + FIX-PEAK-REST)
 ════════════════════════════════════════════════════════════════════════════════
 
-FIXES IN THIS VERSION:
+NEW FIXES IN THIS VERSION:
+──────────────────────────────────────────────────────────────────────────────
+FIX-PARITY-02 (WS side) | CRITICAL — every intrabar WS candle message now
+  calls trail_monitor.on_price_tick(close) directly, pushing the live price
+  into the trail loop WITHOUT a REST round-trip. Exit decisions happen in the
+  same event-loop iteration as the WS message — matching Pine's tick-level
+  execution model. _tick_loop() in trail_loop.py is now a 2-second fallback.
+
+FIX-BUG4 | HIGH — WebSocket reconnection now retries WS indefinitely.
+  Old behaviour: after _MAX_WS_FAILURES consecutive failures, the feed
+  switched to REST polling PERMANENTLY — WS never recovered even if Delta's
+  socket recovered minutes later. This created long blind windows during live
+  positions where on_price_tick() was never called.
+  Fix: REST polling runs for _WS_RETRY_AFTER_REST_POLLS poll cycles, then
+  attempts WS reconnection. Failure counter resets on any successful WS
+  connection so transient outages don't permanently fall back to REST.
+  This ensures on_price_tick() resumes quickly after a WS dropout.
+
+PRESERVED FIXES:
 ──────────────────────────────────────────────────────────────────────────────
 FIX-PEAK-REST | CRITICAL — _process_ws_candle() now fetches the authoritative
   closed-bar OHLCV from REST immediately after boundary change is detected,
@@ -86,8 +104,9 @@ _INDIA_TESTNET = "https://testnet-api.india.delta.exchange"
 _WS_LIVE    = "wss://socket.india.delta.exchange"
 _WS_TESTNET = "wss://testnet-socket.india.delta.exchange"
 
-_MAX_WS_FAILURES  = 5
-_WS_HEARTBEAT_SEC = 30
+_MAX_WS_FAILURES           = 5    # consecutive failures before REST fallback
+_WS_RETRY_AFTER_REST_POLLS = 60   # REST polls before retrying WS (FIX-BUG4)
+_WS_HEARTBEAT_SEC          = 30
 
 
 def _timeframe_to_ms(tf: str) -> int:
@@ -134,9 +153,10 @@ class CandleFeed:
         self._exchange             = None
         self._ready_fired          = False
         self._ws_failures          = 0
+        self._rest_poll_count      = 0     # FIX-BUG4: track REST polls for WS retry
         self._processing           = False
         self._msg_count            = 0
-        self.trail_monitor         = None  # FIX-PEAK-WS
+        self.trail_monitor         = None  # FIX-PEAK-WS / FIX-PARITY-02
 
     async def start(self) -> None:
         await self._load_history()
@@ -148,27 +168,46 @@ class CandleFeed:
             if self._ws_failures < _MAX_WS_FAILURES:
                 try:
                     await self._run_websocket()
+                    # Returned without exception — treat as disconnect
+                    self._ws_failures += 1
                 except Exception as e:
                     self._ws_failures += 1
                     logger.error(
                         f"WebSocket feed error (failure {self._ws_failures}/"
                         f"{_MAX_WS_FAILURES}): {e}"
                     )
-                    if self._ws_failures < _MAX_WS_FAILURES:
-                        wait = min(WS_RECONNECT_SEC * (2 ** (self._ws_failures - 1)), 60)
-                        logger.info(f"Reconnecting in {wait}s...")
-                        await asyncio.sleep(wait)
-                    else:
-                        logger.warning(
-                            f"WebSocket failed {_MAX_WS_FAILURES} times — "
-                            f"switching to REST polling fallback."
-                        )
+
+                if self._ws_failures < _MAX_WS_FAILURES:
+                    wait = min(WS_RECONNECT_SEC * (2 ** (self._ws_failures - 1)), 60)
+                    logger.info(f"Reconnecting in {wait}s...")
+                    await asyncio.sleep(wait)
+                else:
+                    logger.warning(
+                        f"WebSocket failed {_MAX_WS_FAILURES} times — "
+                        f"switching to REST polling. Will retry WS after "
+                        f"{_WS_RETRY_AFTER_REST_POLLS} polls. [FIX-BUG4]"
+                    )
+                    self._rest_poll_count = 0
             else:
+                # FIX-BUG4: REST fallback with periodic WS retry.
+                # After _WS_RETRY_AFTER_REST_POLLS polls (~5 min at 5s each),
+                # reset failure counter and attempt WS reconnection so the
+                # faster on_price_tick() path resumes automatically.
                 try:
-                    await self._poll_rest()
+                    await self._poll_rest_once()
                 except Exception as e:
                     logger.error(f"REST poll error: {e}", exc_info=True)
                     await asyncio.sleep(WS_RECONNECT_SEC)
+                    continue
+
+                self._rest_poll_count += 1
+                if self._rest_poll_count >= _WS_RETRY_AFTER_REST_POLLS:
+                    logger.info(
+                        f"[FIX-BUG4] Attempting WS reconnection after "
+                        f"{_WS_RETRY_AFTER_REST_POLLS} REST polls..."
+                    )
+                    self._ws_failures     = 0
+                    self._rest_poll_count = 0
 
     async def _load_history(self) -> None:
         base_url = _INDIA_TESTNET if DELTA_TESTNET else _INDIA_LIVE
@@ -403,84 +442,84 @@ class CandleFeed:
                 self._df.at[idx, "volume"] = v
 
             if self.trail_monitor is not None:
+                # FIX-PARITY-02: push live close price as a price tick so the
+                # trail loop evaluates SL/TP immediately — no REST round-trip.
+                # c = WS candle close = most recent traded price (~500ms latency).
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.trail_monitor.on_price_tick(c))
+
+                # FIX-PARITY-03 (via push_ws_candle): update intrabar peak and
+                # schedule TP/SL evaluation for both candle extremes.
                 self.trail_monitor.push_ws_candle(h, l)
 
     # ── REST polling fallback ──────────────────────────────────────────────────
 
-    async def _poll_rest(self) -> None:
+    async def _poll_rest_once(self) -> None:
+        """
+        FIX-BUG4: Single REST poll cycle (replaces the old _poll_rest infinite loop).
+        Called from the main start() loop so the WS retry logic in start() can
+        count polls and trigger a WS reconnection attempt periodically.
+        """
         sleep_sec = 5
-        logger.warning(
-            f"REST fallback active — polling every {sleep_sec}s. "
-            f"Fix WS connection to restore speed."
+        await asyncio.sleep(sleep_sec)
+
+        # FIX-AUDIT-02: asyncio.to_thread() runs the BLOCKING sync ccxt call
+        # in a thread pool so the event loop remains free between polls.
+        ohlcv = await asyncio.to_thread(
+            self._exchange.fetch_ohlcv,
+            SYMBOL,
+            CANDLE_TIMEFRAME,
+            None,   # since (unused)
+            5,      # limit
         )
 
-        while True:
-            await asyncio.sleep(sleep_sec)
-            try:
-                # FIX-AUDIT-02: asyncio.to_thread() runs the BLOCKING sync ccxt call
-                # in a thread pool so the event loop remains free between polls.
-                ohlcv = await asyncio.to_thread(
-                    self._exchange.fetch_ohlcv,
-                    SYMBOL,
-                    CANDLE_TIMEFRAME,
-                    None,   # since (unused)
-                    5,      # limit
+        if not ohlcv or len(ohlcv) < 2:
+            return
+
+        # FIX-WS-3a: compare live bar (ohlcv[-1]) boundary vs last boundary
+        live_bar      = ohlcv[-1]
+        live_ts       = int(live_bar[0])
+        live_boundary = _candle_boundary(live_ts, self._period_ms)
+
+        if live_boundary > self._last_candle_boundary:
+            if len(self._df) >= MIN_BARS and not self._processing:
+                logger.info(
+                    f"✅ Bar confirmed [REST fallback] | "
+                    f"prev_boundary={self._last_candle_boundary} | "
+                    f"new_boundary={live_boundary}"
+                )
+                self._processing = True
+                try:
+                    await self.on_bar_close(self._df.copy())
+                finally:
+                    self._processing = False
+            else:
+                logger.warning(
+                    f"⚠️ Bar skipped — only {len(self._df)} bars (need {MIN_BARS}) "
+                    f"or still processing."
                 )
 
-                if not ohlcv or len(ohlcv) < 2:
-                    continue
+            new_row = pd.DataFrame([{
+                "timestamp": live_ts,
+                "open"  : float(live_bar[1]),
+                "high"  : float(live_bar[2]),
+                "low"   : float(live_bar[3]),
+                "close" : float(live_bar[4]),
+                "volume": float(live_bar[5]),
+            }])
+            self._df = pd.concat(
+                [self._df, new_row], ignore_index=True
+            ).tail(MIN_BARS + 50)
+            self._last_candle_boundary = live_boundary
 
-                # FIX-WS-3a: compare live bar (ohlcv[-1]) boundary vs last boundary
-                live_bar      = ohlcv[-1]
-                live_ts       = int(live_bar[0])
-                live_boundary = _candle_boundary(live_ts, self._period_ms)
-
-                if live_boundary > self._last_candle_boundary:
-                    if len(self._df) >= MIN_BARS and not self._processing:
-                        logger.info(
-                            f"✅ Bar confirmed [REST fallback] | "
-                            f"prev_boundary={self._last_candle_boundary} | "
-                            f"new_boundary={live_boundary}"
-                        )
-                        self._processing = True
-                        try:
-                            await self.on_bar_close(self._df.copy())
-                        finally:
-                            self._processing = False
-                    else:
-                        logger.warning(
-                            f"⚠️ Bar skipped — only {len(self._df)} bars (need {MIN_BARS}) "
-                            f"or still processing."
-                        )
-
-                    new_row = pd.DataFrame([{
-                        "timestamp": live_ts,
-                        "open"  : float(live_bar[1]),
-                        "high"  : float(live_bar[2]),
-                        "low"   : float(live_bar[3]),
-                        "close" : float(live_bar[4]),
-                        "volume": float(live_bar[5]),
-                    }])
-                    self._df = pd.concat(
-                        [self._df, new_row], ignore_index=True
-                    ).tail(MIN_BARS + 50)
-                    self._last_candle_boundary = live_boundary
-
-                else:
-                    if not self._df.empty:
-                        idx = self._df.index[-1]
-                        self._df.at[idx, "open"]   = float(live_bar[1])
-                        self._df.at[idx, "high"]   = float(live_bar[2])
-                        self._df.at[idx, "low"]    = float(live_bar[3])
-                        self._df.at[idx, "close"]  = float(live_bar[4])
-                        self._df.at[idx, "volume"] = float(live_bar[5])
-
-            except ccxt.NetworkError as e:
-                logger.warning(f"REST network error: {e} — retrying...")
-                await asyncio.sleep(WS_RECONNECT_SEC)
-            except Exception as e:
-                logger.error(f"REST poll error: {e}", exc_info=True)
-                break
+        else:
+            if not self._df.empty:
+                idx = self._df.index[-1]
+                self._df.at[idx, "open"]   = float(live_bar[1])
+                self._df.at[idx, "high"]   = float(live_bar[2])
+                self._df.at[idx, "low"]    = float(live_bar[3])
+                self._df.at[idx, "close"]  = float(live_bar[4])
+                self._df.at[idx, "volume"] = float(live_bar[5])
 
     @staticmethod
     def _to_df(ohlcv: list) -> pd.DataFrame:
