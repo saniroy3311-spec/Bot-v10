@@ -1,24 +1,31 @@
 """
-main.py — Shiva Sniper v10 — BUG-FIX-AUDIT-v1
+main.py — Shiva Sniper v10 — REENTRY-FIX-v1
 ════════════════════════════════════════════════════════════════════════
 
-FIXES IN THIS VERSION (on top of FIX-MAIN-001 through FIX-MAIN-004):
-──────────────────────────────────────────────────────────────────────
-FIX-AUDIT-03 | HIGH — _on_trail_exit() updated to accept `source` param.
-  trail_loop._fire_exit() now passes source="bar_close" or source="tick"
-  to the exit callback. main.py uses source to decide whether to consume
-  _pending_signal:
+REENTRY-FIX-v1 | CRITICAL — same-bar reentry now fires on ALL exit
+  sources (tick AND bar_close), not just bar_close exits.
 
-    source="bar_close" → same-bar exit: signal is fresh (same bar's snap),
-      Pine would fire immediately → consume _pending_signal and enter now.
+  ROOT CAUSE OF MISSING TRADES vs PINE:
+  Pine Script evaluates entry conditions on every bar close. If a trade
+  exits on that bar (whether via tick-level SL/TP or bar-close check),
+  Pine immediately re-enters if conditions are still valid — same bar,
+  same candle. The old bot discarded _pending_signal on tick exits,
+  treating it as "stale." But _pending_signal is set in on_bar_close()
+  BEFORE the trail monitor processes exits. It is always fresh — it
+  comes from the current bar's indicator snapshot. Discarding it caused
+  the bot to miss every same-bar reentry that Pine would take.
 
-    source="tick" → intrabar exit: _pending_signal snap is from the
-      PREVIOUS bar close (could be 29 minutes stale). Pine would NOT enter
-      until the NEXT bar close (newBar and noPosition guard). Discard the
-      stale signal and let the next on_bar_close() evaluate fresh indicators.
+  Looking at Pine trade list: trades 316-320 all on Apr 22, trades
+  321-325 all within 24h — most are same-bar reentries that the bot
+  was silently dropping.
 
-  The old code consumed _pending_signal unconditionally on any exit, causing
-  entries with stale ATR / EMA / risk levels on all intrabar tick-loop exits.
+  FIX: _on_trail_exit() now consumes _pending_signal unconditionally
+  on all exit sources. This matches Pine's newBar → evaluate → reenter
+  logic exactly.
+
+PRESERVED FROM BUG-FIX-AUDIT-v1:
+  FIX-AUDIT-03: source tag ("bar_close"/"tick") still passed through
+  for logging — only the discard-on-tick behaviour is removed.
 ════════════════════════════════════════════════════════════════════════
 """
 
@@ -307,30 +314,22 @@ class ShivaSniperBot:
         if self._feed is not None:
             self._feed.trail_monitor = None
 
-        # FIX-AUDIT-03: SAME-BAR-REENTRY — only consume _pending_signal for
-        # same-bar exits. For intrabar tick-loop exits, the snap in
-        # _pending_signal is stale. Discard it and wait for the next bar close.
-        if source == "bar_close":
-            pending = self._pending_signal
-            self._pending_signal = None
-            if pending is not None:
-                sig, snap = pending
-                logger.info(
-                    f"[SAME-BAR-REENTRY] Firing buffered {sig.signal_type.value} "
-                    f"signal after same-bar exit (reason={reason})"
-                )
-                await self._enter(sig, snap)
-        else:
-            # Intrabar exit — discard stale signal, wait for next bar close.
-            if self._pending_signal is not None:
-                stale_sig, _ = self._pending_signal
-                logger.info(
-                    f"[TICK EXIT] Discarding stale _pending_signal "
-                    f"({stale_sig.signal_type.value}) — "
-                    f"source={source}, reason={reason}. "
-                    f"Waiting for next bar close to re-evaluate."
-                )
-            self._pending_signal = None
+        # REENTRY FIX: Pine takes a new trade immediately after an exit on the
+        # same bar — regardless of whether the exit was tick-driven or bar-close.
+        # The _pending_signal is always set from the CURRENT bar's on_bar_close()
+        # evaluation BEFORE the trade exits. It is always fresh — the snap comes
+        # from the same bar's close indicators. Consume it on ALL exit sources.
+        # This matches Pine's behaviour: new bar → evaluate entry → exit fires →
+        # re-enter same bar if conditions still valid.
+        pending = self._pending_signal
+        self._pending_signal = None
+        if pending is not None:
+            sig, snap = pending
+            logger.info(
+                f"[REENTRY] Firing buffered {sig.signal_type.value} "
+                f"after exit (reason={reason} source={source})"
+            )
+            await self._enter(sig, snap)
 
     async def run(self) -> None:
         await self.initialize()
