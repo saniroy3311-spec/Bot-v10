@@ -1,9 +1,28 @@
 """
-feed/ws_feed.py  —  Shiva Sniper v10  (FIX-PARITY-v2 + BUG-FIX-AUDIT-v1 + FIX-PEAK-REST)
+feed/ws_feed.py  —  Shiva Sniper v10  (ENTRY-DELAY-FIX-v1)
 ════════════════════════════════════════════════════════════════════════════════
 
-NEW FIXES IN THIS VERSION:
+NEW FIX IN THIS VERSION:
 ──────────────────────────────────────────────────────────────────────────────
+FIX-ENTRY-DELAY | CRITICAL — bot entered every trade 30 minutes late vs Pine.
+
+  ROOT CAUSE:
+  _load_history() called fetch_ohlcv() which returns the currently-open
+  (partial/live) bar as the LAST row (iloc[-1]). The code set:
+    _last_candle_boundary = _candle_boundary(iloc[-1]["timestamp"])
+  This means the boundary was already marked as "seen" for the current bar.
+  The bot then waited for the NEXT boundary change — one full 30-min bar
+  later — before firing on_bar_close() for the first time. Every signal
+  was delayed by exactly one candle period.
+
+  FIX:
+  Use iloc[-2] (the last fully CLOSED bar) as the boundary baseline.
+  Drop iloc[-1] (partial live bar) from the dataframe — WS messages will
+  fill in the live bar going forward via the existing intrabar update path.
+  The next WS message from the NEW bar will correctly trigger
+  current_boundary > _last_candle_boundary and fire on_bar_close() on time.
+
+PRESERVED FROM FIX-PARITY-v2 + BUG-FIX-AUDIT-v1 + FIX-PEAK-REST (all unchanged):
 FIX-PARITY-02 (WS side) | CRITICAL — every intrabar WS candle message now
   calls trail_monitor.on_price_tick(close) directly, pushing the live price
   into the trail loop WITHOUT a REST round-trip. Exit decisions happen in the
@@ -253,8 +272,19 @@ class CandleFeed:
         })
         self._exchange.markets = fetched_markets
 
-        # FIX-WS-3b: set boundary from live bar so next boundary triggers correctly
-        last_closed_ts = int(self._df.iloc[-1]["timestamp"])
+        # FIX-ENTRY-DELAY: fetch_ohlcv() last row is the currently-OPEN bar
+        # (partial, live). Using its timestamp as _last_candle_boundary means
+        # the boundary is already "seen" — the bot then waits a full 30 min
+        # for the NEXT boundary before firing on_bar_close. Result: bot enters
+        # every trade exactly ONE BAR (30 min) late vs Pine Script.
+        #
+        # Fix: use iloc[-2] (last fully CLOSED bar) as the boundary baseline.
+        # Drop iloc[-1] from the df — it's a partial bar that WS will fill in.
+        if len(self._df) >= 2:
+            last_closed_ts = int(self._df.iloc[-2]["timestamp"])
+            self._df = self._df.iloc[:-1].copy()  # drop live partial bar
+        else:
+            last_closed_ts = int(self._df.iloc[-1]["timestamp"])
         self._last_candle_boundary = _candle_boundary(last_closed_ts, self._period_ms)
 
         bar_count = len(self._df)
