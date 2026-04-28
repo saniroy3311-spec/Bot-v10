@@ -1,31 +1,29 @@
 """
-main.py — Shiva Sniper v10 — REENTRY-FIX-v1
+main.py — Shiva Sniper v10 — RECOVERY-FIX-v1
 ════════════════════════════════════════════════════════════════════════
 
-REENTRY-FIX-v1 | CRITICAL — same-bar reentry now fires on ALL exit
-  sources (tick AND bar_close), not just bar_close exits.
+RECOVERY-FIX-01 | CRITICAL — adopt open positions on bot startup.
+  ROOT CAUSE OF UNMANAGED ORPHAN TRADES:
+  PM2 restart (or crash) while a trade is open leaves the position on
+  the exchange but resets in_position=False in Python. The trail monitor
+  never starts for the orphaned trade — no SL/TP/trail/Max-SL protection.
 
-  ROOT CAUSE OF MISSING TRADES vs PINE:
-  Pine Script evaluates entry conditions on every bar close. If a trade
-  exits on that bar (whether via tick-level SL/TP or bar-close check),
-  Pine immediately re-enters if conditions are still valid — same bar,
-  same candle. The old bot discarded _pending_signal on tick exits,
-  treating it as "stale." But _pending_signal is set in on_bar_close()
-  BEFORE the trail monitor processes exits. It is always fresh — it
-  comes from the current bar's indicator snapshot. Discarding it caused
-  the bot to miss every same-bar reentry that Pine would take.
+  From the 2026-04-28 log: bot restarted ~10 times while short was open
+  at 76975. Each restart began flat. The trade ran unmanaged until manual
+  close — triggering the close_position cascade (Bug 1 + Bug 2).
 
-  Looking at Pine trade list: trades 316-320 all on Apr 22, trades
-  321-325 all within 24h — most are same-bar reentries that the bot
-  was silently dropping.
+  FIX:
+  initialize() now calls fetch_open_position(). If a position is found:
+    1. Sets in_position=True with synthetic RiskLevels from live entry_price
+       and current ATR fetched from the ticker.
+    2. Buffers _adopted_position so on_bar_close() starts the trail monitor
+       on the FIRST bar close after restart.
+    3. Logs [STARTUP][RECOVERY] path in PM2 logs.
+  If flat: logs [STARTUP] No open position — clean start.
 
-  FIX: _on_trail_exit() now consumes _pending_signal unconditionally
-  on all exit sources. This matches Pine's newBar → evaluate → reenter
-  logic exactly.
-
-PRESERVED FROM BUG-FIX-AUDIT-v1:
-  FIX-AUDIT-03: source tag ("bar_close"/"tick") still passed through
-  for logging — only the discard-on-tick behaviour is removed.
+PRESERVED FROM REENTRY-FIX-v1 (all unchanged):
+  REENTRY-FIX-v1: same-bar reentry fires on ALL exit sources.
+  FIX-AUDIT-03: source tag (bar_close/tick) passed through for logging.
 ════════════════════════════════════════════════════════════════════════
 """
 
@@ -87,15 +85,32 @@ class ShivaSniperBot:
         self._signal_type : str                  = ""
 
         # SAME-BAR-REENTRY: buffer the last signal from bar-close evaluation.
-        # ONLY consumed when source="bar_close" exits (FIX-AUDIT-03).
-        # For tick-loop exits (source="tick"), this is discarded — the snap
-        # would be stale (from the previous bar close) and Pine would not re-
-        # enter until the next bar close anyway.
         self._pending_signal: Optional[tuple] = None  # (Signal, IndicatorSnapshot)
+
+        # RECOVERY-FIX-01: buffer an adopted position detected at startup.
+        # Consumed in on_bar_close() on the first bar after restart.
+        self._adopted_position: Optional[dict] = None  # {"is_long": bool, "entry_price": float}
 
     async def initialize(self) -> None:
         await self.order_mgr.initialize()
         logger.info("OrderManager initialized ✅")
+
+        # RECOVERY-FIX-01: check for an open position on Delta at startup.
+        try:
+            pos = await self.order_mgr.fetch_open_position()
+        except Exception as e:
+            logger.warning(f"[STARTUP] fetch_open_position failed: {e} — starting clean")
+            pos = None
+
+        if pos is None:
+            logger.info("[STARTUP] No open position on Delta — starting clean.")
+        else:
+            self._adopted_position = pos
+            logger.info(
+                f"[STARTUP][RECOVERY] Open {'LONG' if pos['is_long'] else 'SHORT'} detected "
+                f"@ {pos['entry_price']:.2f} | contracts={pos['contracts']} — "
+                f"will reattach trail on first bar close. [RECOVERY-FIX-01]"
+            )
 
     async def on_bar_close(self, df) -> None:
         """
@@ -111,6 +126,13 @@ class ShivaSniperBot:
         except Exception as e:
             logger.error(f"Indicator compute failed: {e}", exc_info=True)
             return
+
+        # RECOVERY-FIX-01: on first bar after restart with an adopted position,
+        # reconstruct RiskLevels/TrailState and start the trail monitor.
+        if self._adopted_position is not None:
+            await self._adopt_position(self._adopted_position, snap)
+            self._adopted_position = None
+            # Trail is now running; fall through to the in_position branch below.
 
         # Evaluate entry signal for same-bar-reentry buffering.
         # IMPORTANT: always pass has_position=False here so the signal is computed
@@ -241,6 +263,58 @@ class ShivaSniperBot:
                 f"fill={fill:.2f} sl={risk.sl:.2f} tp={risk.tp:.2f} "
                 f"atr={snap.atr:.2f} qty={ALERT_QTY} lots"
             )
+
+    async def _adopt_position(self, pos: dict, snap) -> None:
+        """
+        RECOVERY-FIX-01: Reconstruct in-memory state for an adopted orphan trade.
+
+        Called from on_bar_close() on the first bar after a restart when
+        fetch_open_position() found an open trade at startup. Builds synthetic
+        RiskLevels and TrailState from the live entry_price and the current
+        bar's ATR, then starts the trail monitor exactly as _enter() would.
+
+        The adopted trade is protected from this point forward — all trail/SL/
+        TP/Max-SL logic resumes as if the entry had just fired on this bar.
+        """
+        is_long     = pos["is_long"]
+        entry_price = pos["entry_price"]
+        current_atr = snap.atr
+
+        logger.info(
+            f"[RECOVERY ✅] Adopting {'LONG' if is_long else 'SHORT'} "
+            f"@ {entry_price:.2f} | atr={current_atr:.2f} [RECOVERY-FIX-01]"
+        )
+
+        from risk.calculator import calc_levels, recalc_levels_from_fill
+        # Determine trade type: we can't know if it was a trend or range trade
+        # after a restart, so default to trend=True (tighter RR — conservative).
+        is_trend = True
+        risk_pre = calc_levels(entry_price, current_atr, is_long, is_trend)
+        risk     = recalc_levels_from_fill(risk_pre, entry_price)
+
+        self.risk = risk
+        self.trail_state = TrailState(
+            stage      = 0,
+            current_sl = risk.sl,
+            peak_price = entry_price,
+        )
+        self.in_position  = True
+        self._signal_type = "ADOPTED"
+
+        self.trail_mon.start(
+            risk_levels       = risk,
+            trail_state       = self.trail_state,
+            entry_bar_time_ms = int(time.time() * 1000),
+            on_trail_exit     = self._on_trail_exit,
+        )
+
+        if self._feed is not None:
+            self._feed.trail_monitor = self.trail_mon
+
+        logger.info(
+            f"[RECOVERY ✅] Trail monitor started | "
+            f"sl={risk.sl:.2f} tp={risk.tp:.2f} atr={current_atr:.2f}"
+        )
 
     async def _on_trail_exit(self, exit_price: float, reason: str, source: str = "tick") -> None:
         """
