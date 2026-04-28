@@ -336,6 +336,14 @@ def compute(df: pd.DataFrame) -> IndicatorSnapshot:
         bar_vol = float(last["volume"])
         if bar_vol > 0 and vol_sma > 0:
             vol_ok = bar_vol > vol_sma * FILTER_VOL_MULT
+            if not vol_ok:
+                logger.debug(
+                    f"VOL-FILTER: bar_vol={bar_vol:.0f} vol_sma={vol_sma:.0f} "
+                    f"threshold={vol_sma * FILTER_VOL_MULT:.0f} "
+                    f"(FILTER_VOL_MULT={FILTER_VOL_MULT}) — bar rejected. "
+                    "If Delta REST volumes differ from TradingView, lower "
+                    "FILTER_VOL_MULT in .env (e.g. 0.5) to allow more signals."
+                )
         else:
             logger.warning(
                 f"VOL-BYPASS | bar_volume={bar_vol:.0f} vol_sma={vol_sma:.0f} "
