@@ -1,5 +1,5 @@
 """
-orders/manager.py  —  Shiva Sniper v10  (BUG-FIX-AUDIT-v1)
+orders/manager.py  —  Shiva Sniper v10  (RECOVERY-FIX-v1)
 ═══════════════════════════════════════════════════════════════════════
 FIXES IN THIS VERSION:
 ──────────────────────────────────────────────────────────────────────
@@ -14,6 +14,20 @@ FIX-OM-002 | Mark price extraction uses Delta India-specific field path:
   ticker["info"]["mark_price"] is the raw exchange field on Delta India.
   The standard ccxt "markPrice" key may or may not be populated depending
   on the ccxt version. We now try both in priority order.
+
+FIX-OM-004 | STARTUP RECOVERY — fetch_open_position() helper.
+  Returns a live position dict from Delta if one is open for SYMBOL,
+  or None if flat. Used by main.py initialize() to detect orphan trades
+  left open across bot restarts (PM2 restart, crash, manual restart).
+
+FIX-OM-005 | BULLETPROOF close_position + cancel_all_orders.
+  Both now swallow every known "position already gone" error variant from
+  Delta India, preventing the cascade loop documented in the 10:39 log:
+    - no_position_for_reduce_only
+    - order does not exist
+    - Order not found
+  Any of these means the exchange already closed the position — the
+  outcome we wanted — so we treat it as success.
 """
 
 import asyncio
@@ -197,12 +211,21 @@ class OrderManager:
             self.position = None
             return order
         except ccxt.ExchangeError as e:
-            # FIX-OM-003: position already closed by exchange-side bracket order.
-            # Treat as success — the position is gone, which is what we wanted.
-            if "no_position_for_reduce_only" in str(e):
+            err = str(e).lower()
+            # FIX-OM-005: swallow every "position already gone" variant.
+            # These all mean the exchange already closed the position —
+            # the outcome we wanted — so treat as success.
+            _BENIGN = (
+                "no_position_for_reduce_only",
+                "order does not exist",
+                "order not found",
+                "position not found",
+                "insufficient position",
+            )
+            if any(b in err for b in _BENIGN):
                 logger.warning(
-                    f"[OM] close_position({reason}): position already closed on exchange "
-                    f"(bracket SL/TP fired). Treating as success. [FIX-OM-003]"
+                    f"[OM] close_position({reason}): position already gone on exchange "
+                    f"({str(e)[:120]}). Treating as success. [FIX-OM-005]"
                 )
                 self.position = None
                 return {"info": "already_closed"}
@@ -222,6 +245,14 @@ class OrderManager:
             try:
                 await _retry(lambda _oid=oid: self.exchange.cancel_order(_oid, SYMBOL))
                 logger.info(f"Cancelled open order {oid}")
+            except ccxt.ExchangeError as e:
+                err = str(e).lower()
+                _BENIGN = ("order does not exist", "order not found", "already filled",
+                           "already cancelled", "already closed")
+                if any(b in err for b in _BENIGN):
+                    logger.debug(f"cancel_order({oid}) already gone: {e} [FIX-OM-005]")
+                else:
+                    logger.warning(f"cancel_order({oid}) failed: {e}")
             except Exception as e:
                 logger.warning(f"cancel_order({oid}) failed: {e}")
 
@@ -233,6 +264,52 @@ class OrderManager:
             if pos.get("symbol") == SYMBOL and pos.get("contracts", 0) != 0:
                 return pos
         return None
+
+    async def fetch_open_position(self) -> Optional[dict]:
+        """
+        FIX-OM-004: Fetch open position for SYMBOL from Delta at startup.
+
+        Returns a normalised dict with keys:
+          is_long     : bool
+          entry_price : float
+          contracts   : float  (lot size)
+          raw         : dict   (full ccxt position dict)
+        or None if no position is open.
+
+        Used by main.py initialize() to detect orphan trades and reconstruct
+        RiskLevels/TrailState so trail/SL/TP resume immediately.
+        """
+        try:
+            positions = await _retry(
+                lambda: self.exchange.fetch_positions([SYMBOL])
+            )
+            for pos in positions:
+                if pos.get("symbol") != SYMBOL:
+                    continue
+                contracts = float(pos.get("contracts") or 0)
+                if contracts == 0:
+                    continue
+                side = pos.get("side", "").lower()
+                is_long = side == "long"
+                entry_price = float(
+                    pos.get("entryPrice")
+                    or pos.get("entry_price")
+                    or (pos.get("info") or {}).get("entry_price")
+                    or 0
+                )
+                if entry_price == 0:
+                    continue
+                logger.info(
+                    f"[OM] fetch_open_position: found {'LONG' if is_long else 'SHORT'} "
+                    f"@ {entry_price:.2f} | contracts={contracts} [FIX-OM-004]"
+                )
+                self.position = {"is_long": is_long, "entry_price": entry_price}
+                return {"is_long": is_long, "entry_price": entry_price,
+                        "contracts": contracts, "raw": pos}
+            return None
+        except Exception as e:
+            logger.warning(f"[OM] fetch_open_position failed: {e}")
+            return None
 
     async def fetch_last_trade_price(self) -> Optional[float]:
         try:
