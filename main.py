@@ -1,29 +1,62 @@
 """
-main.py — Shiva Sniper v10 — RECOVERY-FIX-v1
+main.py — Shiva Sniper v10 — REENTRY-FIX-v1 + RECOVERY-FIX-v1
 ════════════════════════════════════════════════════════════════════════
 
-RECOVERY-FIX-01 | CRITICAL — adopt open positions on bot startup.
-  ROOT CAUSE OF UNMANAGED ORPHAN TRADES:
-  PM2 restart (or crash) while a trade is open leaves the position on
-  the exchange but resets in_position=False in Python. The trail monitor
-  never starts for the orphaned trade — no SL/TP/trail/Max-SL protection.
+NEW FIX IN THIS VERSION (RECOVERY-FIX-v1):
+──────────────────────────────────────────────────────────────────────
+RECOVERY-FIX-01 | CRITICAL — adopt any pre-existing position on Delta
+  during startup so trail / SL / TP / Max-SL management resumes
+  automatically after a bot restart.
 
-  From the 2026-04-28 log: bot restarted ~10 times while short was open
-  at 76975. Each restart began flat. The trade ran unmanaged until manual
-  close — triggering the close_position cascade (Bug 1 + Bug 2).
+  ROOT CAUSE OF MANY MISSING-EXIT INCIDENTS:
+  The bot was restarted multiple times during open trades (PM2 logs
+  show ~10 restart cycles between 10:43 and 11:21 on 2026-04-28).
+  Each restart began with `in_position = False`. The bot was therefore
+  blind to the trade still open on Delta — no trail, no SL, no TP, no
+  Max-SL. When the user finally flat-closed manually, the bot's next
+  exit attempt produced no_position_for_reduce_only, which (combined
+  with the old _fire_exit retry pattern) cascaded into the infinite
+  error loop visible at 10:39.
 
-  FIX:
-  initialize() now calls fetch_open_position(). If a position is found:
-    1. Sets in_position=True with synthetic RiskLevels from live entry_price
-       and current ATR fetched from the ticker.
-    2. Buffers _adopted_position so on_bar_close() starts the trail monitor
-       on the FIRST bar close after restart.
-    3. Logs [STARTUP][RECOVERY] path in PM2 logs.
-  If flat: logs [STARTUP] No open position — clean start.
+  THE FIX:
+  • initialize() now calls order_mgr.fetch_open_position() (FIX-OM-004).
+  • If a position is found, it is buffered as self._adopted_position.
+  • On the FIRST bar_close after startup, _adopt_position() is invoked
+    BEFORE entry evaluation. It reconstructs RiskLevels (using the
+    current ATR — best effort; the original entry-bar ATR is unknown),
+    seeds TrailState (peak_price = current close, stage estimated from
+    current profit, BE flag inferred), and starts the trail monitor.
+  • The bot then manages the recovered trade exactly as if it had just
+    been opened — trail, BE, max-SL all engage from this point onward.
+  • Exit reason / journal will record signal_type = "RECOVERED" so the
+    trade is distinguishable in post-mortem.
 
-PRESERVED FROM REENTRY-FIX-v1 (all unchanged):
-  REENTRY-FIX-v1: same-bar reentry fires on ALL exit sources.
-  FIX-AUDIT-03: source tag (bar_close/tick) passed through for logging.
+PRESERVED FROM REENTRY-FIX-v1:
+──────────────────────────────────────────────────────────────────────
+REENTRY-FIX-v1 | CRITICAL — same-bar reentry now fires on ALL exit
+  sources (tick AND bar_close), not just bar_close exits.
+
+  ROOT CAUSE OF MISSING TRADES vs PINE:
+  Pine Script evaluates entry conditions on every bar close. If a trade
+  exits on that bar (whether via tick-level SL/TP or bar-close check),
+  Pine immediately re-enters if conditions are still valid — same bar,
+  same candle. The old bot discarded _pending_signal on tick exits,
+  treating it as "stale." But _pending_signal is set in on_bar_close()
+  BEFORE the trail monitor processes exits. It is always fresh — it
+  comes from the current bar's indicator snapshot. Discarding it caused
+  the bot to miss every same-bar reentry that Pine would take.
+
+  Looking at Pine trade list: trades 316-320 all on Apr 22, trades
+  321-325 all within 24h — most are same-bar reentries that the bot
+  was silently dropping.
+
+  FIX: _on_trail_exit() now consumes _pending_signal unconditionally
+  on all exit sources. This matches Pine's newBar → evaluate → reenter
+  logic exactly.
+
+PRESERVED FROM BUG-FIX-AUDIT-v1:
+  FIX-AUDIT-03: source tag ("bar_close"/"tick") still passed through
+  for logging — only the discard-on-tick behaviour is removed.
 ════════════════════════════════════════════════════════════════════════
 """
 
@@ -40,6 +73,7 @@ from typing import Optional
 from config import (
     SYMBOL, ALERT_QTY, CANDLE_TIMEFRAME,
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+    BE_MULT,
 )
 
 from feed.ws_feed      import CandleFeed
@@ -85,32 +119,49 @@ class ShivaSniperBot:
         self._signal_type : str                  = ""
 
         # SAME-BAR-REENTRY: buffer the last signal from bar-close evaluation.
+        # ONLY consumed when source="bar_close" exits (FIX-AUDIT-03).
+        # For tick-loop exits (source="tick"), this is discarded — the snap
+        # would be stale (from the previous bar close) and Pine would not re-
+        # enter until the next bar close anyway.
         self._pending_signal: Optional[tuple] = None  # (Signal, IndicatorSnapshot)
 
-        # RECOVERY-FIX-01: buffer an adopted position detected at startup.
-        # Consumed in on_bar_close() on the first bar after restart.
-        self._adopted_position: Optional[dict] = None  # {"is_long": bool, "entry_price": float}
+        # RECOVERY-FIX-01: position adopted from the exchange at startup.
+        # Populated by initialize() if an open position is detected. Consumed
+        # on the first on_bar_close() to reconstruct RiskLevels + TrailState
+        # and start the trail monitor.
+        self._adopted_position: Optional[dict] = None
 
     async def initialize(self) -> None:
         await self.order_mgr.initialize()
         logger.info("OrderManager initialized ✅")
 
-        # RECOVERY-FIX-01: check for an open position on Delta at startup.
+        # RECOVERY-FIX-01: detect any pre-existing position on Delta and
+        # buffer it for adoption on the first bar close. This keeps
+        # trail/SL/TP/Max-SL management alive across bot restarts.
         try:
-            pos = await self.order_mgr.fetch_open_position()
+            adopted = await self.order_mgr.fetch_open_position()
         except Exception as e:
-            logger.warning(f"[STARTUP] fetch_open_position failed: {e} — starting clean")
-            pos = None
+            logger.error(f"[STARTUP] fetch_open_position raised: {e}", exc_info=True)
+            adopted = None
 
-        if pos is None:
-            logger.info("[STARTUP] No open position on Delta — starting clean.")
-        else:
-            self._adopted_position = pos
-            logger.info(
-                f"[STARTUP][RECOVERY] Open {'LONG' if pos['is_long'] else 'SHORT'} detected "
-                f"@ {pos['entry_price']:.2f} | contracts={pos['contracts']} — "
-                f"will reattach trail on first bar close. [RECOVERY-FIX-01]"
+        if adopted:
+            self._adopted_position = adopted
+            logger.warning(
+                f"[STARTUP][RECOVERY] Buffered adopted position: "
+                f"is_long={adopted['is_long']} entry={adopted['entry_price']:.2f} "
+                f"qty={adopted['qty']}. Will resume management on next bar close."
             )
+            # Best-effort Telegram alert so the user knows the bot adopted the trade.
+            try:
+                await self.telegram.notify_error(
+                    f"⚠️ Adopted existing {('LONG' if adopted['is_long'] else 'SHORT')} "
+                    f"position @ {adopted['entry_price']:.2f}. "
+                    f"Trail/SL will reattach on next bar close."
+                )
+            except Exception:
+                pass
+        else:
+            logger.info("[STARTUP] No open position on Delta — starting clean.")
 
     async def on_bar_close(self, df) -> None:
         """
@@ -120,6 +171,12 @@ class ShivaSniperBot:
           if newBar and noPosition → evaluate entry
           if in position → strategy.exit() re-evaluated each bar
             → Python equiv: trail_mon.on_bar_close(close, high, low, atr)
+
+        RECOVERY-FIX-01: before any signal/entry/exit logic runs, if a
+        position was adopted at startup we reconstruct its risk + trail
+        state on this bar close. After adoption the bot continues
+        normally — the next branches will see in_position=True and
+        delegate to trail_mon.on_bar_close().
         """
         try:
             snap: IndicatorSnapshot = compute(df)
@@ -127,12 +184,16 @@ class ShivaSniperBot:
             logger.error(f"Indicator compute failed: {e}", exc_info=True)
             return
 
-        # RECOVERY-FIX-01: on first bar after restart with an adopted position,
-        # reconstruct RiskLevels/TrailState and start the trail monitor.
+        # RECOVERY-FIX-01: adopt buffered exchange position on the first
+        # bar close after startup (must run before signal evaluation so
+        # the bot does not stack a new entry on top of an existing one).
         if self._adopted_position is not None:
-            await self._adopt_position(self._adopted_position, snap)
-            self._adopted_position = None
-            # Trail is now running; fall through to the in_position branch below.
+            try:
+                await self._adopt_position(self._adopted_position, snap)
+            except Exception as e:
+                logger.error(f"[RECOVERY] _adopt_position failed: {e}", exc_info=True)
+            finally:
+                self._adopted_position = None
 
         # Evaluate entry signal for same-bar-reentry buffering.
         # IMPORTANT: always pass has_position=False here so the signal is computed
@@ -266,55 +327,122 @@ class ShivaSniperBot:
 
     async def _adopt_position(self, pos: dict, snap) -> None:
         """
-        RECOVERY-FIX-01: Reconstruct in-memory state for an adopted orphan trade.
+        RECOVERY-FIX-01: reconstruct RiskLevels + TrailState for a position
+        that was already open on Delta when the bot started, then start the
+        trail monitor so SL / TP / trail / Max-SL all engage from the next
+        tick onward.
 
-        Called from on_bar_close() on the first bar after a restart when
-        fetch_open_position() found an open trade at startup. Builds synthetic
-        RiskLevels and TrailState from the live entry_price and the current
-        bar's ATR, then starts the trail monitor exactly as _enter() would.
+        Best-effort reconstruction (the originating bar's ATR / signal_type
+        cannot be recovered post-hoc):
 
-        The adopted trade is protected from this point forward — all trail/SL/
-        TP/Max-SL logic resumes as if the entry had just fired on this bar.
+          • RR / ATR-mult / stop_dist  → use TREND values (5.0, 0.9). Trend
+            params are the larger of the two regimes, so the resulting SL is
+            slightly wider than a range-trade would have used. This is the
+            safe direction — we'd rather over-give room than knock ourselves
+            out of an adopted trade prematurely.
+          • peak_price                 → seed with current bar close (will
+            tighten as price moves further into profit).
+          • trail stage                → estimated from current profit using
+            _upgrade_stage on the live ATR.
+          • be_done                    → True if profit already exceeds
+            BE_MULT × ATR (so we don't undo a breakeven that was logically
+            already met before the restart).
+
+        NOTE: signal_type is recorded as "RECOVERED" so the journal /
+        telegram exit message clearly distinguishes adopted trades from
+        fresh ones.
         """
-        is_long     = pos["is_long"]
-        entry_price = pos["entry_price"]
-        current_atr = snap.atr
+        is_long = bool(pos["is_long"])
+        entry   = float(pos["entry_price"])
 
-        logger.info(
-            f"[RECOVERY ✅] Adopting {'LONG' if is_long else 'SHORT'} "
-            f"@ {entry_price:.2f} | atr={current_atr:.2f} [RECOVERY-FIX-01]"
-        )
+        if entry <= 0:
+            logger.error(
+                f"[RECOVERY] Adopted position has invalid entry_price={entry}; "
+                f"abandoning adoption — bot will run blind to this trade. "
+                f"⚠️ MANUAL INTERVENTION REQUIRED."
+            )
+            return
 
-        from risk.calculator import calc_levels, recalc_levels_from_fill
-        # Determine trade type: we can't know if it was a trend or range trade
-        # after a restart, so default to trend=True (tighter RR — conservative).
-        is_trend = True
-        risk_pre = calc_levels(entry_price, current_atr, is_long, is_trend)
-        risk     = recalc_levels_from_fill(risk_pre, entry_price)
+        # Reconstruct risk using TREND parameters (wider, safer for adoption).
+        # If the original trade was a range-trade the SL/TP are slightly
+        # off — but Max-SL still caps total loss at MAX_SL_MULT × ATR.
+        from risk.calculator import calc_levels
+        risk = calc_levels(entry, snap.atr, is_long, is_trend=True)
+
+        # Profit relative to entry, on this bar's close.
+        profit_dist = (snap.close - entry) if is_long else (entry - snap.close)
+
+        # Estimate stage and BE state from current profit.
+        from monitor.trail_loop import _upgrade_stage
+        stage   = _upgrade_stage(0, profit_dist, snap.atr)
+        be_done = profit_dist > snap.atr * BE_MULT
+
+        # Peak: best favourable price we KNOW the trade has reached. We can
+        # only see "now" — seed with current close. Real intrabar peaks will
+        # be picked up by push_ws_candle / on_price_tick from now on.
+        peak = snap.close
+
+        # If BE was already implicitly met, lift current_sl to entry so the
+        # bot doesn't surrender the breakeven gain.
+        current_sl = risk.sl
+        if be_done:
+            if is_long and entry > current_sl:
+                current_sl = entry
+            elif (not is_long) and entry < current_sl:
+                current_sl = entry
 
         self.risk = risk
         self.trail_state = TrailState(
-            stage      = 0,
-            current_sl = risk.sl,
-            peak_price = entry_price,
+            stage        = stage,
+            current_sl   = current_sl,
+            peak_price   = peak,
+            be_done      = be_done,
+            max_sl_fired = False,
         )
         self.in_position  = True
-        self._signal_type = "ADOPTED"
+        self._signal_type = "RECOVERED"
 
+        # Open a journal trade so exit logging works correctly.
+        try:
+            self.journal.open_trade(
+                signal_type = "RECOVERED",
+                is_long     = is_long,
+                entry_price = entry,
+                sl          = risk.sl,
+                tp          = risk.tp,
+                atr         = snap.atr,
+                qty         = ALERT_QTY,
+            )
+        except Exception as e:
+            logger.error(f"[RECOVERY] Journal open_trade failed: {e}")
+
+        # Start the trail monitor with the reconstructed state.
         self.trail_mon.start(
             risk_levels       = risk,
             trail_state       = self.trail_state,
             entry_bar_time_ms = int(time.time() * 1000),
             on_trail_exit     = self._on_trail_exit,
         )
-
         if self._feed is not None:
             self._feed.trail_monitor = self.trail_mon
 
-        logger.info(
-            f"[RECOVERY ✅] Trail monitor started | "
-            f"sl={risk.sl:.2f} tp={risk.tp:.2f} atr={current_atr:.2f}"
+        logger.warning(
+            f"[RECOVERY ✅] Adopted {('LONG' if is_long else 'SHORT')} "
+            f"@ {entry:.2f} | sl={risk.sl:.2f} tp={risk.tp:.2f} "
+            f"stage={stage} be_done={be_done} atr={snap.atr:.2f} "
+            f"current_profit={profit_dist:.2f}"
         )
+
+        try:
+            await self.telegram.notify_entry(
+                signal_type = "RECOVERED",
+                entry_price = entry,
+                sl          = risk.sl,
+                tp          = risk.tp,
+                atr         = snap.atr,
+            )
+        except Exception as e:
+            logger.error(f"[RECOVERY] Telegram notify_entry failed: {e}")
 
     async def _on_trail_exit(self, exit_price: float, reason: str, source: str = "tick") -> None:
         """
