@@ -1,5 +1,5 @@
 """
-main.py — Shiva Sniper v10 — REENTRY-FIX-v1 + RECOVERY-FIX-v1 + ADOPT-FIX-v1
+main.py — Shiva Sniper v10 — REENTRY-FIX-v1 + RECOVERY-FIX-v2 + FEED-FIX-v1
 ════════════════════════════════════════════════════════════════════════
 
 NEW FIX IN THIS VERSION (ADOPT-FIX-v1):
@@ -152,14 +152,31 @@ class ShivaSniperBot:
         await self.order_mgr.initialize()
         logger.info("OrderManager initialized ✅")
 
-        # RECOVERY-FIX-01: detect any pre-existing position on Delta and
-        # buffer it for adoption on the first bar close. This keeps
-        # trail/SL/TP/Max-SL management alive across bot restarts.
-        try:
-            adopted = await self.order_mgr.fetch_open_position()
-        except Exception as e:
-            logger.error(f"[STARTUP] fetch_open_position raised: {e}", exc_info=True)
-            adopted = None
+        # RECOVERY-FIX-02: retry fetch_open_position up to 3 times with a
+        # 2s delay. When the bot is restarted seconds after an entry is placed,
+        # Delta's position API may not yet reflect the fill (settlement latency).
+        # One fetch returning [] is unreliable — retry to catch positions that
+        # appear within ~6 seconds of the restart. This prevents the bot from
+        # opening a SECOND position on top of an existing one.
+        adopted = None
+        for attempt in range(1, 4):
+            try:
+                adopted = await self.order_mgr.fetch_open_position()
+                if adopted:
+                    break
+                if attempt < 3:
+                    logger.info(
+                        f"[STARTUP] No position found (attempt {attempt}/3) "
+                        f"— retrying in 2s (Delta settlement latency)"
+                    )
+                    await asyncio.sleep(2)
+            except Exception as e:
+                logger.error(
+                    f"[STARTUP] fetch_open_position attempt {attempt} raised: {e}",
+                    exc_info=True,
+                )
+                if attempt < 3:
+                    await asyncio.sleep(2)
 
         if adopted:
             self._adopted_position = adopted
@@ -564,7 +581,21 @@ class ShivaSniperBot:
             on_bar_close  = self.on_bar_close,
             on_feed_ready = self._on_feed_ready,
         )
+        # FIX-FEED-01: assign self._feed BEFORE feed.start() so that
+        # _enter() and _adopt_position() can always wire trail_monitor
+        # to the feed via self._feed. feed.start() calls on_bar_close()
+        # which may call _enter() immediately on the first bar — if
+        # self._feed were still None at that point, trail_monitor would
+        # never receive WS price ticks and exits would be silent.
         self._feed = feed
+
+        # FIX-FEED-02: if a position was adopted at startup, pre-wire
+        # the trail monitor to the feed NOW so that WS ticks arriving
+        # during _load_history (before the first on_bar_close fires)
+        # are already routed to the trail monitor.
+        if self._adopted_position is not None and self.trail_mon is not None:
+            feed.trail_monitor = self.trail_mon
+
         logger.info(
             f"Starting Shiva Sniper v10 | "
             f"symbol={SYMBOL} tf={CANDLE_TIMEFRAME} qty={ALERT_QTY} lots"
