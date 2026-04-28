@@ -1,8 +1,25 @@
 """
-main.py — Shiva Sniper v10 — REENTRY-FIX-v1 + RECOVERY-FIX-v1
+main.py — Shiva Sniper v10 — REENTRY-FIX-v1 + RECOVERY-FIX-v1 + ADOPT-FIX-v1
 ════════════════════════════════════════════════════════════════════════
 
-NEW FIX IN THIS VERSION (RECOVERY-FIX-v1):
+NEW FIX IN THIS VERSION (ADOPT-FIX-v1):
+──────────────────────────────────────────────────────────────────────
+FIX-ADOPT-01 | _pending_signal cleared immediately after _adopt_position().
+  ROOT CAUSE: on the first bar close after a bot restart with an open
+  position, _adopt_position() ran first (setting in_position=True), but
+  _pending_signal was then evaluated and stored. If the adopted trade
+  exited quickly (same bar), _on_trail_exit would consume _pending_signal
+  and fire _enter() using a snap from before the adoption — stale context
+  where in_position was still False. Pine only re-enters on the NEXT bar.
+  Fix: self._pending_signal = None after _adopt_position() completes so
+  re-entry on the adoption bar is never attempted.
+
+FIX-COMMENT-01 | Corrected stale docstring on _pending_signal.
+  The comment said "ONLY consumed when source=bar_close" — but
+  REENTRY-FIX-v1 (already in place) correctly consumes it on ALL exit
+  sources. The comment was a leftover from the old behaviour and has been
+  updated to reflect the actual logic.
+
 ──────────────────────────────────────────────────────────────────────
 RECOVERY-FIX-01 | CRITICAL — adopt any pre-existing position on Delta
   during startup so trail / SL / TP / Max-SL management resumes
@@ -119,10 +136,10 @@ class ShivaSniperBot:
         self._signal_type : str                  = ""
 
         # SAME-BAR-REENTRY: buffer the last signal from bar-close evaluation.
-        # ONLY consumed when source="bar_close" exits (FIX-AUDIT-03).
-        # For tick-loop exits (source="tick"), this is discarded — the snap
-        # would be stale (from the previous bar close) and Pine would not re-
-        # enter until the next bar close anyway.
+        # Consumed on ALL exit sources (bar_close AND tick) — REENTRY-FIX-v1.
+        # _pending_signal is always set from the CURRENT bar's on_bar_close()
+        # BEFORE any exit fires, so it is always fresh data, never stale.
+        # Pine enters on the same bar whether exit is tick-driven or bar-close.
         self._pending_signal: Optional[tuple] = None  # (Signal, IndicatorSnapshot)
 
         # RECOVERY-FIX-01: position adopted from the exchange at startup.
@@ -194,6 +211,13 @@ class ShivaSniperBot:
                 logger.error(f"[RECOVERY] _adopt_position failed: {e}", exc_info=True)
             finally:
                 self._adopted_position = None
+            # FIX-ADOPT-01: discard the signal computed on the adoption bar.
+            # _adopt_position() sets in_position=True. Allowing _pending_signal
+            # to survive would let _on_trail_exit fire a same-bar re-entry
+            # using a snap from before the position was known — stale context.
+            # Pine only re-enters on the NEXT bar. Clear here; recomputed next bar.
+            self._pending_signal = None
+            # Still fall through so trail_mon.on_bar_close() runs for the adopted trade.
 
         # Evaluate entry signal for same-bar-reentry buffering.
         # IMPORTANT: always pass has_position=False here so the signal is computed
