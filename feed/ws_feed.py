@@ -1,8 +1,19 @@
 """
-feed/ws_feed.py  —  Shiva Sniper v10  (ENTRY-DELAY-FIX-v1)
+feed/ws_feed.py  —  Shiva Sniper v10  (ENTRY-DELAY-FIX-v2)
 ════════════════════════════════════════════════════════════════════════════════
 
-NEW FIX IN THIS VERSION:
+NEW FIX IN THIS VERSION (ENTRY-DELAY-FIX-v2):
+──────────────────────────────────────────────────────────────────────────────
+FIX-PEAK-REST-02 | FIX-PEAK-REST now also applied in REST fallback path.
+  The WS path (_process_ws_candle) fetches the authoritative closed-bar OHLCV
+  via REST and overwrites df.iloc[-1] before calling on_bar_close(). The REST
+  fallback path (_poll_rest_once) was missing this correction — it called
+  on_bar_close() with whatever high/low was accumulated from prior REST polls,
+  which could be lower than the true bar high/low. Now _poll_rest_once() also
+  overwrites df.iloc[-1] from ohlcv[-2] and pushes the corrected extremes to
+  trail_monitor before firing on_bar_close(). Both code paths are now identical
+  in their bar-correction behaviour.
+
 ──────────────────────────────────────────────────────────────────────────────
 FIX-ENTRY-DELAY | CRITICAL — bot entered every trade 30 minutes late vs Pine.
 
@@ -512,6 +523,27 @@ class CandleFeed:
         live_boundary = _candle_boundary(live_ts, self._period_ms)
 
         if live_boundary > self._last_candle_boundary:
+            # FIX-PEAK-REST (REST path): ohlcv[-2] is the bar that JUST CLOSED.
+            # Overwrite df.iloc[-1] with authoritative REST values before
+            # calling on_bar_close() — same fix applied in the WS path.
+            if not self._df.empty and len(ohlcv) >= 2:
+                try:
+                    cb  = ohlcv[-2]   # last fully closed bar
+                    idx = self._df.index[-1]
+                    self._df.at[idx, "open"]   = float(cb[1])
+                    self._df.at[idx, "high"]   = float(cb[2])
+                    self._df.at[idx, "low"]    = float(cb[3])
+                    self._df.at[idx, "close"]  = float(cb[4])
+                    self._df.at[idx, "volume"] = float(cb[5])
+                    logger.info(
+                        f"[FEED] FIX-PEAK-REST (REST path): closed bar corrected | "
+                        f"true_high={cb[2]:.2f} true_low={cb[3]:.2f} true_close={cb[4]:.2f}"
+                    )
+                    if self.trail_monitor is not None:
+                        self.trail_monitor.push_ws_candle(float(cb[2]), float(cb[3]))
+                except Exception as e:
+                    logger.warning(f"[FEED] FIX-PEAK-REST (REST path) failed: {e}")
+
             if len(self._df) >= MIN_BARS and not self._processing:
                 logger.info(
                     f"✅ Bar confirmed [REST fallback] | "
