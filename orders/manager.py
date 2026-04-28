@@ -166,6 +166,15 @@ class OrderManager:
         """
         Close any open position with a reduce-only market order.
         `is_long` is the authoritative direction from trail_loop (frozen at entry).
+
+        FIX-OM-003 | CRITICAL — handle `no_position_for_reduce_only` gracefully.
+          When Delta's exchange-side bracket SL/TP already closed the position,
+          the bot's trail_loop also tries to close it and gets this error.
+          Old behaviour: exception propagates → _exit_fired resets to False →
+          bot retries close every 0.1s forever in an error loop.
+          Fix: catch this specific error, log a warning, treat as success
+          (position is already closed — the outcome we wanted). This prevents
+          the infinite retry loop and allows _on_trail_exit to fire correctly.
         """
         if is_long is None:
             if not self.position:
@@ -177,15 +186,27 @@ class OrderManager:
         logger.info(
             f"Market close ({reason}) | side={side} qty={ALERT_QTY} lots is_long={is_long}"
         )
-        order = await _retry(lambda: self.exchange.create_order(
-            symbol = SYMBOL,
-            type   = "market",
-            side   = side,
-            amount = ALERT_QTY,
-            params = {"reduce_only": True},
-        ))
-        self.position = None
-        return order
+        try:
+            order = await _retry(lambda: self.exchange.create_order(
+                symbol = SYMBOL,
+                type   = "market",
+                side   = side,
+                amount = ALERT_QTY,
+                params = {"reduce_only": True},
+            ))
+            self.position = None
+            return order
+        except ccxt.ExchangeError as e:
+            # FIX-OM-003: position already closed by exchange-side bracket order.
+            # Treat as success — the position is gone, which is what we wanted.
+            if "no_position_for_reduce_only" in str(e):
+                logger.warning(
+                    f"[OM] close_position({reason}): position already closed on exchange "
+                    f"(bracket SL/TP fired). Treating as success. [FIX-OM-003]"
+                )
+                self.position = None
+                return {"info": "already_closed"}
+            raise
 
     async def cancel_all_orders(self) -> None:
         """Cancel every open order on SYMBOL. No-op in NO-BRACKET mode normally."""
