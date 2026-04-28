@@ -1,8 +1,23 @@
 """
-monitor/trail_loop.py — Shiva Sniper v10 — FIX-PARITY-v3
+monitor/trail_loop.py — Shiva Sniper v10 — FIX-PARITY-v4
 ════════════════════════════════════════════════════════════════════════════
 
-NEW FIX IN THIS VERSION (applied on top of FIX-PARITY-v2):
+NEW FIX IN THIS VERSION (FIX-PARITY-v4):
+──────────────────────────────────────────────────────────────────────────
+FIX-TRAIL-05 | SL re-check after trail update now uses correct exit reason.
+  At the bottom of _evaluate_tick(), after updating trail_sl from the new
+  peak, a re-check fires if price already crossed the updated SL level.
+  Previously it always labelled the exit "Trail SL (stage X)" — even when
+  stage==0 and current_sl is still the original initial SL, or when BE is
+  active and current_sl == entry_price.
+  Fix: same trail_improved / be_at_entry logic from the main SL-check block
+  is now replicated in the re-check, producing correct labels:
+    "Initial SL"  — stage 0, SL not improved
+    "Breakeven SL" — be_done and current_sl == entry_price
+    "Trail SL (stage N)" — trail has improved beyond initial SL
+  This matches the reason labels Pine would show and makes journal/Telegram
+  exit notifications accurate.
+
 ──────────────────────────────────────────────────────────────────────────
 FIX-TRAIL-04 | CRITICAL — _fire_exit() now caps close_position retries at 3
   attempts and ALWAYS calls the exit callback at the end, even on full
@@ -556,12 +571,28 @@ class TrailMonitor:
                     f"(stage {state.stage}, live_atr={self._current_atr:.2f})"
                 )
 
-        # Re-check SL after trail update
+        # Re-check SL after trail update (in case trail just moved past current price)
         if is_long and price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER:
-            await self._fire_exit(price, f"Trail SL (stage {state.stage})", source="tick")
+            _trail_improved = state.current_sl > risk.sl
+            _be_at_entry    = state.be_done and abs(state.current_sl - entry_price) < 1e-6
+            if _trail_improved and not _be_at_entry:
+                _recheck_reason = f"Trail SL (stage {state.stage})"
+            elif _be_at_entry:
+                _recheck_reason = "Breakeven SL"
+            else:
+                _recheck_reason = "Initial SL"
+            await self._fire_exit(price, _recheck_reason, source="tick")
             return
         if not is_long and price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER:
-            await self._fire_exit(price, f"Trail SL (stage {state.stage})", source="tick")
+            _trail_improved = state.current_sl < risk.sl
+            _be_at_entry    = state.be_done and abs(state.current_sl - entry_price) < 1e-6
+            if _trail_improved and not _be_at_entry:
+                _recheck_reason = f"Trail SL (stage {state.stage})"
+            elif _be_at_entry:
+                _recheck_reason = "Breakeven SL"
+            else:
+                _recheck_reason = "Initial SL"
+            await self._fire_exit(price, _recheck_reason, source="tick")
             return
 
     # ── Exit helper ───────────────────────────────────────────────────────────
