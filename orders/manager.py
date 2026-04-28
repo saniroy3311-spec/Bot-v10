@@ -1,5 +1,5 @@
 """
-orders/manager.py  —  Shiva Sniper v10  (FIX-PARITY-v3)
+orders/manager.py  —  Shiva Sniper v10  (FIX-PARITY-v4)
 ═══════════════════════════════════════════════════════════════════════
 NEW FIXES IN THIS VERSION:
 ──────────────────────────────────────────────────────────────────────
@@ -318,7 +318,20 @@ class OrderManager:
         for pos in positions or []:
             if pos.get("symbol") != SYMBOL:
                 continue
-            contracts = pos.get("contracts") or 0
+            # FIX-OM-006: Delta India may return position size in "contracts",
+            # "contractSize", or raw info["size"]. Check all three so a valid
+            # position is never silently skipped due to a missing ccxt key,
+            # which would cause the bot to open a duplicate position on restart.
+            contracts = (
+                pos.get("contracts")
+                or pos.get("contractSize")
+                or (pos.get("info") or {}).get("size")
+                or 0
+            )
+            try:
+                contracts = float(contracts)
+            except (TypeError, ValueError):
+                contracts = 0.0
             if not contracts:
                 continue
 
