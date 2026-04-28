@@ -1,8 +1,19 @@
 """
-monitor/trail_loop.py — Shiva Sniper v10 — FIX-PARITY-v2
+monitor/trail_loop.py — Shiva Sniper v10 — RECOVERY-FIX-v1
 ════════════════════════════════════════════════════════════════════════════
 
-FIXES IN THIS VERSION (applied on top of BUG-FIX-AUDIT-v1):
+NEW FIX IN THIS VERSION:
+──────────────────────────────────────────────────────────────────────────
+FIX-TRAIL-04 | CRITICAL — _fire_exit() bounded retry, cascade-proof.
+  OLD behaviour: on close_position() failure, reset _exit_fired=False.
+  Every 0.1s the tick loop saw SL still crossed → fired exit again →
+  same exchange error → infinite retry loop. Bot was permanently stuck.
+  FIX: cap retries at 3 with 1s back-off. On permanent failure, leave
+  _exit_fired=True and still fire the exit callback so main.py resets
+  in_position and can accept new signals. The cascade from the 10:39 log
+  is now mathematically impossible.
+
+PRESERVED FROM FIX-PARITY-v2 (all unchanged):
 ──────────────────────────────────────────────────────────────────────────
 
 FIX-PARITY-01 | CRITICAL — trail calculations now use live_atr (the
@@ -542,19 +553,24 @@ class TrailMonitor:
         """
         Fire exit once. Idempotent on success.
 
-        FIX-AUDIT-03: `source` parameter identifies the detection path:
+        FIX-TRAIL-04 | CRITICAL — bounded retry, cascade-proof.
+          OLD: on close_position() failure, reset _exit_fired=False and return.
+               Every 0.1s the tick loop saw SL still crossed → fired exit again
+               → same error → infinite loop. Bot could never take new trades.
+          FIX: cap retries at MAX_EXIT_ATTEMPTS (3). On permanent failure, leave
+               _exit_fired=True (blocks further retries) and still fire the exit
+               callback so main.py resets in_position and can take new signals.
+               Back-off: 1s between attempts.
+
+        FIX-AUDIT-03: `source` parameter identifies detection path:
           "bar_close" → same-bar detection in on_bar_close()
           "tick"      → intrabar from on_price_tick() or _tick_loop()
-        source is forwarded to on_trail_exit callback so main.py can
-        decide whether to consume _pending_signal.
-
-        On close_position() failure: resets _exit_fired so the next tick
-        retries. Does NOT call _on_exit_cb (prevents false positives).
         """
         if self._exit_fired:
             return
         self._exit_fired = True
 
+        MAX_EXIT_ATTEMPTS = 3
         logger.info(
             f"[TRAIL] Exit fired: reason={reason} price={exit_price:.2f} "
             f"source={source} live_atr={self._current_atr:.2f}"
@@ -566,15 +582,28 @@ class TrailMonitor:
             logger.warning(f"[TRAIL] cancel_all_orders failed: {e}")
 
         is_long = self._risk.is_long if self._risk else True
-        try:
-            await self._order_mgr.close_position(is_long=is_long, reason=reason)
-        except Exception as e:
+        close_ok = False
+        for attempt in range(1, MAX_EXIT_ATTEMPTS + 1):
+            try:
+                await self._order_mgr.close_position(is_long=is_long, reason=reason)
+                close_ok = True
+                break
+            except Exception as e:
+                logger.error(
+                    f"[TRAIL] close_position attempt {attempt}/{MAX_EXIT_ATTEMPTS} failed: {e}",
+                    exc_info=(attempt == MAX_EXIT_ATTEMPTS),
+                )
+                if attempt < MAX_EXIT_ATTEMPTS:
+                    await asyncio.sleep(1.0)
+
+        if not close_ok:
             logger.error(
-                f"[TRAIL] close_position failed — will retry next tick: {e}",
-                exc_info=True,
+                f"[TRAIL] close_position failed after {MAX_EXIT_ATTEMPTS} attempts. "
+                f"Leaving _exit_fired=True and firing callback anyway to unblock bot. "
+                f"[FIX-TRAIL-04]"
             )
-            self._exit_fired = False
-            return
+            # _exit_fired stays True — no more retries from tick loop.
+            # Fall through to callback so main.py resets in_position.
 
         self._running = False
         if self._on_exit_cb is not None:
