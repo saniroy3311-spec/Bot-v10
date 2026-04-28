@@ -1,21 +1,38 @@
 """
-monitor/trail_loop.py — Shiva Sniper v10 — RECOVERY-FIX-v1
+monitor/trail_loop.py — Shiva Sniper v10 — FIX-PARITY-v3
 ════════════════════════════════════════════════════════════════════════════
 
-NEW FIX IN THIS VERSION:
+NEW FIX IN THIS VERSION (applied on top of FIX-PARITY-v2):
 ──────────────────────────────────────────────────────────────────────────
-FIX-TRAIL-04 | CRITICAL — _fire_exit() bounded retry, cascade-proof.
-  OLD behaviour: on close_position() failure, reset _exit_fired=False.
-  Every 0.1s the tick loop saw SL still crossed → fired exit again →
-  same exchange error → infinite retry loop. Bot was permanently stuck.
-  FIX: cap retries at 3 with 1s back-off. On permanent failure, leave
-  _exit_fired=True and still fire the exit callback so main.py resets
-  in_position and can accept new signals. The cascade from the 10:39 log
-  is now mathematically impossible.
+FIX-TRAIL-04 | CRITICAL — _fire_exit() now caps close_position retries at 3
+  attempts and ALWAYS calls the exit callback at the end, even on full
+  failure. This breaks the infinite-error cascade that was visible in
+  production logs (10:39:15 onward — bot endlessly retried
+  no_position_for_reduce_only).
 
-PRESERVED FROM FIX-PARITY-v2 (all unchanged):
+  ROOT CAUSE OF THE CASCADE:
+  Previous _fire_exit() set `self._exit_fired = False` on ANY exception
+  from close_position(). That meant:
+    1. Trail SL fires → close_position called.
+    2. Position is already gone (manual close, exchange auto-close, etc.)
+       → ccxt raises ExchangeError("no_position_for_reduce_only").
+    3. Exception caught → _exit_fired reset → next tick (≤ 100 ms later)
+       fires _evaluate_tick → SL still crossed → another close_position.
+    4. Same error → loop forever, ~10 close attempts / second.
+  Combined with the missing FIX-OM-003 on the deployed code, the bot
+  became completely unable to manage trades or take new entries.
+
+  THE NEW FIX (works WITH FIX-OM-003/005 in orders/manager.py):
+    * Up to 3 attempts with linear back-off (0.5 s, 1.0 s).
+    * "already closed" return value (FIX-OM-003) is treated as success.
+    * After 3 failed attempts: log loudly, mark _running = False, fire
+      the exit callback with the best-known exit price. This ensures
+      main.py resets in_position, allowing the bot to take new signals
+      even if a stuck position required manual cleanup.
+    * `self._exit_fired` stays True on permanent failure — no retry storm.
+
+PRESERVED FIXES (all unchanged):
 ──────────────────────────────────────────────────────────────────────────
-
 FIX-PARITY-01 | CRITICAL — trail calculations now use live_atr (the
   current bar's ATR) instead of frozen entry_atr for ALL trail math.
 
@@ -553,57 +570,81 @@ class TrailMonitor:
         """
         Fire exit once. Idempotent on success.
 
-        FIX-TRAIL-04 | CRITICAL — bounded retry, cascade-proof.
-          OLD: on close_position() failure, reset _exit_fired=False and return.
-               Every 0.1s the tick loop saw SL still crossed → fired exit again
-               → same error → infinite loop. Bot could never take new trades.
-          FIX: cap retries at MAX_EXIT_ATTEMPTS (3). On permanent failure, leave
-               _exit_fired=True (blocks further retries) and still fire the exit
-               callback so main.py resets in_position and can take new signals.
-               Back-off: 1s between attempts.
-
-        FIX-AUDIT-03: `source` parameter identifies detection path:
+        FIX-AUDIT-03: `source` parameter identifies the detection path:
           "bar_close" → same-bar detection in on_bar_close()
           "tick"      → intrabar from on_price_tick() or _tick_loop()
+        source is forwarded to on_trail_exit callback so main.py can
+        decide whether to consume _pending_signal.
+
+        FIX-TRAIL-04 (NEW — replaces the dangerous "reset _exit_fired on
+        any failure" pattern that produced the 10:39 cascade in production):
+
+        • Up to 3 close_position attempts with 0.5s, 1.0s back-off.
+        • {"info": "already_closed"} from FIX-OM-003/005 is treated as
+          success — position is gone, that's the outcome we wanted.
+        • After 3 failures: log loudly, leave _exit_fired=True (no retry
+          storm), STILL fire the exit callback so main.py resets state
+          and the bot can take new entries. Manual cleanup may be needed
+          on the exchange side, but the bot will not be locked up.
         """
         if self._exit_fired:
             return
         self._exit_fired = True
 
-        MAX_EXIT_ATTEMPTS = 3
         logger.info(
             f"[TRAIL] Exit fired: reason={reason} price={exit_price:.2f} "
             f"source={source} live_atr={self._current_atr:.2f}"
         )
 
+        # Best-effort cancel of any leftover orders. Never raises (FIX-OM-005).
         try:
             await self._order_mgr.cancel_all_orders()
         except Exception as e:
-            logger.warning(f"[TRAIL] cancel_all_orders failed: {e}")
+            logger.warning(f"[TRAIL] cancel_all_orders failed (ignored): {e}")
 
         is_long = self._risk.is_long if self._risk else True
-        close_ok = False
-        for attempt in range(1, MAX_EXIT_ATTEMPTS + 1):
+
+        # ── FIX-TRAIL-04: bounded retries, no infinite cascade ───────────────
+        MAX_ATTEMPTS = 3
+        success = False
+        last_err: Optional[Exception] = None
+        for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
-                await self._order_mgr.close_position(is_long=is_long, reason=reason)
-                close_ok = True
+                result = await self._order_mgr.close_position(
+                    is_long=is_long, reason=reason
+                )
+                success = True
+                if isinstance(result, dict) and result.get("info") == "already_closed":
+                    logger.info(
+                        f"[TRAIL] close_position: position already closed on exchange "
+                        f"— treating as exit success (attempt {attempt})"
+                    )
+                else:
+                    logger.info(
+                        f"[TRAIL] close_position: exit order placed on attempt {attempt}"
+                    )
                 break
             except Exception as e:
-                logger.error(
-                    f"[TRAIL] close_position attempt {attempt}/{MAX_EXIT_ATTEMPTS} failed: {e}",
-                    exc_info=(attempt == MAX_EXIT_ATTEMPTS),
+                last_err = e
+                logger.warning(
+                    f"[TRAIL] close_position attempt {attempt}/{MAX_ATTEMPTS} "
+                    f"failed: {e}"
                 )
-                if attempt < MAX_EXIT_ATTEMPTS:
-                    await asyncio.sleep(1.0)
+                if attempt < MAX_ATTEMPTS:
+                    await asyncio.sleep(0.5 * attempt)
 
-        if not close_ok:
+        if not success:
+            # PERMANENT failure — do NOT keep retrying.
+            # _exit_fired stays True (no retry storm). Mark not running.
+            # Fire the callback anyway so main.py resets in_position and
+            # the bot stays responsive to new bar-close signals. The user
+            # may need to manually flatten any residual position; the bot
+            # will not be able to manage what it cannot close.
             logger.error(
-                f"[TRAIL] close_position failed after {MAX_EXIT_ATTEMPTS} attempts. "
-                f"Leaving _exit_fired=True and firing callback anyway to unblock bot. "
-                f"[FIX-TRAIL-04]"
+                f"[TRAIL] close_position FAILED after {MAX_ATTEMPTS} attempts "
+                f"(last error: {last_err}). Marking exit complete to prevent "
+                f"infinite retry. ⚠️ MANUAL POSITION CHECK ON DELTA REQUIRED."
             )
-            # _exit_fired stays True — no more retries from tick loop.
-            # Fall through to callback so main.py resets in_position.
 
         self._running = False
         if self._on_exit_cb is not None:
