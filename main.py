@@ -48,8 +48,8 @@ from config import (
     SYMBOL, ALERT_QTY, CANDLE_TIMEFRAME, FILTER_VOL_ENABLED,
 )
 from feed.ws_feed       import CandleFeed
-from indicators.engine  import compute, SignalType
-from strategy.signal    import evaluate
+from indicators.engine  import compute
+from strategy.signal    import evaluate, SignalType
 from risk.calculator    import (
     RiskLevels, TrailState,
     calc_levels, recalc_levels_from_fill, calc_real_pl,
@@ -322,7 +322,7 @@ class ShivaSniperBot:
                     sl          = risk.sl,
                     tp          = risk.tp,
                     atr         = snap.atr,
-                    qty_lots    = ALERT_QTY,
+                    qty         = ALERT_QTY,
                 )
             except Exception as e:
                 logger.warning(f"[JOURNAL] open_trade failed: {e}")
@@ -330,13 +330,11 @@ class ShivaSniperBot:
             # Telegram entry notification
             await self._telegram.notify_entry(
                 signal_type = sig.signal_type.value,
-                is_long     = sig.is_long,
-                fill_price  = fill,
+                entry_price = fill,
                 sl          = risk.sl,
                 tp          = risk.tp,
                 atr         = snap.atr,
-                stop_dist   = risk.stop_dist,
-                is_trend    = sig.is_trend,
+                qty         = ALERT_QTY,
             )
 
     # ── Exit callback ─────────────────────────────────────────────────────────
@@ -374,8 +372,8 @@ class ShivaSniperBot:
                     sl          = risk.sl,
                     tp          = risk.tp,
                     atr         = risk.atr,
-                    qty_lots    = ALERT_QTY,
-                    net_pl      = pl,
+                    qty         = ALERT_QTY,
+                    real_pl     = pl,
                     exit_reason = reason,
                     trail_stage = self._trail_state.stage if self._trail_state else 0,
                 )
@@ -386,13 +384,12 @@ class ShivaSniperBot:
         # Telegram exit notification
         try:
             await self._telegram.notify_exit(
-                signal_type = self._signal_type,
-                is_long     = risk.is_long if risk else True,
+                reason      = reason,
                 entry_price = risk.entry_price if risk else 0.0,
                 exit_price  = exit_price,
-                pl_usdt     = pl,
-                reason      = reason,
-                source      = source,
+                real_pl     = pl,
+                is_long     = risk.is_long if risk else True,
+                qty         = ALERT_QTY,
             )
         except Exception as e:
             logger.warning(f"[TELEGRAM] notify_exit failed: {e}")
