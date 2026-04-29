@@ -57,19 +57,28 @@ ADX_RANGE_TH = int(os.environ.get("ADX_RANGE_TH", "18"))
 # ──────────────────────────────────────────────
 FILTER_ATR_MULT    = float(os.environ.get("FILTER_ATR_MULT",  "1.6"))   # Pine v6.5-30M: filterATRmul = 1.6 (30M-OPT-005, was 1.4 on 5m)
 FILTER_BODY_MULT   = float(os.environ.get("FILTER_BODY_MULT", "0.4"))   # Pine v6.5-30M: filterBody = 0.4 (30M-OPT-005, was 0.5 on 5m)
-# FIX-VOL-001: Default ON — matches Pine Script filters exactly.
-# Set FILTER_VOL_ENABLED=false in .env ONLY if Delta REST returns zero
-# volume for all bars and you want to disable the filter entirely.
-FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "true").lower() == "true"
+# FIX-VOL-PARITY: Volume filter DISABLED by default for Pine parity.
+#
+# WHY: Pine Script runs on TradingView's own volume data. Delta Exchange
+# REST API returns a different (compressed) volume figure — roughly 3% of
+# what TradingView shows for the same bar. Because both bar_vol AND vol_sma
+# are computed from Delta's data, the *ratio* is stable, but the absolute
+# values are far below what Pine sees. Bars that pass Pine's "volume > volSMA"
+# can fail the bot's check, causing the bot to miss valid entry signals.
+#
+# Since Delta REST and TradingView volume are incomparable data sources,
+# the cleanest way to achieve Pine entry parity is to disable this filter
+# in the bot. The ATR and body filters still reject dead/choppy bars.
+#
+# To re-enable with tuning: set FILTER_VOL_ENABLED=true and start with
+# FILTER_VOL_MULT=0.05 in .env, then check logs for "VOL-FILTER" lines
+# and compare vs TradingView chart entries.
+FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "false").lower() == "true"
 
-# FIX-VOL-003: Volume multiplier to compensate for Delta India REST returning
-# compressed volume figures compared to TradingView's own aggregation.
-# TradingView vol > sma(vol, 20) translates to: bar_vol > vol_sma * FILTER_VOL_MULT
-# Default 1.0 = exact Pine parity. Lower (e.g. 0.5) if Delta REST volumes are
-# consistently 2× lower than TV — this lets signals through that TV would take.
-# Tune by comparing log vol= vs vol_sma= values against your TV chart.
-# Override via .env: FILTER_VOL_MULT=0.5
-FILTER_VOL_MULT = float(os.environ.get("FILTER_VOL_MULT", "1.0"))
+# FILTER_VOL_MULT: Only relevant when FILTER_VOL_ENABLED=true.
+# Default 0.05 = conservative starting point for Delta REST volumes.
+# Adjust in .env (e.g. FILTER_VOL_MULT=0.1) while comparing log vol= to TV.
+FILTER_VOL_MULT = float(os.environ.get("FILTER_VOL_MULT", "0.05"))
 
 # ──────────────────────────────────────────────
 # RISK / REWARD
