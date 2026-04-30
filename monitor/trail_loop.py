@@ -209,8 +209,20 @@ def _compute_trail_sl(
     #
     # Example stage 1: pts=0.70, off=0.55 → net=0.15 × ATR behind peak
     # Old code used 0.55 × ATR behind peak → trail was 3.7× too wide → exits too late
-    activation = live_atr * pts_mult
-    if peak_profit_dist < activation:
+    # FIX-TRAIL-PARITY: Pine strategy.exit(trail_points, trail_offset) has
+    # NO activation threshold from entry price. The trail fires from tick 1
+    # as soon as price moves favorably. The stop is placed trail_pts behind
+    # peak, and fires when price retreats trail_off from that stop.
+    # Net effect: trail fires at peak + (trail_pts - trail_off) for SHORT
+    #                                   peak - (trail_pts - trail_off) for LONG
+    #
+    # Old code required peak_profit >= trail_pts before firing — this caused
+    # the bot to miss exits that Pine caught (e.g. price moved 202pts but
+    # activation needed 212pts → bot kept initial SL, Pine trailed).
+    #
+    # The only guard needed: price must have moved favorably at all (peak != entry).
+    # We use a 1-point minimum to avoid firing on flat/zero movement.
+    if peak_profit_dist < 1.0:
         return None
 
     net = live_atr * (pts_mult - off_mult)
