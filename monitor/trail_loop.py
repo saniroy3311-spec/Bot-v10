@@ -195,13 +195,26 @@ def _compute_trail_sl(
     idx = max(stage - 1, 0)
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
-    activation = live_atr * pts_mult   # FIX-PARITY-01: was entry_atr
-    offset     = live_atr * off_mult   # FIX-PARITY-01: was entry_atr
-
+    # FIX-TRAIL-SEMANTIC: Pine's strategy.exit(trail_points=P, trail_offset=O) means:
+    #   - Trail ACTIVATES when price moves P points from entry in profit direction
+    #   - Trail STOP is placed P points behind peak  (peak + P for short, peak - P for long)
+    #   - Trail FIRES when price crosses (stop - O) = peak + P - O for short
+    #                                               = peak - P + O for long
+    #
+    # Net effect: trail fires at peak + (P - O)*ATR for short
+    #                              peak - (P - O)*ATR for long
+    #
+    # Old (WRONG) code computed: trail fires at peak + O*ATR (using offset only)
+    # Correct code computes:     trail fires at peak + (pts_mult - off_mult)*ATR
+    #
+    # Example stage 1: pts=0.70, off=0.55 → net=0.15 × ATR behind peak
+    # Old code used 0.55 × ATR behind peak → trail was 3.7× too wide → exits too late
+    activation = live_atr * pts_mult
     if peak_profit_dist < activation:
         return None
 
-    return (peak_price - offset) if is_long else (peak_price + offset)
+    net = live_atr * (pts_mult - off_mult)
+    return (peak_price - net) if is_long else (peak_price + net)
 
 
 def _check_be(current_profit: float, live_atr: float) -> bool:
