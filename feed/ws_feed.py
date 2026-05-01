@@ -413,8 +413,13 @@ class CandleFeed:
                         None,  # since
                         3,     # limit — only need last 2 bars
                     )
-                    if closed_ohlcv and len(closed_ohlcv) >= 2:
-                        cb  = closed_ohlcv[-2]   # [-2] = bar that just closed
+                    if closed_ohlcv and len(closed_ohlcv) >= 1:
+                        # FIX-PEAK-REST-INDEX: Delta REST fetch_ohlcv returns
+                        # only CLOSED bars (no live partial bar appended).
+                        # So [-1] is the bar that just closed, not [-2].
+                        # Using [-2] was returning the bar BEFORE the signal bar,
+                        # causing the bot to overwrite with wrong OHLCV data.
+                        cb  = closed_ohlcv[-1]   # [-1] = bar that just closed
                         idx = self._df.index[-1]
                         self._df.at[idx, "open"]   = float(cb[1])
                         self._df.at[idx, "high"]   = float(cb[2])
