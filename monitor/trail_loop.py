@@ -209,23 +209,32 @@ def _compute_trail_sl(
     #
     # Example stage 1: pts=0.70, off=0.55 → net=0.15 × ATR behind peak
     # Old code used 0.55 × ATR behind peak → trail was 3.7× too wide → exits too late
-    # FIX-TRAIL-PARITY: Pine strategy.exit(trail_points, trail_offset) has
-    # NO activation threshold from entry price. The trail fires from tick 1
-    # as soon as price moves favorably. The stop is placed trail_pts behind
-    # peak, and fires when price retreats trail_off from that stop.
-    # Net effect: trail fires at peak + (trail_pts - trail_off) for SHORT
-    #                                   peak - (trail_pts - trail_off) for LONG
+    # FIX-TRAIL-PARITY: Pine strategy.exit(trail_points, trail_offset) mechanics:
     #
-    # Old code required peak_profit >= trail_pts before firing — this caused
-    # the bot to miss exits that Pine caught (e.g. price moved 202pts but
-    # activation needed 212pts → bot kept initial SL, Pine trailed).
+    #   For a SHORT:
+    #     stop placed at:  peak_low + trail_pts
+    #     fires when price >= stop - trail_off
+    #                    = peak_low + trail_pts - trail_off
+    #                    = peak_low + net   (net = pts - off)
     #
-    # The only guard needed: price must have moved favorably at all (peak != entry).
-    # We use a 1-point minimum to avoid firing on flat/zero movement.
-    if peak_profit_dist < 1.0:
+    #   For a LONG:
+    #     stop placed at:  peak_high - trail_pts
+    #     fires when price <= stop + trail_off
+    #                    = peak_high - trail_pts + trail_off
+    #                    = peak_high - net
+    #
+    # The trail only fires when price has retreated NET points from peak.
+    # This means the activation guard must be: peak_profit >= net_dist
+    # (NOT zero, NOT full trail_pts — just the net distance).
+    #
+    # Using 1.0 caused immediate exit on normal spread after entry fill.
+    # Using full trail_pts missed the 75,301 exit (202pts < 212pts threshold).
+    # Using net_dist (35pts) is the exact Pine-equivalent activation guard.
+    net = live_atr * (pts_mult - off_mult)
+
+    if peak_profit_dist < net:
         return None
 
-    net = live_atr * (pts_mult - off_mult)
     return (peak_price - net) if is_long else (peak_price + net)
 
 
