@@ -211,25 +211,16 @@ def _compute_trail_sl(
     # Old code used 0.55 × ATR behind peak → trail was 3.7× too wide → exits too late
     # FIX-TRAIL-PARITY: Pine strategy.exit(trail_points, trail_offset) mechanics:
     #
-    #   For a SHORT:
-    #     stop placed at:  peak_low + trail_pts
-    #     fires when price >= stop - trail_off
-    #                    = peak_low + trail_pts - trail_off
-    #                    = peak_low + net   (net = pts - off)
+    #   trail fires at: peak - net  (LONG)  or  peak + net  (SHORT)
+    #   where net = (trail_pts - trail_off) * ATR
     #
-    #   For a LONG:
-    #     stop placed at:  peak_high - trail_pts
-    #     fires when price <= stop + trail_off
-    #                    = peak_high - trail_pts + trail_off
-    #                    = peak_high - net
+    #   Activation: trail only fires after peak_profit >= net
+    #   (price must first move NET points favorably from peak before trail can fire)
     #
-    # The trail only fires when price has retreated NET points from peak.
-    # This means the activation guard must be: peak_profit >= net_dist
-    # (NOT zero, NOT full trail_pts — just the net distance).
-    #
-    # Using 1.0 caused immediate exit on normal spread after entry fill.
-    # Using full trail_pts missed the 75,301 exit (202pts < 212pts threshold).
-    # Using net_dist (35pts) is the exact Pine-equivalent activation guard.
+    #   This matches Pine exactly:
+    #   - 202pt SHORT profit, net=45pts → 202>=45 → fires at peak+45 ✅
+    #   - 10pt LONG dip (profit=0), net=32pts → 0<32 → no fire ✅
+    #   - 1pt spread dip at entry (profit=0) → no fire ✅
     net = live_atr * (pts_mult - off_mult)
 
     if peak_profit_dist < net:
