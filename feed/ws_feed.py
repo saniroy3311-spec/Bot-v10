@@ -334,6 +334,14 @@ class CandleFeed:
             self._msg_count   = 0
             last_heartbeat    = time.time()
 
+            # ── GAP-FILL: fill any bars missed during WS dropout ──────────────
+            # After every reconnect self._df may be missing bars. Without this,
+            # df.iloc[-2] points to the wrong bar → snap.prev_high is stale →
+            # close > high[1] evaluates against wrong data → false entries that
+            # Pine never takes. Refetch and merge before processing new ticks.
+            await self._refetch_and_merge()
+            # ─────────────────────────────────────────────────────────────────
+
             async for raw in ws:
                 now = time.time()
                 if now - last_heartbeat >= _WS_HEARTBEAT_SEC:
@@ -497,6 +505,84 @@ class CandleFeed:
                 # FIX-PARITY-03 (via push_ws_candle): update intrabar peak and
                 # schedule TP/SL evaluation for both candle extremes.
                 self.trail_monitor.push_ws_candle(h, l)
+
+    # ── Gap-fill after WS reconnect ───────────────────────────────────────────
+
+    async def _refetch_and_merge(self) -> None:
+        """
+        GAP-FILL-FIX: After a WS reconnect, fetch the last 10 confirmed bars
+        via REST and append any that are newer than the tail of self._df.
+
+        WHY THIS EXISTS:
+          During WS dropouts, bar confirmations are missed silently.
+          When WS reconnects, self._df still has the OLD bar count —
+          df.iloc[-2] points to the wrong bar, making snap.prev_high stale.
+
+          Example from live logs (2026-05-02):
+            08:30  bars=1550   ← correct
+            09:00  bars=1550   ← 1 bar missed (WS was down 08:38–08:55)
+            09:30  bars=1550   ← 2 bars missed (WS dropped again 09:10–09:29)
+
+          At 09:30 signal evaluation:
+            snap.prev_high used df.iloc[-2] = 08:00 bar high = 78,374.00
+            Pine's  high[1]                = 08:30 bar high = 78,481.50
+            Bot:  78,436.50 > 78,374.00 → TRUE  → entered (WRONG)
+            Pine: 78,436.50 > 78,481.50 → FALSE → no entry (CORRECT)
+
+          This fix fills the gap so df.iloc[-2] is always the true
+          immediately-preceding confirmed bar before any signal fires.
+        """
+        try:
+            fresh = await asyncio.to_thread(
+                self._exchange.fetch_ohlcv,
+                SYMBOL,
+                CANDLE_TIMEFRAME,
+                None,
+                10,   # last 10 bars — enough to cover multiple missed 30m bars
+            )
+            if not fresh or len(fresh) < 2:
+                logger.debug("[GAP-FILL] REST returned < 2 bars — skipping merge.")
+                return
+
+            if self._df.empty:
+                logger.debug("[GAP-FILL] df is empty — skipping merge.")
+                return
+
+            last_known_ts = int(self._df.iloc[-1]["timestamp"])
+            added = 0
+
+            # fresh[:-1] excludes the last row which may be a live partial bar
+            for bar in fresh[:-1]:
+                bar_ts = _ts_to_ms(int(bar[0]))
+                if bar_ts > last_known_ts:
+                    new_row = pd.DataFrame([{
+                        "timestamp": bar_ts,
+                        "open"     : float(bar[1]),
+                        "high"     : float(bar[2]),
+                        "low"      : float(bar[3]),
+                        "close"    : float(bar[4]),
+                        "volume"   : float(bar[5]),
+                    }])
+                    self._df = pd.concat(
+                        [self._df, new_row], ignore_index=True
+                    ).tail(MIN_BARS + 50)
+                    last_known_ts = bar_ts
+                    added += 1
+
+            if added > 0:
+                logger.info(
+                    f"[GAP-FILL] Merged {added} missed bar(s) after WS reconnect. "
+                    f"df now has {len(self._df)} bars. "
+                    f"prev_high is now correct for next signal evaluation."
+                )
+            else:
+                logger.info("[GAP-FILL] No missed bars — df is up to date after reconnect.")
+
+        except Exception as e:
+            logger.warning(
+                f"[GAP-FILL] REST refetch after reconnect failed: {e} "
+                f"— prev_high may be stale until next bar close."
+            )
 
     # ── REST polling fallback ──────────────────────────────────────────────────
 
