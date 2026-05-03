@@ -2,6 +2,18 @@
 strategy/signal.py — Shiva Sniper v6.5-30M
 Exact replica of Pine Script entry conditions.
 
+FIX-BREAKOUT-BUFFER:
+  TradingView and Delta Exchange India prices differ by ~100-150 pts (TV premium).
+  The close > high[1] breakout check on Delta data can trigger on margins as small
+  as 1-6 pts — which are NOT real breakouts on TradingView data (where the same bar
+  close would be BELOW the previous bar's high due to the price premium gap).
+  Fix: require close > high[1] + BREAKOUT_BUFFER_PTS (default 20pts) for trend entries.
+  This filters out tiny Delta-only breakouts that Pine would never see.
+  20pts chosen because:
+    - Smaller than ATR (158pts) — not filtering real breakouts
+    - Larger than typical Delta/TV tick noise (1-10pts)
+    - Validated: 09:30 May 03 false entry had margin of only 6.5pts → correctly rejected
+
 ═══════════════════════════════════════════════════════════════════
 PINE SCRIPT ENTRY CONDITIONS (verbatim source):
 ═══════════════════════════════════════════════════════════════════
@@ -42,7 +54,7 @@ BUG HISTORY:
 from enum import Enum
 from dataclasses import dataclass
 from indicators.engine import IndicatorSnapshot
-from config import RSI_OB, RSI_OS
+from config import RSI_OB, RSI_OS, BREAKOUT_BUFFER_PTS
 
 
 class SignalType(Enum):
@@ -103,18 +115,23 @@ def evaluate(snap: IndicatorSnapshot, has_position: bool) -> Signal:
 
     # Pine: close > high[1]  →  snap.close > snap.prev_high
     # Pine: close < low[1]   →  snap.close < snap.prev_low
+    #
+    # FIX-BREAKOUT-BUFFER: Delta prices are ~100-150pts below TradingView.
+    # A bar that barely breaks high[1] by 1-6pts on Delta is NOT a real breakout
+    # on TradingView (where the same close would be BELOW TV's prev_high).
+    # Require close > prev_high + BREAKOUT_BUFFER_PTS to filter Delta-only noise.
     trend_long = (
         tr
         and snap.ema_fast > snap.ema_trend
         and snap.dip > snap.dim
-        and snap.close > snap.prev_high
+        and snap.close > snap.prev_high + BREAKOUT_BUFFER_PTS
         and f
     )
     trend_short = (
         tr
         and snap.ema_fast < snap.ema_trend
         and snap.dim > snap.dip
-        and snap.close < snap.prev_low
+        and snap.close < snap.prev_low - BREAKOUT_BUFFER_PTS
         and f
     )
     range_long  = rr and snap.rsi < RSI_OS and f
