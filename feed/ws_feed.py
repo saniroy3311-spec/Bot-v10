@@ -316,13 +316,12 @@ class CandleFeed:
         false entry signals when the bot reconnects mid-session.
         """
         try:
-            ohlcv = await asyncio.get_event_loop().run_in_executor(
+            ohlcv = await asyncio.to_thread(
+                self._exchange.fetch_ohlcv,
+                SYMBOL,
+                CANDLE_TIMEFRAME,
                 None,
-                lambda: self._exchange.fetch_ohlcv(
-                    self._symbol,
-                    self._timeframe,
-                    limit=10,
-                ),
+                10,
             )
             if not ohlcv or len(ohlcv) < 2:
                 logger.info("[GAP-FILL] No missed bars — df is up to date after reconnect.")
@@ -349,9 +348,8 @@ class CandleFeed:
                     [self._df, pd.DataFrame([new_row])],
                     ignore_index=True,
                 )
-            # Keep df within limit
-            if len(self._df) > self._max_bars:
-                self._df = self._df.iloc[-self._max_bars:].copy()
+            # NOTE: Do NOT truncate df here — trimming history causes EMA200/ATR-SMA50
+            # to compute on a shorter window than Pine, producing false signals.
 
         except Exception as e:
             logger.warning(f"[GAP-FILL] REST fetch failed: {e}")
@@ -532,7 +530,7 @@ class CandleFeed:
             }])
             self._df = pd.concat(
                 [self._df, new_row], ignore_index=True
-            ).tail(MIN_BARS + 50)
+            )  # Do not .tail() — trimming causes indicator divergence vs Pine
             self._last_candle_boundary = current_boundary
 
         else:
@@ -633,7 +631,7 @@ class CandleFeed:
             }])
             self._df = pd.concat(
                 [self._df, new_row], ignore_index=True
-            ).tail(MIN_BARS + 50)
+            )  # Do not .tail() — trimming causes indicator divergence vs Pine
             self._last_candle_boundary = live_boundary
 
         else:
