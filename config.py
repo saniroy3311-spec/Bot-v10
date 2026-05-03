@@ -115,6 +115,11 @@ BE_MULT = float(os.environ.get("BE_MULT", "1.0"))
 RSI_OB  = int(os.environ.get("RSI_OB", "70"))
 RSI_OS  = int(os.environ.get("RSI_OS", "30"))
 
+# FIX-BREAKOUT-BUFFER: minimum pts close must exceed high[1] / be below low[1]
+# for trend entries. Filters Delta-only micro-breakouts that Pine (TradingView
+# data, ~120pts premium) would not see as real breakouts. Default 20pts.
+BREAKOUT_BUFFER_PTS = float(os.environ.get("BREAKOUT_BUFFER_PTS", "20.0"))
+
 # ──────────────────────────────────────────────
 # COMMISSION + BUFFERS
 # ──────────────────────────────────────────────
