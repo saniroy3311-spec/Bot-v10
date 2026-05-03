@@ -283,17 +283,46 @@ class CandleFeed:
         # Pine Script uses Binance BTCUSDT as its reference price.
         # Fetching history from Binance ensures EMA200, ATR-SMA50 and
         # close > high[1] all match Pine exactly.
-        fetch_limit = MIN_BARS + 50
+        #
+        # BINANCE-DS-002: Binance REST API returns max 1000 bars per request.
+        # We need MIN_BARS=1500 bars. Fix: fetch in TWO batches:
+        #   Batch 1 — 1000 bars ending at (now - 1000 * period_ms)
+        #   Batch 2 — 1000 bars ending at now  (most recent 1000)
+        # Merge, deduplicate, sort → gives ~1550 unique bars.
+        fetch_limit  = MIN_BARS + 50
+        period_ms    = _timeframe_to_ms(CANDLE_TIMEFRAME)
         binance_async = ccxt_async.binance({"enableRateLimit": True})
         try:
             logger.info(
                 f"[BINANCE-DS] Loading {fetch_limit} bars from Binance "
-                f"{_BINANCE_SYMBOL} {_BINANCE_TIMEFRAME}..."
+                f"{_BINANCE_SYMBOL} {_BINANCE_TIMEFRAME} (2-batch fetch)..."
             )
-            ohlcv    = await binance_async.fetch_ohlcv(
-                _BINANCE_SYMBOL, _BINANCE_TIMEFRAME, limit=fetch_limit
+            # Batch 2 — most recent 1000 bars (no since = latest)
+            ohlcv_b2 = await binance_async.fetch_ohlcv(
+                _BINANCE_SYMBOL, _BINANCE_TIMEFRAME, limit=1000
             )
-            self._df = self._to_df(ohlcv)
+            # Batch 1 — older 1000 bars: end just before batch 2 starts
+            if ohlcv_b2:
+                since_ms = int(ohlcv_b2[0][0]) - (1000 * period_ms)
+                ohlcv_b1 = await binance_async.fetch_ohlcv(
+                    _BINANCE_SYMBOL, _BINANCE_TIMEFRAME,
+                    since=since_ms, limit=1000
+                )
+            else:
+                ohlcv_b1 = []
+
+            # Merge both batches, deduplicate by timestamp, sort ascending
+            combined = ohlcv_b1 + ohlcv_b2
+            seen, merged = set(), []
+            for bar in combined:
+                if bar[0] not in seen:
+                    seen.add(bar[0])
+                    merged.append(bar)
+            merged.sort(key=lambda x: x[0])
+
+            # Keep only the most recent fetch_limit bars
+            merged   = merged[-fetch_limit:]
+            self._df = self._to_df(merged)
             logger.info(
                 f"[BINANCE-DS] Loaded {len(self._df)} bars from Binance ✅"
             )
