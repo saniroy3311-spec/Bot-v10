@@ -638,7 +638,14 @@ class CandleFeed:
         else:
             if not self._df.empty:
                 idx = self._df.index[-1]
-                self._df.at[idx, "open"]   = o
+                # FIX-BODY-OPEN: Never overwrite open intrabar.
+                # Pine's body filter = abs(close - open) using the TRUE bar open
+                # (price at bar start). WS messages carry a running open field
+                # that is correct on the first message but drifts on subsequent
+                # ones on some feeds — overwriting it collapses the measured body
+                # to near-zero, causing body=False and missed signals (e.g. 13:36
+                # bar). Fix: only touch high/low/close/volume intrabar; open is
+                # set once when the new bar row is created at boundary change.
                 self._df.at[idx, "high"]   = h
                 self._df.at[idx, "low"]    = l
                 self._df.at[idx, "close"]  = c
