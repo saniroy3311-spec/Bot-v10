@@ -53,6 +53,9 @@ from strategy.signal    import evaluate, SignalType
 from risk.calculator    import (
     RiskLevels, TrailState,
     calc_levels, recalc_levels_from_fill, calc_real_pl,
+    # NOTE: recalc_levels_from_fill is used ONLY in the startup recovery path
+    # (mid-trade bot restart). It is intentionally NOT called for new entries.
+    # PINE-PARITY-SL: new entry SL/TP anchored to snap.close, not fill price.
 )
 from monitor.trail_loop import TrailMonitor
 from orders.manager     import OrderManager
@@ -271,13 +274,21 @@ class ShivaSniperBot:
             if self._in_position:
                 return  # race-condition guard
 
-            risk_pre = calc_levels(snap.close, snap.atr, sig.is_long, sig.is_trend)
+            # ── PINE-PARITY-SL: Anchor SL/TP to signal bar close, NOT fill ──────
+            # Pine Script never adjusts SL/TP for fill slippage.
+            # strategy.exit(stop=shortSL) uses entry-bar ATR × mult from
+            # the signal bar's close price — regardless of actual fill.
+            # recalc_levels_from_fill() was shifting SL to fill price, which
+            # caused immediate false SL hits when slippage > stop_dist.
+            # Fix: compute risk from snap.close (signal bar) and keep it fixed.
+            # Only entry_price is updated to fill for P&L / journal / Telegram.
+            risk = calc_levels(snap.close, snap.atr, sig.is_long, sig.is_trend)
 
             try:
                 order = await self._order_mgr.place_entry(
                     is_long = sig.is_long,
-                    sl      = risk_pre.sl,
-                    tp      = risk_pre.tp,
+                    sl      = risk.sl,
+                    tp      = risk.tp,
                 )
             except Exception as e:
                 logger.error(f"[ENTRY] Order failed: {e}")
@@ -288,8 +299,18 @@ class ShivaSniperBot:
                 )
                 return
 
-            fill  = float(order.get("average") or order.get("price") or snap.close)
-            risk  = recalc_levels_from_fill(risk_pre, fill)
+            fill = float(order.get("average") or order.get("price") or snap.close)
+            # Update entry_price to actual fill for P&L calculations only.
+            # SL and TP remain pinned to snap.close — Pine parity preserved.
+            risk = RiskLevels(
+                entry_price = fill,
+                sl          = risk.sl,
+                tp          = risk.tp,
+                stop_dist   = risk.stop_dist,
+                atr         = risk.atr,
+                is_long     = risk.is_long,
+                is_trend    = risk.is_trend,
+            )
 
             self._in_position  = True
             self._risk         = risk
