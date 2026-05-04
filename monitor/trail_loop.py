@@ -1,46 +1,8 @@
 """
-monitor/trail_loop.py — Shiva Sniper v10 — FIX-PARITY-v5
+monitor/trail_loop.py — Shiva Sniper v10 — FIX-PARITY-v4
 ════════════════════════════════════════════════════════════════════════════
 
-NEW FIX IN THIS VERSION (FIX-PARITY-v5):
-──────────────────────────────────────────────────────────────────────────
-FIX-TRAIL-PEAK | CRITICAL — Trail SL now only activates when bar-CLOSE
-  profit reaches the stage trigger. Intrabar spikes (bar_high/bar_low)
-  no longer activate the trail prematurely.
-
-  ROOT CAUSE:
-  Pine's strategy.exit(trail_points, trail_offset) with
-  calc_on_every_tick=false only evaluates trail activation at BAR CLOSE.
-  The stage trigger (e.g. stage 1 = 1.0 × ATR = ~83pts) must be reached
-  by bar-CLOSE profit, not by an intrabar spike.
-
-  The bot was computing trail SL in on_bar_close() from bar_high/bar_low
-  (step 5) regardless of whether the stage had been unlocked by bar-CLOSE
-  profit (step 2). Example from production:
-
-    Entry bar (02:00): close_profit = 78921 - 78908 = 13pts (< 83pt trigger)
-    → stage stays 0 (correctly — close profit too small)
-    → bar_high = 78999 → bar_high - entry = 90pts (> 83pt trigger)
-    → trail SL activated from bar_high = 78999 - 12.46 = 78986.54
-    → current_sl jumps to 78986.54 (far above entry 78908)
-
-    02:01:24 tick: price = 78872 < 78986.54 → "Trail SL (stage 0)" fires
-    → Bot exits with loss. Pine never activated trail (close profit = 13pts
-      < 83pt trigger) → Pine stayed in → exited at 79252 for profit.
-
-  FIX:
-  In on_bar_close() step 5: only compute trail SL from bar extreme if
-  state.stage > 0 (i.e. close profit already unlocked a stage in step 2).
-  In _evaluate_tick() step 4: same guard — only update trail SL from
-  intrabar peak if state.stage > 0.
-
-  Stage is set ONLY in on_bar_close() step 2 from bar-CLOSE profit
-  (FIX-EXIT-01 preserved). So intrabar ticks can never advance the stage,
-  and trail SL can never move unless a bar has closed with sufficient profit.
-
-  Result: trade stays open through entry-bar noise, exits only when Pine
-  would exit — matching Pine's trail exactly.
-
+NEW FIX IN THIS VERSION (FIX-PARITY-v4):
 ──────────────────────────────────────────────────────────────────────────
 FIX-TRAIL-05 | SL re-check after trail update now uses correct exit reason.
   At the bottom of _evaluate_tick(), after updating trail_sl from the new
@@ -221,50 +183,46 @@ def _compute_trail_sl(
     """
     Returns the trailing stop level, or None if not yet activated.
 
-    FIX-PARITY-01: replaces entry_atr with live_atr.
-      Pine: activePts = atr * trailXPts  (current bar ATR, not entry ATR)
-            activeOff = atr * trailXOff
-      Old bot froze entry_atr at fill, causing trail distances to diverge
-      from Pine whenever ATR moved during the trade. Now uses live_atr
-      (updated every bar close via on_bar_close / self._current_atr).
+    ─── FIX-TRAIL-PINE-CORRECT (replaces FIX-TRAIL-SEMANTIC + FIX-TRAIL-PARITY) ───
+    Pine v6 reference for strategy.exit(trail_points=P, trail_offset=O):
+      • trail_points = activation profit threshold (in price ticks).
+        The trailing stop ENGAGES only when price has moved P from entry
+        in the profit direction.
+      • trail_offset = distance from peak where the stop is placed.
+        Once active, stop sits at  peak − O  (long)  /  peak + O  (short).
+      • Stop fires when price crosses that level.
 
-    FIX-EXIT-07 (preserved): stage==0 uses stage-1 params (idx clamp).
+    Two prior attempts in this function got Pine's semantics wrong, both
+    in the same direction (trail too tight → exits too early):
+
+      ❌ FIX-TRAIL-SEMANTIC (removed): treated trail_points as the
+         distance-behind-peak and trail_offset as a *retreat-from-stop*
+         buffer.  Net stop ≈ peak ± (P − O)·ATR — far too tight.
+      ❌ FIX-TRAIL-PARITY  (removed): kept the (P − O) formula AND
+         removed the activation gate, so the trail engaged on the very
+         first tick of profit at a stop only ~0.15·ATR behind peak.
+         Result: the bot fires the trail SL within seconds of entry on
+         any normal intrabar wiggle. (See the 8-second 8:40 AM trade.)
+
+    Correct semantics (this implementation):
+      • Activation:  peak_profit_dist >= live_atr * pts_mult
+      • Stop level:  peak ± live_atr * off_mult
+
+    FIX-PARITY-01 (preserved): live_atr is the most recent bar-close ATR,
+      matching Pine's behaviour with calc_on_every_tick = false.
+    FIX-EXIT-07 (preserved): stage 0 uses stage-1 params via idx clamp.
     """
     idx = max(stage - 1, 0)
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
-    # FIX-TRAIL-SEMANTIC: Pine's strategy.exit(trail_points=P, trail_offset=O) means:
-    #   - Trail ACTIVATES when price moves P points from entry in profit direction
-    #   - Trail STOP is placed P points behind peak  (peak + P for short, peak - P for long)
-    #   - Trail FIRES when price crosses (stop - O) = peak + P - O for short
-    #                                               = peak - P + O for long
-    #
-    # Net effect: trail fires at peak + (P - O)*ATR for short
-    #                              peak - (P - O)*ATR for long
-    #
-    # Old (WRONG) code computed: trail fires at peak + O*ATR (using offset only)
-    # Correct code computes:     trail fires at peak + (pts_mult - off_mult)*ATR
-    #
-    # Example stage 1: pts=0.70, off=0.55 → net=0.15 × ATR behind peak
-    # Old code used 0.55 × ATR behind peak → trail was 3.7× too wide → exits too late
-    # FIX-TRAIL-PARITY: Pine strategy.exit(trail_points, trail_offset) mechanics:
-    #
-    #   trail fires at: peak - net  (LONG)  or  peak + net  (SHORT)
-    #   where net = (trail_pts - trail_off) * ATR
-    #
-    #   Activation: trail only fires after peak_profit >= net
-    #   (price must first move NET points favorably from peak before trail can fire)
-    #
-    #   This matches Pine exactly:
-    #   - 202pt SHORT profit, net=45pts → 202>=45 → fires at peak+45 ✅
-    #   - 10pt LONG dip (profit=0), net=32pts → 0<32 → no fire ✅
-    #   - 1pt spread dip at entry (profit=0) → no fire ✅
-    net = live_atr * (pts_mult - off_mult)
-
-    if peak_profit_dist < net:
+    # Pine activation gate: trail engages only after profit reaches pts_mult * ATR
+    activation_threshold = live_atr * pts_mult
+    if peak_profit_dist < activation_threshold:
         return None
 
-    return (peak_price - net) if is_long else (peak_price + net)
+    # Once activated, stop sits at peak ± off_mult * ATR
+    offset = live_atr * off_mult
+    return (peak_price - offset) if is_long else (peak_price + offset)
 
 
 def _check_be(current_profit: float, live_atr: float) -> bool:
@@ -413,47 +371,28 @@ class TrailMonitor:
 
         # ── 5. Recompute trail SL from bar extreme using live ATR ─────────────
         # FIX-PARITY-01: use current_atr (not entry_atr) for trail distance.
-        #
-        # FIX-TRAIL-PEAK: Only update trail SL from bar extreme (high/low) when
-        # stage > 0 (i.e. bar-CLOSE profit already unlocked the trail stage).
-        #
-        # ROOT CAUSE OF PREMATURE TRAIL EXITS:
-        # Pine's strategy.exit(trail_points, trail_offset) activates the trail
-        # ONLY when bar-CLOSE profit >= trail_points × ATR (stage trigger).
-        # The bot was computing trail SL from bar_high/bar_low regardless of
-        # whether close profit had reached the stage trigger. This meant a
-        # single intrabar spike could activate the trail even when the bar
-        # CLOSED flat — matching Pine's close profit check of 7pts vs the
-        # 83pt stage-1 trigger. The trail SL then sat above the current price,
-        # firing immediately on any intrabar dip.
-        #
-        # FIX: Only run the bar-extreme trail SL computation when stage > 0.
-        # Stage is set in step 2 from bar-CLOSE profit (matching Pine exactly).
-        # If close profit didn't unlock a stage, bar high/low are irrelevant
-        # for trail SL — Pine would not have activated the trail either.
-        if state.stage > 0:
-            if is_long:
-                bar_peak_profit = bar_high - entry_price
-                _bar_trail_sl = _compute_trail_sl(
-                    state.stage, current_atr, bar_high, bar_peak_profit, True
+        if is_long:
+            bar_peak_profit = bar_high - entry_price
+            _bar_trail_sl = _compute_trail_sl(
+                state.stage, current_atr, bar_high, bar_peak_profit, True
+            )
+            if _bar_trail_sl is not None and _bar_trail_sl > state.current_sl:
+                state.current_sl = _bar_trail_sl
+                logger.debug(
+                    f"[TRAIL] Bar-close trail SL -> {_bar_trail_sl:.2f} "
+                    f"(stage {state.stage}, live_atr={current_atr:.2f})"
                 )
-                if _bar_trail_sl is not None and _bar_trail_sl > state.current_sl:
-                    state.current_sl = _bar_trail_sl
-                    logger.debug(
-                        f"[TRAIL] Bar-close trail SL -> {_bar_trail_sl:.2f} "
-                        f"(stage {state.stage}, live_atr={current_atr:.2f})"
-                    )
-            else:
-                bar_peak_profit = entry_price - bar_low
-                _bar_trail_sl = _compute_trail_sl(
-                    state.stage, current_atr, bar_low, bar_peak_profit, False
+        else:
+            bar_peak_profit = entry_price - bar_low
+            _bar_trail_sl = _compute_trail_sl(
+                state.stage, current_atr, bar_low, bar_peak_profit, False
+            )
+            if _bar_trail_sl is not None and _bar_trail_sl < state.current_sl:
+                state.current_sl = _bar_trail_sl
+                logger.debug(
+                    f"[TRAIL] Bar-close trail SL -> {_bar_trail_sl:.2f} "
+                    f"(stage {state.stage}, live_atr={current_atr:.2f})"
                 )
-                if _bar_trail_sl is not None and _bar_trail_sl < state.current_sl:
-                    state.current_sl = _bar_trail_sl
-                    logger.debug(
-                        f"[TRAIL] Bar-close trail SL -> {_bar_trail_sl:.2f} "
-                        f"(stage {state.stage}, live_atr={current_atr:.2f})"
-                    )
 
         # ── 6. Same-bar exit check ────────────────────────────────────────────
         tp_hit = (bar_high >= risk.tp)          if is_long else (bar_low  <= risk.tp)
@@ -632,37 +571,26 @@ class TrailMonitor:
         # FIX-PARITY-01: self._current_atr is the most recent bar-close ATR.
         # Matches Pine's behaviour: atr is not re-tick-sampled intrabar, it
         # holds the last bar-close value between bar closes.
-        #
-        # FIX-TRAIL-PEAK (tick path): Only update trail SL from intrabar peak
-        # when stage > 0. Stage is only upgraded in on_bar_close() from
-        # bar-CLOSE profit (FIX-EXIT-01). Until a bar CLOSES with enough
-        # profit to unlock a stage, intrabar spikes must NOT activate the
-        # trail — Pine's strategy.exit() only evaluates at bar close when
-        # calc_on_every_tick=false. An intrabar spike on the entry bar
-        # (e.g. bar_high 90pts above entry on a stage-1 trigger of 83pts)
-        # would prematurely set current_sl above entry, causing the next
-        # intrabar dip to fire "Trail SL" when Pine would never have activated.
-        if state.stage > 0:
-            trail_sl = _compute_trail_sl(
-                stage            = state.stage,
-                live_atr         = self._current_atr,   # FIX-PARITY-01: was entry_atr
-                peak_price       = state.peak_price,
-                peak_profit_dist = peak_profit,
-                is_long          = is_long,
-            )
-            if trail_sl is not None:
-                if is_long and trail_sl > state.current_sl:
-                    state.current_sl = trail_sl
-                    logger.debug(
-                        f"[TRAIL] Trail SL -> {trail_sl:.2f} "
-                        f"(stage {state.stage}, live_atr={self._current_atr:.2f})"
-                    )
-                elif not is_long and trail_sl < state.current_sl:
-                    state.current_sl = trail_sl
-                    logger.debug(
-                        f"[TRAIL] Trail SL -> {trail_sl:.2f} "
-                        f"(stage {state.stage}, live_atr={self._current_atr:.2f})"
-                    )
+        trail_sl = _compute_trail_sl(
+            stage            = state.stage,
+            live_atr         = self._current_atr,   # FIX-PARITY-01: was entry_atr
+            peak_price       = state.peak_price,
+            peak_profit_dist = peak_profit,
+            is_long          = is_long,
+        )
+        if trail_sl is not None:
+            if is_long and trail_sl > state.current_sl:
+                state.current_sl = trail_sl
+                logger.debug(
+                    f"[TRAIL] Trail SL -> {trail_sl:.2f} "
+                    f"(stage {state.stage}, live_atr={self._current_atr:.2f})"
+                )
+            elif not is_long and trail_sl < state.current_sl:
+                state.current_sl = trail_sl
+                logger.debug(
+                    f"[TRAIL] Trail SL -> {trail_sl:.2f} "
+                    f"(stage {state.stage}, live_atr={self._current_atr:.2f})"
+                )
 
         # Re-check SL after trail update (in case trail just moved past current price)
         if is_long and price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER:
@@ -730,42 +658,23 @@ class TrailMonitor:
 
         # ── FIX-TRAIL-04: bounded retries, no infinite cascade ───────────────
         MAX_ATTEMPTS = 3
-        success      = False
+        success = False
         last_err: Optional[Exception] = None
-
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
                 result = await self._order_mgr.close_position(
                     is_long=is_long, reason=reason
                 )
                 success = True
-
-                # FIX-FILL-PRICE: Use real Delta fill price for P&L / Telegram.
-                # exit_price was the WS tick that crossed the SL — NOT the actual
-                # exchange fill. Delta market orders fill at a different price due
-                # to latency + spread. close_position() now extracts the real fill
-                # from the order response and stores it in result["_real_fill_price"].
-                # We overwrite exit_price here so the callback, journal, and
-                # Telegram all show the true fill price that Delta executed.
-                if isinstance(result, dict):
-                    real_fill = result.get("_real_fill_price")
-                    if real_fill and float(real_fill) > 0:
-                        logger.info(
-                            f"[TRAIL] Fill price corrected: "
-                            f"trigger_tick={exit_price:.2f} → "
-                            f"real_fill={real_fill:.2f} "
-                            f"(diff={real_fill - exit_price:+.2f})"
-                        )
-                        exit_price = float(real_fill)
-                    elif result.get("info") == "already_closed":
-                        logger.info(
-                            f"[TRAIL] close_position: position already closed on exchange "
-                            f"— treating as exit success (attempt {attempt})"
-                        )
-                    else:
-                        logger.info(
-                            f"[TRAIL] close_position: exit order placed on attempt {attempt}"
-                        )
+                if isinstance(result, dict) and result.get("info") == "already_closed":
+                    logger.info(
+                        f"[TRAIL] close_position: position already closed on exchange "
+                        f"— treating as exit success (attempt {attempt})"
+                    )
+                else:
+                    logger.info(
+                        f"[TRAIL] close_position: exit order placed on attempt {attempt}"
+                    )
                 break
             except Exception as e:
                 last_err = e
@@ -777,6 +686,12 @@ class TrailMonitor:
                     await asyncio.sleep(0.5 * attempt)
 
         if not success:
+            # PERMANENT failure — do NOT keep retrying.
+            # _exit_fired stays True (no retry storm). Mark not running.
+            # Fire the callback anyway so main.py resets in_position and
+            # the bot stays responsive to new bar-close signals. The user
+            # may need to manually flatten any residual position; the bot
+            # will not be able to manage what it cannot close.
             logger.error(
                 f"[TRAIL] close_position FAILED after {MAX_ATTEMPTS} attempts "
                 f"(last error: {last_err}). Marking exit complete to prevent "
