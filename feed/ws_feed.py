@@ -554,26 +554,48 @@ class CandleFeed:
                         # So [-1] is the bar that just closed, not [-2].
                         # Using [-2] was returning the bar BEFORE the signal bar,
                         # causing the bot to overwrite with wrong OHLCV data.
-                        cb  = closed_ohlcv[-1]   # [-1] = bar that just closed
-                        idx = self._df.index[-1]
-                        self._df.at[idx, "open"]   = float(cb[1])
-                        self._df.at[idx, "high"]   = float(cb[2])
-                        self._df.at[idx, "low"]    = float(cb[3])
-                        self._df.at[idx, "close"]  = float(cb[4])
-                        self._df.at[idx, "volume"] = float(cb[5])
-                        logger.info(
-                            f"[FEED] FIX-PEAK-REST: closed bar corrected | "
-                            f"true_high={cb[2]:.2f} true_low={cb[3]:.2f} "
-                            f"true_close={cb[4]:.2f}"
-                        )
-                        # Sync trail monitor peak_price with true bar extreme
-                        if self.trail_monitor is not None:
-                            self.trail_monitor.push_ws_candle(
-                                float(cb[2]), float(cb[3])
+                        cb = closed_ohlcv[-1]   # [-1] = bar that just closed
+
+                        rest_open  = float(cb[1])
+                        rest_high  = float(cb[2])
+                        rest_low   = float(cb[3])
+                        rest_close = float(cb[4])
+                        rest_vol   = float(cb[5])
+                        bar_range  = rest_high - rest_low
+
+                        # FIX-PEAK-REST-FLAT: Reject flat/unsettled REST bars.
+                        # Binance REST sometimes returns a bar where high=low=close
+                        # (flat bar) for the just-closed candle before it fully
+                        # settles on the exchange. Overwriting with a flat bar
+                        # gives body=0 → body filter fails → signal missed.
+                        # Also causes true_high=true_low=true_close which means
+                        # the bar looks like a doji — wrong for indicators.
+                        # FIX: If bar_range == 0 or high == low == close,
+                        # keep the WS-accumulated OHLCV instead.
+                        if bar_range == 0.0 or (rest_high == rest_low == rest_close):
+                            logger.warning(
+                                f"[FEED] FIX-PEAK-REST: Rejected flat REST bar "
+                                f"(high=low=close={rest_close:.2f}) — "
+                                f"keeping WS-accumulated OHLCV to preserve body filter"
                             )
+                        else:
+                            idx = self._df.index[-1]
+                            self._df.at[idx, "open"]   = rest_open
+                            self._df.at[idx, "high"]   = rest_high
+                            self._df.at[idx, "low"]    = rest_low
+                            self._df.at[idx, "close"]  = rest_close
+                            self._df.at[idx, "volume"] = rest_vol
+                            logger.info(
+                                f"[FEED] FIX-PEAK-REST: closed bar corrected | "
+                                f"true_high={rest_high:.2f} true_low={rest_low:.2f} "
+                                f"true_close={rest_close:.2f}"
+                            )
+                            # Sync trail monitor peak_price with true bar extreme
+                            if self.trail_monitor is not None:
+                                self.trail_monitor.push_ws_candle(rest_high, rest_low)
                     else:
                         logger.warning(
-                            "[FEED] FIX-PEAK-REST: REST returned < 2 bars — "
+                            "[FEED] FIX-PEAK-REST: REST returned < 1 bar — "
                             "using WS-accumulated high/low (may differ from Pine)"
                         )
                 except Exception as e:
@@ -670,18 +692,32 @@ class CandleFeed:
             if not self._df.empty and len(ohlcv) >= 2:
                 try:
                     cb  = ohlcv[-2]   # last fully closed bar
-                    idx = self._df.index[-1]
-                    self._df.at[idx, "open"]   = float(cb[1])
-                    self._df.at[idx, "high"]   = float(cb[2])
-                    self._df.at[idx, "low"]    = float(cb[3])
-                    self._df.at[idx, "close"]  = float(cb[4])
-                    self._df.at[idx, "volume"] = float(cb[5])
-                    logger.info(
-                        f"[FEED] FIX-PEAK-REST (REST path): closed bar corrected | "
-                        f"true_high={cb[2]:.2f} true_low={cb[3]:.2f} true_close={cb[4]:.2f}"
-                    )
-                    if self.trail_monitor is not None:
-                        self.trail_monitor.push_ws_candle(float(cb[2]), float(cb[3]))
+                    rest_open  = float(cb[1])
+                    rest_high  = float(cb[2])
+                    rest_low   = float(cb[3])
+                    rest_close = float(cb[4])
+                    rest_vol   = float(cb[5])
+                    bar_range  = rest_high - rest_low
+
+                    # FIX-PEAK-REST-FLAT (REST path): same flat-bar guard as WS path.
+                    if bar_range == 0.0 or (rest_high == rest_low == rest_close):
+                        logger.warning(
+                            f"[FEED] FIX-PEAK-REST (REST path): Rejected flat REST bar "
+                            f"(high=low=close={rest_close:.2f}) — keeping WS data"
+                        )
+                    else:
+                        idx = self._df.index[-1]
+                        self._df.at[idx, "open"]   = rest_open
+                        self._df.at[idx, "high"]   = rest_high
+                        self._df.at[idx, "low"]    = rest_low
+                        self._df.at[idx, "close"]  = rest_close
+                        self._df.at[idx, "volume"] = rest_vol
+                        logger.info(
+                            f"[FEED] FIX-PEAK-REST (REST path): closed bar corrected | "
+                            f"true_high={rest_high:.2f} true_low={rest_low:.2f} true_close={rest_close:.2f}"
+                        )
+                        if self.trail_monitor is not None:
+                            self.trail_monitor.push_ws_candle(rest_high, rest_low)
                 except Exception as e:
                     logger.warning(f"[FEED] FIX-PEAK-REST (REST path) failed: {e}")
 
