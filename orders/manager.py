@@ -1,7 +1,36 @@
 """
-orders/manager.py  —  Shiva Sniper v10  (FIX-PARITY-v4)
+orders/manager.py  —  Shiva Sniper v10  (FIX-PARITY-v5)
 ═══════════════════════════════════════════════════════════════════════
-NEW FIXES IN THIS VERSION:
+NEW FIX IN THIS VERSION:
+──────────────────────────────────────────────────────────────────────
+FIX-FILL-PRICE | CRITICAL — close_position() now extracts the real
+  Delta fill price from the order response and stores it in
+  result["_real_fill_price"]. trail_loop._fire_exit() then overwrites
+  exit_price with this value before calling the exit callback.
+
+  ROOT CAUSE:
+  _fire_exit(exit_price, ...) receives the WS tick price at the moment
+  the SL level was crossed — e.g. 78,872.50. Delta's market order then
+  executes at a DIFFERENT price — e.g. 78,924.0 — due to latency,
+  spread, and order book depth. The old code passed the tick price all
+  the way through to main._on_trail_exit(), journal, and Telegram.
+
+  EFFECT:
+  - P&L logged as -0.0826 USD (from tick 78,872.50)
+  - Actual P&L was -0.031 USD (from real fill 78,924.0)
+  - Telegram EXIT message showed wrong exit price
+  - Journal had wrong exit price and P&L forever
+
+  FIX:
+  close_position() extracts fill from order response (priority order):
+    1. order["average"]                    — ccxt-normalised avg fill
+    2. order["price"]                      — ccxt fallback
+    3. order["info"]["avg_fill_price"]     — raw Delta field
+    4. order["info"]["fill_price"]         — alternative raw Delta field
+  Stores as order["_real_fill_price"]. _fire_exit() reads this and
+  overwrites exit_price before passing to callback/journal/Telegram.
+  Logs both trigger_tick and real_fill with the diff for audit trail.
+
 ──────────────────────────────────────────────────────────────────────
 FIX-OM-004 | CRITICAL — fetch_open_position() for startup recovery.
   ROOT CAUSE OF MANY "Initial SL" + no_position_for_reduce_only LOOPS:
@@ -233,6 +262,36 @@ class OrderManager:
                 params = {"reduce_only": True},
             ))
             self.position = None
+
+            # FIX-FILL-PRICE: Extract actual fill price from Delta order response.
+            # The trail trigger tick price (passed to _fire_exit) is the WS price
+            # at the moment SL was crossed — NOT the actual exchange fill price.
+            # Delta market orders often fill several points away from the trigger
+            # tick due to latency and spread. We extract the real fill here so
+            # trail_loop._fire_exit() can use it for accurate P&L and Telegram.
+            #
+            # Delta India returns fill price in these fields (priority order):
+            #   1. order["average"]              — ccxt-normalised avg fill price
+            #   2. order["price"]                — ccxt fallback
+            #   3. order["info"]["avg_fill_price"] — raw Delta field
+            #   4. order["info"]["fill_price"]   — alternative raw Delta field
+            fill_price = (
+                order.get("average")
+                or order.get("price")
+                or (order.get("info") or {}).get("avg_fill_price")
+                or (order.get("info") or {}).get("fill_price")
+            )
+            if fill_price:
+                try:
+                    order["_real_fill_price"] = float(fill_price)
+                    logger.info(
+                        f"[OM] Exit fill confirmed | "
+                        f"real_fill={order['_real_fill_price']:.2f} "
+                        f"reason={reason}"
+                    )
+                except (TypeError, ValueError):
+                    pass  # malformed — trail_loop will fall back to tick price
+
             return order
         except ccxt.ExchangeError as e:
             # FIX-OM-003 + FIX-OM-005: any "position already gone" variant → success.
