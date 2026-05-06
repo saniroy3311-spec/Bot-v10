@@ -19,8 +19,9 @@ WHAT THIS FILE DOES
 PINE PARITY
 ───────────
   Entry  : calc_on_every_tick=false → entry fires ONLY at confirmed bar close.
-  Exit   : TrailMonitor evaluates TP/SL on every WS tick (on_price_tick) and
-           at bar close (on_bar_close). Stage upgrades + BE only at bar close.
+  Exit   : BinancePriceFeed pushes Binance aggTrade prices (~10ms) to
+           TrailMonitor.on_price_tick() — same source as Pine's broker
+           emulator. Stage upgrades + BE only at bar close (30m).
   Volume : FILTER_VOL_ENABLED=false by default — Delta REST volumes (~3% of
            TradingView's) are incomparable data sources. ATR + body filters
            still guard against dead/choppy bars.
@@ -47,7 +48,8 @@ from typing import Optional
 from config import (
     SYMBOL, ALERT_QTY, CANDLE_TIMEFRAME, FILTER_VOL_ENABLED,
 )
-from feed.ws_feed       import CandleFeed
+from feed.ws_feed            import CandleFeed
+from feed.binance_price_feed import BinancePriceFeed
 from indicators.engine  import compute
 from strategy.signal    import evaluate, SignalType
 from risk.calculator    import (
@@ -102,6 +104,7 @@ class ShivaSniperBot:
             journal   = self._journal,
         )
         self._feed: Optional[CandleFeed] = None
+        self._binance_px_feed: Optional[BinancePriceFeed] = None
 
         # Position state — reset on each exit
         self._in_position : bool                  = False
@@ -163,6 +166,8 @@ class ShivaSniperBot:
         """Graceful stop — stop trail, close exchange connection, notify."""
         logger.info("Shutting down...")
         self._trail_mon.stop()
+        if self._binance_px_feed is not None:
+            self._binance_px_feed.stop()
         try:
             await self._telegram.send("🔴 <b>Shiva Sniper Bot Stopped</b>")
         except Exception:
@@ -436,6 +441,14 @@ class ShivaSniperBot:
         # intrabar exit detection path (FIX-PARITY-02 in trail_loop.py).
         feed.trail_monitor = self._trail_mon
         self._feed = feed
+
+        # BINANCE-EXIT-FEED-v1: Start Binance aggTrade price feed.
+        # This replaces the old Delta WS intrabar price monitoring.
+        # Binance prices (~10ms) match Pine's broker emulator data source,
+        # eliminating phantom SL/TP triggers from the Delta-Binance price gap.
+        self._binance_px_feed = BinancePriceFeed(self._trail_mon)
+        self._binance_px_feed.start_task()
+        logger.info("[MAIN] BinancePriceFeed started — exits now use Binance aggTrade prices")
 
         try:
             await feed.start()
