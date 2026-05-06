@@ -132,13 +132,13 @@ TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "0.0
 # ──────────────────────────────────────────────
 CANDLE_TIMEFRAME = os.environ.get("CANDLE_TIMEFRAME", "30m")
 
-# CONFIG-FIX-001: Changed default from 0.5 → 0.1 seconds.
-# Pine Script broker emulator tracks price every tick (milliseconds).
-# At 0.1s the bot responds within 100ms of trail stop being crossed —
-# matching Pine's near-instant exit behavior (same 30m candle as entry).
-# Delta Exchange API handles 10 req/s without issue.
-# To override: set TRAIL_LOOP_SEC=0.2 in .env if you hit rate limits.
-TRAIL_LOOP_SEC   = float(os.environ.get("TRAIL_LOOP_SEC", "0.1"))
+# BINANCE-EXIT-FEED-v1: TRAIL_LOOP_SEC raised from 0.1 → 5.0.
+# BinancePriceFeed now handles all intrabar exit monitoring via Binance
+# aggTrade WS (~10ms). The _tick_loop in trail_loop.py is now a pure
+# safety net (catches exchange connectivity gaps only) — a 5s poll
+# interval is sufficient and avoids unnecessary Delta REST calls.
+# To override: set TRAIL_LOOP_SEC=10 in .env for extra conservatism.
+TRAIL_LOOP_SEC   = float(os.environ.get("TRAIL_LOOP_SEC", "5.0"))
 
 WS_RECONNECT_SEC = 5
 
