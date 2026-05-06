@@ -64,11 +64,11 @@ FIX-ENTRY-DELAY | CRITICAL — bot entered every trade 30 minutes late vs Pine.
   current_boundary > _last_candle_boundary and fire on_bar_close() on time.
 
 PRESERVED FROM FIX-PARITY-v2 + BUG-FIX-AUDIT-v1 + FIX-PEAK-REST (all unchanged):
-FIX-PARITY-02 (WS side) | CRITICAL — every intrabar WS candle message now
-  calls trail_monitor.on_price_tick(close) directly, pushing the live price
-  into the trail loop WITHOUT a REST round-trip. Exit decisions happen in the
-  same event-loop iteration as the WS message — matching Pine's tick-level
-  execution model. _tick_loop() in trail_loop.py is now a 2-second fallback.
+BINANCE-EXIT-FEED-v1 | Intrabar Delta WS price calls removed.
+  BinancePriceFeed (feed/binance_price_feed.py) now feeds Binance
+  aggTrade prices (~10ms) to the trail monitor instead of Delta WS
+  prices (~500ms, ~100-150 pts lower than TradingView). This eliminates
+  phantom SL/TP triggers and matches Pine's exit price source exactly.
 
 FIX-BUG4 | HIGH — WebSocket reconnection now retries WS indefinitely.
   Old behaviour: after _MAX_WS_FAILURES consecutive failures, the feed
@@ -651,16 +651,21 @@ class CandleFeed:
                 self._df.at[idx, "close"]  = c
                 self._df.at[idx, "volume"] = v
 
-            if self.trail_monitor is not None:
-                # FIX-PARITY-02: push live close price as a price tick so the
-                # trail loop evaluates SL/TP immediately — no REST round-trip.
-                # c = WS candle close = most recent traded price (~500ms latency).
-                loop = asyncio.get_running_loop()
-                loop.create_task(self.trail_monitor.on_price_tick(c))
-
-                # FIX-PARITY-03 (via push_ws_candle): update intrabar peak and
-                # schedule TP/SL evaluation for both candle extremes.
-                self.trail_monitor.push_ws_candle(h, l)
+            # BINANCE-EXIT-FEED-v1: Intrabar Delta WS price calls removed.
+            # FIX-PARITY-02 (on_price_tick) and FIX-PARITY-03 (push_ws_candle)
+            # previously sent Delta Exchange WS prices (~100-150 pts below
+            # TradingView) to the trail monitor, causing:
+            #   • Initial SL to fire on Delta-only wicks Pine never saw
+            #   • Trail to arm from Delta peaks Binance never recorded
+            #   • Exits at wrong price levels vs Pine's "Exit TL" labels
+            #
+            # Replacement: BinancePriceFeed (feed/binance_price_feed.py)
+            # subscribes to Binance aggTrade WS and pushes Binance prices to
+            # trail_monitor.on_price_tick() and push_ws_candle() directly.
+            # Same price source as Pine's broker emulator → exit levels match.
+            #
+            # The FIX-PEAK-REST call to push_ws_candle(rest_high, rest_low)
+            # at bar close (above) uses Binance REST data and is kept unchanged.
 
     # ── REST polling fallback ──────────────────────────────────────────────────
 
