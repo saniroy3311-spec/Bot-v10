@@ -1,38 +1,8 @@
 """
-feed/ws_feed.py  —  Shiva Sniper v10  (BINANCE-DATA-SOURCE-v1)
+feed/ws_feed.py  —  Shiva Sniper v10  (ENTRY-DELAY-FIX-v2)
 ════════════════════════════════════════════════════════════════════════════════
 
-NEW IN THIS VERSION (BINANCE-DATA-SOURCE-v1):
-──────────────────────────────────────────────────────────────────────────────
-BINANCE-DS-001 | Historical OHLCV and bar close corrections now fetched from
-  Binance BTCUSDT instead of Delta Exchange.
-
-  WHY:
-  TradingView's Pine Script reference price for BTC is Binance BTCUSDT.
-  Delta Exchange India prices run ~100–150 pts LOWER than TradingView.
-  This price gap meant:
-    - close > high[1] fired on Delta micro-breakouts Pine never saw
-    - Indicators (EMA200, ATR-SMA50) computed on slightly different OHLCV
-    - Entry/exit prices in logs differed from Pine's strategy report
-
-  WHAT CHANGED:
-  1. _load_history()     — fetches 1550 bars from Binance BTCUSDT 30m
-  2. _refetch_and_merge()— gap-fill uses Binance bars after WS reconnect
-  3. FIX-PEAK-REST       — closed-bar correction uses Binance ohlcv
-  4. _poll_rest_once()   — REST fallback boundary detection uses Binance
-
-  WHAT DID NOT CHANGE:
-  - Order execution: still placed on Delta Exchange (unchanged)
-  - WS live feed: still Delta Exchange WS (intrabar ticks for trail SL)
-  - All strategy/indicator logic: unchanged
-
-  RESULT:
-  Indicators now compute on the same OHLCV source as Pine Script.
-  close > high[1] check fires on the same bars as Pine.
-  Entry signals match Pine ~99% of the time (residual 1% = timing jitter).
-
-──────────────────────────────────────────────────────────────────────────────
-PRESERVED FROM ENTRY-DELAY-FIX-v2:
+NEW FIX IN THIS VERSION (ENTRY-DELAY-FIX-v2):
 ──────────────────────────────────────────────────────────────────────────────
 FIX-PEAK-REST-02 | FIX-PEAK-REST now also applied in REST fallback path.
   The WS path (_process_ws_candle) fetches the authoritative closed-bar OHLCV
@@ -64,11 +34,11 @@ FIX-ENTRY-DELAY | CRITICAL — bot entered every trade 30 minutes late vs Pine.
   current_boundary > _last_candle_boundary and fire on_bar_close() on time.
 
 PRESERVED FROM FIX-PARITY-v2 + BUG-FIX-AUDIT-v1 + FIX-PEAK-REST (all unchanged):
-BINANCE-EXIT-FEED-v1 | Intrabar Delta WS price calls removed.
-  BinancePriceFeed (feed/binance_price_feed.py) now feeds Binance
-  aggTrade prices (~10ms) to the trail monitor instead of Delta WS
-  prices (~500ms, ~100-150 pts lower than TradingView). This eliminates
-  phantom SL/TP triggers and matches Pine's exit price source exactly.
+FIX-PARITY-02 (WS side) | CRITICAL — every intrabar WS candle message now
+  calls trail_monitor.on_price_tick(close) directly, pushing the live price
+  into the trail loop WITHOUT a REST round-trip. Exit decisions happen in the
+  same event-loop iteration as the WS message — matching Pine's tick-level
+  execution model. _tick_loop() in trail_loop.py is now a 2-second fallback.
 
 FIX-BUG4 | HIGH — WebSocket reconnection now retries WS indefinitely.
   Old behaviour: after _MAX_WS_FAILURES consecutive failures, the feed
@@ -164,14 +134,6 @@ _INDIA_TESTNET = "https://testnet-api.india.delta.exchange"
 _WS_LIVE    = "wss://socket.india.delta.exchange"
 _WS_TESTNET = "wss://testnet-socket.india.delta.exchange"
 
-# ── BINANCE-DS-001: Binance BTCUSDT used as OHLCV data source ────────────────
-# TradingView Pine Script uses Binance BTCUSDT as its BTC reference price.
-# Fetching historical bars from Binance ensures indicators and close > high[1]
-# checks match Pine exactly. Order execution remains on Delta Exchange.
-_BINANCE_SYMBOL    = "BTC/USDT"
-_BINANCE_TIMEFRAME = CANDLE_TIMEFRAME   # same timeframe as bot (e.g. "30m")
-# ─────────────────────────────────────────────────────────────────────────────
-
 _MAX_WS_FAILURES           = 5    # consecutive failures before REST fallback
 _WS_RETRY_AFTER_REST_POLLS = 60   # REST polls before retrying WS (FIX-BUG4)
 _WS_HEARTBEAT_SEC          = 30
@@ -218,8 +180,7 @@ class CandleFeed:
         self._period_ms            = _timeframe_to_ms(CANDLE_TIMEFRAME)
         self._last_candle_boundary = 0
         self._df                   = pd.DataFrame()
-        self._exchange             = None   # BINANCE-DS-001: Binance REST (OHLCV data)
-        self._delta_exchange       = None   # BINANCE-DS-001: Delta REST (order execution only)
+        self._exchange             = None
         self._ready_fired          = False
         self._ws_failures          = 0
         self._rest_poll_count      = 0     # FIX-BUG4: track REST polls for WS retry
@@ -279,75 +240,20 @@ class CandleFeed:
                     self._rest_poll_count = 0
 
     async def _load_history(self) -> None:
-        # ── BINANCE-DS-001: Load historical OHLCV from Binance ───────────────
-        # Pine Script uses Binance BTCUSDT as its reference price.
-        # Fetching history from Binance ensures EMA200, ATR-SMA50 and
-        # close > high[1] all match Pine exactly.
-        #
-        # BINANCE-DS-002: Binance REST API returns max 1000 bars per request.
-        # We need MIN_BARS=1500 bars. Fix: fetch in TWO batches:
-        #   Batch 1 — 1000 bars ending at (now - 1000 * period_ms)
-        #   Batch 2 — 1000 bars ending at now  (most recent 1000)
-        # Merge, deduplicate, sort → gives ~1550 unique bars.
-        fetch_limit  = MIN_BARS + 50
-        period_ms    = _timeframe_to_ms(CANDLE_TIMEFRAME)
-        binance_async = ccxt_async.binance({"enableRateLimit": True})
-        try:
-            logger.info(
-                f"[BINANCE-DS] Loading {fetch_limit} bars from Binance "
-                f"{_BINANCE_SYMBOL} {_BINANCE_TIMEFRAME} (2-batch fetch)..."
-            )
-            # Batch 2 — most recent 1000 bars (no since = latest)
-            ohlcv_b2 = await binance_async.fetch_ohlcv(
-                _BINANCE_SYMBOL, _BINANCE_TIMEFRAME, limit=1000
-            )
-            # Batch 1 — older 1000 bars: end just before batch 2 starts
-            if ohlcv_b2:
-                since_ms = int(ohlcv_b2[0][0]) - (1000 * period_ms)
-                ohlcv_b1 = await binance_async.fetch_ohlcv(
-                    _BINANCE_SYMBOL, _BINANCE_TIMEFRAME,
-                    since=since_ms, limit=1000
-                )
-            else:
-                ohlcv_b1 = []
-
-            # Merge both batches, deduplicate by timestamp, sort ascending
-            combined = ohlcv_b1 + ohlcv_b2
-            seen, merged = set(), []
-            for bar in combined:
-                if bar[0] not in seen:
-                    seen.add(bar[0])
-                    merged.append(bar)
-            merged.sort(key=lambda x: x[0])
-
-            # Keep only the most recent fetch_limit bars
-            merged   = merged[-fetch_limit:]
-            self._df = self._to_df(merged)
-            logger.info(
-                f"[BINANCE-DS] Loaded {len(self._df)} bars from Binance ✅"
-            )
-        finally:
-            await binance_async.close()
-
-        # Build a sync Binance exchange for REST corrections (gap-fill, FIX-PEAK-REST)
-        # BINANCE-DS-001: self._exchange now points to Binance, not Delta.
-        self._exchange = ccxt.binance({"enableRateLimit": True})
-
-        # ── Delta exchange — ONLY for order execution (unchanged) ─────────────
         base_url = _INDIA_TESTNET if DELTA_TESTNET else _INDIA_LIVE
-        delta_params = {
+        params = {
             "apiKey"         : DELTA_API_KEY,
             "secret"         : DELTA_API_SECRET,
             "enableRateLimit": True,
             "urls": {"api": {"public": base_url, "private": base_url}},
         }
-        delta_async = ccxt_async.delta(delta_params)
+        exchange = ccxt_async.delta(params)
         try:
-            logger.info(f"Verifying Delta symbol {SYMBOL} ({base_url})...")
-            await delta_async.load_markets()
-            if SYMBOL not in delta_async.markets:
+            logger.info(f"Loading market map from Delta India ({base_url})...")
+            await exchange.load_markets()
+            if SYMBOL not in exchange.markets:
                 available = [
-                    s for s in delta_async.markets
+                    s for s in exchange.markets
                     if "BTC" in s and "USD" in s and ":" in s and len(s) < 15
                 ]
                 raise ValueError(
@@ -355,14 +261,27 @@ class CandleFeed:
                     f"Available BTC perpetuals: {available}\n"
                     f"Fix: update SYMBOL= in your .env"
                 )
-            logger.info(f"Delta symbol {SYMBOL} verified ✅")
-            fetched_markets = dict(delta_async.markets)
-        finally:
-            await delta_async.close()
+            logger.info(f"Symbol {SYMBOL} verified ✅")
 
-        # Build sync Delta exchange for order execution — stored separately
-        self._delta_exchange = ccxt.delta(delta_params)
-        self._delta_exchange.markets = fetched_markets
+            fetch_limit = MIN_BARS + 50
+            logger.info(
+                f"Loading {fetch_limit} historical bars via REST "
+                f"for [{SYMBOL}] [{CANDLE_TIMEFRAME}]..."
+            )
+            ohlcv    = await exchange.fetch_ohlcv(SYMBOL, CANDLE_TIMEFRAME, limit=fetch_limit)
+            self._df = self._to_df(ohlcv)
+            fetched_markets = dict(exchange.markets)
+        finally:
+            await exchange.close()
+
+        # Build a sync exchange for REST fallback — offloaded to threads (FIX-AUDIT-02)
+        self._exchange = ccxt.delta({
+            "apiKey"         : DELTA_API_KEY,
+            "secret"         : DELTA_API_SECRET,
+            "enableRateLimit": True,
+            "urls": {"api": {"public": base_url, "private": base_url}},
+        })
+        self._exchange.markets = fetched_markets
 
         # FIX-ENTRY-DELAY: fetch_ohlcv() last row is the currently-OPEN bar
         # (partial, live). Using its timestamp as _last_candle_boundary means
@@ -385,54 +304,6 @@ class CandleFeed:
             f"(need {MIN_BARS}, have {bar_count} — "
             f"{'OK ✅' if bar_count >= MIN_BARS else 'WARN ⚠️'})"
         )
-
-
-    async def _refetch_and_merge(self) -> None:
-        """
-        GAP-FILL: Fetch the last 10 closed bars via REST and merge any
-        bars that are newer than the current df tail. Called after every
-        WS reconnect to fill gaps caused by WS dropouts.
-
-        BINANCE-DS-001: Uses Binance BTCUSDT so merged bars match Pine data.
-        """
-        try:
-            ohlcv = await asyncio.to_thread(
-                self._exchange.fetch_ohlcv,
-                _BINANCE_SYMBOL,      # BINANCE-DS-001: Binance symbol
-                _BINANCE_TIMEFRAME,   # BINANCE-DS-001: Binance timeframe
-                None,
-                10,
-            )
-            if not ohlcv or len(ohlcv) < 2:
-                logger.info("[GAP-FILL] No missed bars — df is up to date after reconnect.")
-                return
-
-            last_ts = int(self._df.iloc[-1]["timestamp"])
-            new_rows = [bar for bar in ohlcv if int(bar[0]) > last_ts]
-
-            if not new_rows:
-                logger.info("[GAP-FILL] No missed bars — df is up to date after reconnect.")
-                return
-
-            logger.info(f"[GAP-FILL] Merged {len(new_rows)} missed bar(s) after WS reconnect.")
-            for bar in new_rows:
-                new_row = {
-                    "timestamp": float(bar[0]),
-                    "open"     : float(bar[1]),
-                    "high"     : float(bar[2]),
-                    "low"      : float(bar[3]),
-                    "close"    : float(bar[4]),
-                    "volume"   : float(bar[5]),
-                }
-                self._df = pd.concat(
-                    [self._df, pd.DataFrame([new_row])],
-                    ignore_index=True,
-                )
-            # NOTE: Do NOT truncate df here — trimming history causes EMA200/ATR-SMA50
-            # to compute on a shorter window than Pine, producing false signals.
-
-        except Exception as e:
-            logger.warning(f"[GAP-FILL] REST fetch failed: {e}")
 
     async def _run_websocket(self) -> None:
         ws_url    = _WS_TESTNET if DELTA_TESTNET else _WS_LIVE
@@ -462,12 +333,6 @@ class CandleFeed:
             self._ws_failures = 0
             self._msg_count   = 0
             last_heartbeat    = time.time()
-
-            # GAP-FILL: After every reconnect, fetch the last 10 bars via REST
-            # and merge any bars that were missed during the WS dropout.
-            # Without this, df.iloc[-2] points to a stale bar — causing false
-            # signals because prev_high/prev_low are wrong (Pine's high[1] mismatch).
-            await self._refetch_and_merge()
 
             async for raw in ws:
                 now = time.time()
@@ -543,8 +408,8 @@ class CandleFeed:
                 try:
                     closed_ohlcv = await asyncio.to_thread(
                         self._exchange.fetch_ohlcv,
-                        _BINANCE_SYMBOL,      # BINANCE-DS-001: Binance symbol
-                        _BINANCE_TIMEFRAME,   # BINANCE-DS-001: Binance timeframe
+                        SYMBOL,
+                        CANDLE_TIMEFRAME,
                         None,  # since
                         3,     # limit — only need last 2 bars
                     )
@@ -554,48 +419,26 @@ class CandleFeed:
                         # So [-1] is the bar that just closed, not [-2].
                         # Using [-2] was returning the bar BEFORE the signal bar,
                         # causing the bot to overwrite with wrong OHLCV data.
-                        cb = closed_ohlcv[-1]   # [-1] = bar that just closed
-
-                        rest_open  = float(cb[1])
-                        rest_high  = float(cb[2])
-                        rest_low   = float(cb[3])
-                        rest_close = float(cb[4])
-                        rest_vol   = float(cb[5])
-                        bar_range  = rest_high - rest_low
-
-                        # FIX-PEAK-REST-FLAT: Reject flat/unsettled REST bars.
-                        # Binance REST sometimes returns a bar where high=low=close
-                        # (flat bar) for the just-closed candle before it fully
-                        # settles on the exchange. Overwriting with a flat bar
-                        # gives body=0 → body filter fails → signal missed.
-                        # Also causes true_high=true_low=true_close which means
-                        # the bar looks like a doji — wrong for indicators.
-                        # FIX: If bar_range == 0 or high == low == close,
-                        # keep the WS-accumulated OHLCV instead.
-                        if bar_range == 0.0 or (rest_high == rest_low == rest_close):
-                            logger.warning(
-                                f"[FEED] FIX-PEAK-REST: Rejected flat REST bar "
-                                f"(high=low=close={rest_close:.2f}) — "
-                                f"keeping WS-accumulated OHLCV to preserve body filter"
+                        cb  = closed_ohlcv[-1]   # [-1] = bar that just closed
+                        idx = self._df.index[-1]
+                        self._df.at[idx, "open"]   = float(cb[1])
+                        self._df.at[idx, "high"]   = float(cb[2])
+                        self._df.at[idx, "low"]    = float(cb[3])
+                        self._df.at[idx, "close"]  = float(cb[4])
+                        self._df.at[idx, "volume"] = float(cb[5])
+                        logger.info(
+                            f"[FEED] FIX-PEAK-REST: closed bar corrected | "
+                            f"true_high={cb[2]:.2f} true_low={cb[3]:.2f} "
+                            f"true_close={cb[4]:.2f}"
+                        )
+                        # Sync trail monitor peak_price with true bar extreme
+                        if self.trail_monitor is not None:
+                            self.trail_monitor.push_ws_candle(
+                                float(cb[2]), float(cb[3])
                             )
-                        else:
-                            idx = self._df.index[-1]
-                            self._df.at[idx, "open"]   = rest_open
-                            self._df.at[idx, "high"]   = rest_high
-                            self._df.at[idx, "low"]    = rest_low
-                            self._df.at[idx, "close"]  = rest_close
-                            self._df.at[idx, "volume"] = rest_vol
-                            logger.info(
-                                f"[FEED] FIX-PEAK-REST: closed bar corrected | "
-                                f"true_high={rest_high:.2f} true_low={rest_low:.2f} "
-                                f"true_close={rest_close:.2f}"
-                            )
-                            # Sync trail monitor peak_price with true bar extreme
-                            if self.trail_monitor is not None:
-                                self.trail_monitor.push_ws_candle(rest_high, rest_low)
                     else:
                         logger.warning(
-                            "[FEED] FIX-PEAK-REST: REST returned < 1 bar — "
+                            "[FEED] FIX-PEAK-REST: REST returned < 2 bars — "
                             "using WS-accumulated high/low (may differ from Pine)"
                         )
                 except Exception as e:
@@ -632,40 +475,28 @@ class CandleFeed:
             }])
             self._df = pd.concat(
                 [self._df, new_row], ignore_index=True
-            )  # Do not .tail() — trimming causes indicator divergence vs Pine
+            ).tail(MIN_BARS + 50)
             self._last_candle_boundary = current_boundary
 
         else:
             if not self._df.empty:
                 idx = self._df.index[-1]
-                # FIX-BODY-OPEN: Never overwrite open intrabar.
-                # Pine's body filter = abs(close - open) using the TRUE bar open
-                # (price at bar start). WS messages carry a running open field
-                # that is correct on the first message but drifts on subsequent
-                # ones on some feeds — overwriting it collapses the measured body
-                # to near-zero, causing body=False and missed signals (e.g. 13:36
-                # bar). Fix: only touch high/low/close/volume intrabar; open is
-                # set once when the new bar row is created at boundary change.
+                self._df.at[idx, "open"]   = o
                 self._df.at[idx, "high"]   = h
                 self._df.at[idx, "low"]    = l
                 self._df.at[idx, "close"]  = c
                 self._df.at[idx, "volume"] = v
 
-            # BINANCE-EXIT-FEED-v1: Intrabar Delta WS price calls removed.
-            # FIX-PARITY-02 (on_price_tick) and FIX-PARITY-03 (push_ws_candle)
-            # previously sent Delta Exchange WS prices (~100-150 pts below
-            # TradingView) to the trail monitor, causing:
-            #   • Initial SL to fire on Delta-only wicks Pine never saw
-            #   • Trail to arm from Delta peaks Binance never recorded
-            #   • Exits at wrong price levels vs Pine's "Exit TL" labels
-            #
-            # Replacement: BinancePriceFeed (feed/binance_price_feed.py)
-            # subscribes to Binance aggTrade WS and pushes Binance prices to
-            # trail_monitor.on_price_tick() and push_ws_candle() directly.
-            # Same price source as Pine's broker emulator → exit levels match.
-            #
-            # The FIX-PEAK-REST call to push_ws_candle(rest_high, rest_low)
-            # at bar close (above) uses Binance REST data and is kept unchanged.
+            if self.trail_monitor is not None:
+                # FIX-PARITY-02: push live close price as a price tick so the
+                # trail loop evaluates SL/TP immediately — no REST round-trip.
+                # c = WS candle close = most recent traded price (~500ms latency).
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.trail_monitor.on_price_tick(c))
+
+                # FIX-PARITY-03 (via push_ws_candle): update intrabar peak and
+                # schedule TP/SL evaluation for both candle extremes.
+                self.trail_monitor.push_ws_candle(h, l)
 
     # ── REST polling fallback ──────────────────────────────────────────────────
 
@@ -680,11 +511,10 @@ class CandleFeed:
 
         # FIX-AUDIT-02: asyncio.to_thread() runs the BLOCKING sync ccxt call
         # in a thread pool so the event loop remains free between polls.
-        # BINANCE-DS-001: Fetching from Binance for Pine-matching bar data.
         ohlcv = await asyncio.to_thread(
             self._exchange.fetch_ohlcv,
-            _BINANCE_SYMBOL,      # BINANCE-DS-001: Binance symbol
-            _BINANCE_TIMEFRAME,   # BINANCE-DS-001: Binance timeframe
+            SYMBOL,
+            CANDLE_TIMEFRAME,
             None,   # since (unused)
             5,      # limit
         )
@@ -704,32 +534,18 @@ class CandleFeed:
             if not self._df.empty and len(ohlcv) >= 2:
                 try:
                     cb  = ohlcv[-2]   # last fully closed bar
-                    rest_open  = float(cb[1])
-                    rest_high  = float(cb[2])
-                    rest_low   = float(cb[3])
-                    rest_close = float(cb[4])
-                    rest_vol   = float(cb[5])
-                    bar_range  = rest_high - rest_low
-
-                    # FIX-PEAK-REST-FLAT (REST path): same flat-bar guard as WS path.
-                    if bar_range == 0.0 or (rest_high == rest_low == rest_close):
-                        logger.warning(
-                            f"[FEED] FIX-PEAK-REST (REST path): Rejected flat REST bar "
-                            f"(high=low=close={rest_close:.2f}) — keeping WS data"
-                        )
-                    else:
-                        idx = self._df.index[-1]
-                        self._df.at[idx, "open"]   = rest_open
-                        self._df.at[idx, "high"]   = rest_high
-                        self._df.at[idx, "low"]    = rest_low
-                        self._df.at[idx, "close"]  = rest_close
-                        self._df.at[idx, "volume"] = rest_vol
-                        logger.info(
-                            f"[FEED] FIX-PEAK-REST (REST path): closed bar corrected | "
-                            f"true_high={rest_high:.2f} true_low={rest_low:.2f} true_close={rest_close:.2f}"
-                        )
-                        if self.trail_monitor is not None:
-                            self.trail_monitor.push_ws_candle(rest_high, rest_low)
+                    idx = self._df.index[-1]
+                    self._df.at[idx, "open"]   = float(cb[1])
+                    self._df.at[idx, "high"]   = float(cb[2])
+                    self._df.at[idx, "low"]    = float(cb[3])
+                    self._df.at[idx, "close"]  = float(cb[4])
+                    self._df.at[idx, "volume"] = float(cb[5])
+                    logger.info(
+                        f"[FEED] FIX-PEAK-REST (REST path): closed bar corrected | "
+                        f"true_high={cb[2]:.2f} true_low={cb[3]:.2f} true_close={cb[4]:.2f}"
+                    )
+                    if self.trail_monitor is not None:
+                        self.trail_monitor.push_ws_candle(float(cb[2]), float(cb[3]))
                 except Exception as e:
                     logger.warning(f"[FEED] FIX-PEAK-REST (REST path) failed: {e}")
 
@@ -760,7 +576,7 @@ class CandleFeed:
             }])
             self._df = pd.concat(
                 [self._df, new_row], ignore_index=True
-            )  # Do not .tail() — trimming causes indicator divergence vs Pine
+            ).tail(MIN_BARS + 50)
             self._last_candle_boundary = live_boundary
 
         else:
