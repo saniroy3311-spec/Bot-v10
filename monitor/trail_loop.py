@@ -1,41 +1,24 @@
 """
-monitor/trail_loop.py — Shiva Sniper v10 — FIX-PARITY-v5
+monitor/trail_loop.py — Shiva Sniper v10 — FIX-PARITY-v4
 ════════════════════════════════════════════════════════════════════════════
 
-NEW FIX IN THIS VERSION (FIX-PARITY-v5):
+NEW FIX IN THIS VERSION (FIX-PARITY-v4):
 ──────────────────────────────────────────────────────────────────────────
-FIX-TRAIL-ACTIVATION | CRITICAL — _compute_trail_sl() now requires profit
-  to exceed pts_mult*ATR before activating the trail, matching Pine's
-  strategy.exit(trail_points=P) activation threshold exactly.
+FIX-TRAIL-05 | SL re-check after trail update now uses correct exit reason.
+  At the bottom of _evaluate_tick(), after updating trail_sl from the new
+  peak, a re-check fires if price already crossed the updated SL level.
+  Previously it always labelled the exit "Trail SL (stage X)" — even when
+  stage==0 and current_sl is still the original initial SL, or when BE is
+  active and current_sl == entry_price.
+  Fix: same trail_improved / be_at_entry logic from the main SL-check block
+  is now replicated in the re-check, producing correct labels:
+    "Initial SL"  — stage 0, SL not improved
+    "Breakeven SL" — be_done and current_sl == entry_price
+    "Trail SL (stage N)" — trail has improved beyond initial SL
+  This matches the reason labels Pine would show and makes journal/Telegram
+  exit notifications accurate.
 
-  ROOT CAUSE OF PREMATURE EXITS:
-  Previous guard was `if peak_profit_dist < 1.0: return None` — this
-  activated the trail after a 1-point move from entry. With stage 1
-  (pts=0.70, ATR=261), the trail fired at peak - 39pts from the first tick
-  of price movement, while Pine's initial SL was 235pts below entry.
-  Result: bot exited up to ~300pts earlier than Pine on any normal
-  retracement before the trail was supposed to activate.
-
-  Pine's strategy.exit(trail_points=P, trail_offset=O) semantics:
-    - Trail ACTIVATES when profit from entry > P points (pts_mult*ATR)
-    - Trail STOP placed P points behind peak
-    - Trail FIRES when price retreats O from stop → net = (P-O) behind peak
-
-  Fix: activation guard changed from `peak_profit_dist < 1.0`
-       to `peak_profit_dist < live_atr * pts_mult`
-
-  Effect per stage (ATR=261):
-    Stage 1: trail now activates at +182pts profit (was +1pt) — gap 181pts
-    Stage 2: trail activates at +143pts profit (pts=0.55×ATR)
-    Stage 3: trail activates at +117pts profit (pts=0.45×ATR)
-    Stage 4: trail activates at +78pts profit  (pts=0.30×ATR)
-    Stage 5: trail activates at +52pts profit  (pts=0.20×ATR)
-
-  Before this fix, the stage upgrade thresholds (1×, 2×, 3×, 5×, 8× ATR)
-  were correctly guarding stage upgrades in _upgrade_stage(), but
-  _compute_trail_sl() was ignoring the pts_mult activation and firing
-  immediately — making the stage upgrade irrelevant for exit timing.
-
+──────────────────────────────────────────────────────────────────────────
 FIX-TRAIL-04 | CRITICAL — _fire_exit() now caps close_position retries at 3
   attempts and ALWAYS calls the exit callback at the end, even on full
   failure. This breaks the infinite-error cascade that was visible in
@@ -208,27 +191,40 @@ def _compute_trail_sl(
       (updated every bar close via on_bar_close / self._current_atr).
 
     FIX-EXIT-07 (preserved): stage==0 uses stage-1 params (idx clamp).
-
-    FIX-TRAIL-ACTIVATION: Pine's strategy.exit(trail_points=P, trail_offset=O):
-      - Trail ACTIVATES only when profit from entry exceeds P points (pts_mult*ATR).
-      - Trail STOP placed P points behind peak.
-      - Trail FIRES when price retreats O from stop → net = (P - O) behind peak.
-
-      Previous code used a 1-point guard (peak_profit_dist < 1.0) which activated
-      the trail immediately from tick 1. This caused premature exits: e.g. at
-      stage 1 (pts=0.70, ATR=261) the trail fired after a 1-pt move at
-      peak - 39pts, while Pine's initial SL was 235pts below entry — the bot
-      exited 326pts earlier than Pine would.
-
-      Fix: activation guard is now peak_profit_dist < live_atr * pts_mult,
-      exactly matching Pine's trail_points threshold.
     """
     idx = max(stage - 1, 0)
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
-    # FIX-TRAIL-ACTIVATION: trail only activates when profit exceeds pts_mult*ATR.
-    # This matches Pine: strategy.exit(trail_points=P) activates when price
-    # moves P points from entry in the profit direction.
+    # FIX-TRAIL-SEMANTIC: Pine's strategy.exit(trail_points=P, trail_offset=O) means:
+    #   - Trail ACTIVATES when price moves P points from entry in profit direction
+    #   - Trail STOP is placed P points behind peak  (peak + P for short, peak - P for long)
+    #   - Trail FIRES when price crosses (stop - O) = peak + P - O for short
+    #                                               = peak - P + O for long
+    #
+    # Net effect: trail fires at peak + (P - O)*ATR for short
+    #                              peak - (P - O)*ATR for long
+    #
+    # Old (WRONG) code computed: trail fires at peak + O*ATR (using offset only)
+    # Correct code computes:     trail fires at peak + (pts_mult - off_mult)*ATR
+    #
+    # Example stage 1: pts=0.70, off=0.55 → net=0.15 × ATR behind peak
+    # Old code used 0.55 × ATR behind peak → trail was 3.7× too wide → exits too late
+    # FIX-TRAIL-PARITY: Pine strategy.exit(trail_points, trail_offset) has
+    # NO activation threshold from entry price. The trail fires from tick 1
+    # as soon as price moves favorably. The stop is placed trail_pts behind
+    # peak, and fires when price retreats trail_off from that stop.
+    # Net effect: trail fires at peak + (trail_pts - trail_off) for SHORT
+    #                                   peak - (trail_pts - trail_off) for LONG
+    #
+    # Old code required peak_profit >= trail_pts before firing — this caused
+    # the bot to miss exits that Pine caught (e.g. price moved 202pts but
+    # activation needed 212pts → bot kept initial SL, Pine trailed).
+    #
+    # The only guard needed: price must have moved favorably at all (peak != entry).
+    # We use a 1-point minimum to avoid firing on flat/zero movement.
+    # FIX-TRAIL-ACTIVATION: Pine strategy.exit(trail_points=P) activates
+    # only when profit from entry exceeds P points (pts_mult*ATR).
+    # Old guard of 1.0 fired trail from tick 1 → premature exits.
     if peak_profit_dist < live_atr * pts_mult:
         return None
 
