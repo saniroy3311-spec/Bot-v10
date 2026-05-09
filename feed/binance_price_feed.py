@@ -216,8 +216,12 @@ class BinancePriceFeed:
         # ── 1. Immediate SL/TP/trail check ────────────────────────────────────
         # trail_monitor.on_price_tick is idempotent after _exit_fired = True,
         # so spamming it on every trade is safe.
+        # FIX-DUAL-SOURCE-B: pass source="binance" explicitly. The trail
+        # monitor will capture the Binance→Delta offset on the first tick
+        # after entry and translate every subsequent price to Delta-equivalent
+        # space before any peak / SL / trail decision.
         if monitor._running and not monitor._exit_fired:
-            await monitor.on_price_tick(price)
+            await monitor.on_price_tick(price, source="binance")
 
         # ── 2. Update 1m candle accumulator ───────────────────────────────────
         # We bucket trades into 1-minute windows and call push_ws_candle(h, l)
@@ -235,7 +239,10 @@ class BinancePriceFeed:
                 and monitor._running
                 and not monitor._exit_fired
             ):
-                monitor.push_ws_candle(self._candle_high, self._candle_low)
+                # FIX-DUAL-SOURCE-B: Binance source — translation applied inside.
+                monitor.push_ws_candle(
+                    self._candle_high, self._candle_low, source="binance"
+                )
 
             # Reset for the new bucket
             self._candle_open_ts = candle_minute
@@ -251,5 +258,8 @@ class BinancePriceFeed:
             # Also push an intrabar update every trade so the trail monitor
             # sees the latest Binance peak in real time (not just at 1m close).
             # push_ws_candle only updates peak if it's a new extreme — cheap.
+            # FIX-DUAL-SOURCE-B: Binance source — translation applied inside.
             if monitor._running and not monitor._exit_fired:
-                monitor.push_ws_candle(self._candle_high, self._candle_low)
+                monitor.push_ws_candle(
+                    self._candle_high, self._candle_low, source="binance"
+                )
