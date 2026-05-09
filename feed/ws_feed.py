@@ -123,6 +123,7 @@ import websockets.exceptions
 from config import (
     DELTA_API_KEY, DELTA_API_SECRET, DELTA_TESTNET,
     SYMBOL, CANDLE_TIMEFRAME, WS_RECONNECT_SEC, EMA_TREND_LEN,
+    BINANCE_SIGNAL_FEED, BINANCE_SYMBOL,
 )
 
 logger   = logging.getLogger(__name__)
@@ -241,13 +242,15 @@ class CandleFeed:
 
     async def _load_history(self) -> None:
         base_url = _INDIA_TESTNET if DELTA_TESTNET else _INDIA_LIVE
-        params = {
+        delta_params = {
             "apiKey"         : DELTA_API_KEY,
             "secret"         : DELTA_API_SECRET,
             "enableRateLimit": True,
             "urls": {"api": {"public": base_url, "private": base_url}},
         }
-        exchange = ccxt_async.delta(params)
+
+        # Always verify Delta symbol exists (needed for order execution)
+        exchange = ccxt_async.delta(delta_params)
         try:
             logger.info(f"Loading market map from Delta India ({base_url})...")
             await exchange.load_markets()
@@ -262,19 +265,53 @@ class CandleFeed:
                     f"Fix: update SYMBOL= in your .env"
                 )
             logger.info(f"Symbol {SYMBOL} verified ✅")
-
-            fetch_limit = MIN_BARS + 50
-            logger.info(
-                f"Loading {fetch_limit} historical bars via REST "
-                f"for [{SYMBOL}] [{CANDLE_TIMEFRAME}]..."
-            )
-            ohlcv    = await exchange.fetch_ohlcv(SYMBOL, CANDLE_TIMEFRAME, limit=fetch_limit)
-            self._df = self._to_df(ohlcv)
             fetched_markets = dict(exchange.markets)
         finally:
             await exchange.close()
 
-        # Build a sync exchange for REST fallback — offloaded to threads (FIX-AUDIT-02)
+        # Load historical candles — from Binance or Delta depending on config
+        fetch_limit = MIN_BARS + 50
+
+        if BINANCE_SIGNAL_FEED:
+            logger.info(
+                f"Loading {fetch_limit} historical bars via Binance REST "
+                f"for [{BINANCE_SYMBOL}] [{CANDLE_TIMEFRAME}]..."
+            )
+            binance_async = ccxt_async.binance({"enableRateLimit": True})
+            try:
+                await binance_async.load_markets()
+                ohlcv = await binance_async.fetch_ohlcv(
+                    BINANCE_SYMBOL, CANDLE_TIMEFRAME, limit=fetch_limit
+                )
+                self._df = self._to_df(ohlcv)
+                logger.info(
+                    f"[BINANCE-SIGNAL] Loaded {len(self._df)} Binance bars ✅ "
+                    f"(indicators will match Pine's data source)"
+                )
+            finally:
+                await binance_async.close()
+
+            # Sync Binance exchange for REST bar corrections at boundary
+            self._binance_exchange = ccxt.binance({"enableRateLimit": True})
+            self._binance_exchange.markets = dict(binance_async.markets)
+        else:
+            logger.info(
+                f"Loading {fetch_limit} historical bars via Delta REST "
+                f"for [{SYMBOL}] [{CANDLE_TIMEFRAME}]..."
+            )
+            delta_async = ccxt_async.delta(delta_params)
+            try:
+                await delta_async.load_markets()
+                ohlcv = await delta_async.fetch_ohlcv(
+                    SYMBOL, CANDLE_TIMEFRAME, limit=fetch_limit
+                )
+                self._df = self._to_df(ohlcv)
+            finally:
+                await delta_async.close()
+
+            self._binance_exchange = None
+
+        # Build a sync Delta exchange for REST fallback
         self._exchange = ccxt.delta({
             "apiKey"         : DELTA_API_KEY,
             "secret"         : DELTA_API_SECRET,
@@ -283,17 +320,10 @@ class CandleFeed:
         })
         self._exchange.markets = fetched_markets
 
-        # FIX-ENTRY-DELAY: fetch_ohlcv() last row is the currently-OPEN bar
-        # (partial, live). Using its timestamp as _last_candle_boundary means
-        # the boundary is already "seen" — the bot then waits a full 30 min
-        # for the NEXT boundary before firing on_bar_close. Result: bot enters
-        # every trade exactly ONE BAR (30 min) late vs Pine Script.
-        #
-        # Fix: use iloc[-2] (last fully CLOSED bar) as the boundary baseline.
-        # Drop iloc[-1] from the df — it's a partial bar that WS will fill in.
+        # FIX-ENTRY-DELAY: use iloc[-2] (last fully CLOSED bar) as boundary baseline.
         if len(self._df) >= 2:
             last_closed_ts = int(self._df.iloc[-2]["timestamp"])
-            self._df = self._df.iloc[:-1].copy()  # drop live partial bar
+            self._df = self._df.iloc[:-1].copy()
         else:
             last_closed_ts = int(self._df.iloc[-1]["timestamp"])
         self._last_candle_boundary = _candle_boundary(last_closed_ts, self._period_ms)
@@ -302,7 +332,8 @@ class CandleFeed:
         logger.info(
             f"Feed ready — {bar_count} bars loaded "
             f"(need {MIN_BARS}, have {bar_count} — "
-            f"{'OK ✅' if bar_count >= MIN_BARS else 'WARN ⚠️'})"
+            f"{'OK ✅' if bar_count >= MIN_BARS else 'WARN ⚠️'}) "
+            f"[source={'Binance' if BINANCE_SIGNAL_FEED else 'Delta'}]"
         )
 
     async def _run_websocket(self) -> None:
@@ -406,20 +437,32 @@ class CandleFeed:
             # ──────────────────────────────────────────────────────────────────
             if not self._df.empty:
                 try:
-                    closed_ohlcv = await asyncio.to_thread(
-                        self._exchange.fetch_ohlcv,
-                        SYMBOL,
-                        CANDLE_TIMEFRAME,
-                        None,  # since
-                        3,     # limit — only need last 2 bars
-                    )
+                    # BINANCE-SIGNAL: fetch bar correction from Binance or Delta
+                    if BINANCE_SIGNAL_FEED and self._binance_exchange is not None:
+                        closed_ohlcv = await asyncio.to_thread(
+                            self._binance_exchange.fetch_ohlcv,
+                            BINANCE_SYMBOL,
+                            CANDLE_TIMEFRAME,
+                            None,  # since
+                            3,     # limit
+                        )
+                        # Binance returns [closed, closed, live] — [-2] is last closed
+                        bar_idx = -2 if len(closed_ohlcv) >= 2 else -1
+                        feed_name = "Binance"
+                    else:
+                        closed_ohlcv = await asyncio.to_thread(
+                            self._exchange.fetch_ohlcv,
+                            SYMBOL,
+                            CANDLE_TIMEFRAME,
+                            None,  # since
+                            3,     # limit
+                        )
+                        # Delta returns only closed bars — [-1] is last closed
+                        bar_idx = -1
+                        feed_name = "Delta"
+
                     if closed_ohlcv and len(closed_ohlcv) >= 1:
-                        # FIX-PEAK-REST-INDEX: Delta REST fetch_ohlcv returns
-                        # only CLOSED bars (no live partial bar appended).
-                        # So [-1] is the bar that just closed, not [-2].
-                        # Using [-2] was returning the bar BEFORE the signal bar,
-                        # causing the bot to overwrite with wrong OHLCV data.
-                        cb  = closed_ohlcv[-1]   # [-1] = bar that just closed
+                        cb  = closed_ohlcv[bar_idx]
                         idx = self._df.index[-1]
                         self._df.at[idx, "open"]   = float(cb[1])
                         self._df.at[idx, "high"]   = float(cb[2])
@@ -427,7 +470,7 @@ class CandleFeed:
                         self._df.at[idx, "close"]  = float(cb[4])
                         self._df.at[idx, "volume"] = float(cb[5])
                         logger.info(
-                            f"[FEED] FIX-PEAK-REST: closed bar corrected | "
+                            f"[FEED] FIX-PEAK-REST [{feed_name}]: closed bar corrected | "
                             f"true_high={cb[2]:.2f} true_low={cb[3]:.2f} "
                             f"true_close={cb[4]:.2f}"
                         )
@@ -479,7 +522,9 @@ class CandleFeed:
             self._last_candle_boundary = current_boundary
 
         else:
-            if not self._df.empty:
+            # Intrabar update — only write Delta WS data to df if NOT using Binance
+            # (mixing Delta intrabar OHLCV into Binance indicator data would corrupt signals)
+            if not BINANCE_SIGNAL_FEED and not self._df.empty:
                 idx = self._df.index[-1]
                 self._df.at[idx, "open"]   = o
                 self._df.at[idx, "high"]   = h
@@ -490,7 +535,6 @@ class CandleFeed:
             if self.trail_monitor is not None:
                 # FIX-PARITY-02: push live close price as a price tick so the
                 # trail loop evaluates SL/TP immediately — no REST round-trip.
-                # c = WS candle close = most recent traded price (~500ms latency).
                 loop = asyncio.get_running_loop()
                 loop.create_task(self.trail_monitor.on_price_tick(c))
 
@@ -502,22 +546,27 @@ class CandleFeed:
 
     async def _poll_rest_once(self) -> None:
         """
-        FIX-BUG4: Single REST poll cycle (replaces the old _poll_rest infinite loop).
-        Called from the main start() loop so the WS retry logic in start() can
-        count polls and trigger a WS reconnection attempt periodically.
+        FIX-BUG4: Single REST poll cycle.
+        BINANCE-SIGNAL: uses Binance candles for indicators when enabled.
         """
         sleep_sec = 5
         await asyncio.sleep(sleep_sec)
 
-        # FIX-AUDIT-02: asyncio.to_thread() runs the BLOCKING sync ccxt call
-        # in a thread pool so the event loop remains free between polls.
-        ohlcv = await asyncio.to_thread(
-            self._exchange.fetch_ohlcv,
-            SYMBOL,
-            CANDLE_TIMEFRAME,
-            None,   # since (unused)
-            5,      # limit
-        )
+        # Choose data source based on config
+        if BINANCE_SIGNAL_FEED and self._binance_exchange is not None:
+            ohlcv = await asyncio.to_thread(
+                self._binance_exchange.fetch_ohlcv,
+                BINANCE_SYMBOL,
+                CANDLE_TIMEFRAME,
+                None, 5,
+            )
+        else:
+            ohlcv = await asyncio.to_thread(
+                self._exchange.fetch_ohlcv,
+                SYMBOL,
+                CANDLE_TIMEFRAME,
+                None, 5,
+            )
 
         if not ohlcv or len(ohlcv) < 2:
             return
