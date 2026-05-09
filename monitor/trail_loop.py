@@ -125,7 +125,7 @@ from typing import Callable, Optional
 from config import (
     TRAIL_STAGES, BE_MULT, MAX_SL_MULT, MAX_SL_POINTS,
     TRAIL_LOOP_SEC, BRACKET_SL_BUFFER, TRAIL_SL_PRE_FIRE_BUFFER,
-    CANDLE_TIMEFRAME,
+    CANDLE_TIMEFRAME, SL_FIRE_VIA_BRACKET,
 )
 from risk.calculator import RiskLevels, TrailState
 
@@ -626,6 +626,11 @@ class TrailMonitor:
             return
 
         # ── 2. Hard SL / BE SL / Trail SL ────────────────────────────────────
+        # FIX-BRACKET-SL: When SL_FIRE_VIA_BRACKET=True, Python does NOT fire
+        # market closes for SL crosses — Delta's bracket SL order handles them
+        # at matching-engine speed with no spread-drift risk. Python still
+        # updates state.current_sl (step 4 below) and pushes tighter levels
+        # to Delta via _push_sl_to_delta. TP and Max SL still fire via Python.
         if is_long and price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER:
             trail_improved = state.current_sl > risk.sl
             be_at_entry    = state.be_done and abs(state.current_sl - entry_price) < 1e-6
@@ -635,8 +640,15 @@ class TrailMonitor:
                 reason = "Breakeven SL"
             else:
                 reason = "Initial SL"
-            await self._fire_exit(price, reason, source="tick")
-            return
+            if not SL_FIRE_VIA_BRACKET:
+                await self._fire_exit(price, reason, source="tick")
+                return
+            else:
+                logger.debug(
+                    f"[TRAIL] SL cross detected long (price={price:.2f} sl={state.current_sl:.2f}) "
+                    f"reason={reason} — deferring to Delta bracket"
+                )
+                return
         if not is_long and price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER:
             trail_improved = state.current_sl < risk.sl
             be_at_entry    = state.be_done and abs(state.current_sl - entry_price) < 1e-6
@@ -646,8 +658,15 @@ class TrailMonitor:
                 reason = "Breakeven SL"
             else:
                 reason = "Initial SL"
-            await self._fire_exit(price, reason, source="tick")
-            return
+            if not SL_FIRE_VIA_BRACKET:
+                await self._fire_exit(price, reason, source="tick")
+                return
+            else:
+                logger.debug(
+                    f"[TRAIL] SL cross detected short (price={price:.2f} sl={state.current_sl:.2f}) "
+                    f"reason={reason} — deferring to Delta bracket"
+                )
+                return
 
         # ── 3. Max SL (FIX-EXIT-03 + FIX-AUDIT-04) ───────────────────────────
         if not state.max_sl_fired:
@@ -692,6 +711,7 @@ class TrailMonitor:
 
 
         # Re-check SL after trail update (in case trail just moved past current price)
+        # FIX-BRACKET-SL: same gate — if bracket handles SL, skip Python fire here too.
         if is_long and price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER:
             _trail_improved = state.current_sl > risk.sl
             _be_at_entry    = state.be_done and abs(state.current_sl - entry_price) < 1e-6
@@ -701,8 +721,9 @@ class TrailMonitor:
                 _recheck_reason = "Breakeven SL"
             else:
                 _recheck_reason = "Initial SL"
-            await self._fire_exit(price, _recheck_reason, source="tick")
-            return
+            if not SL_FIRE_VIA_BRACKET:
+                await self._fire_exit(price, _recheck_reason, source="tick")
+                return
         if not is_long and price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER:
             _trail_improved = state.current_sl < risk.sl
             _be_at_entry    = state.be_done and abs(state.current_sl - entry_price) < 1e-6
@@ -712,8 +733,8 @@ class TrailMonitor:
                 _recheck_reason = "Breakeven SL"
             else:
                 _recheck_reason = "Initial SL"
-            await self._fire_exit(price, _recheck_reason, source="tick")
-            return
+            if not SL_FIRE_VIA_BRACKET:
+                await self._fire_exit(price, _recheck_reason, source="tick")
 
     # ── Exit helper ───────────────────────────────────────────────────────────
 
@@ -756,8 +777,15 @@ class TrailMonitor:
         is_long = self._risk.is_long if self._risk else True
 
         # ── FIX-TRAIL-04: bounded retries, no infinite cascade ───────────────
+        # FIX-FILL-PRICE: capture actual exchange fill from close_position
+        # result and use it for the exit callback instead of the trail's
+        # "claimed fire price". The trail fires at the SL level (e.g. 80890)
+        # but the market close fills at whatever Delta's book gives (e.g. 80695).
+        # Using the fill price makes journal/Telegram P&L match actual reality
+        # and match what Pine Script reports.
         MAX_ATTEMPTS = 3
         success = False
+        actual_fill_price: Optional[float] = None
         last_err: Optional[Exception] = None
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
@@ -765,15 +793,22 @@ class TrailMonitor:
                     is_long=is_long, reason=reason
                 )
                 success = True
-                if isinstance(result, dict) and result.get("info") == "already_closed":
-                    logger.info(
-                        f"[TRAIL] close_position: position already closed on exchange "
-                        f"— treating as exit success (attempt {attempt})"
-                    )
-                else:
-                    logger.info(
-                        f"[TRAIL] close_position: exit order placed on attempt {attempt}"
-                    )
+                # FIX-FILL-PRICE: extract actual fill from result dict
+                if isinstance(result, dict):
+                    if result.get("info") == "already_closed":
+                        logger.info(
+                            f"[TRAIL] close_position: position already closed on exchange "
+                            f"— treating as exit success (attempt {attempt})"
+                        )
+                    else:
+                        # Try standard ccxt fill fields: average > price > None
+                        fill = result.get("average") or result.get("price")
+                        if fill and float(fill) > 0:
+                            actual_fill_price = float(fill)
+                        logger.info(
+                            f"[TRAIL] close_position: exit order placed on attempt {attempt} "
+                            f"fill={actual_fill_price}"
+                        )
                 break
             except Exception as e:
                 last_err = e
@@ -788,19 +823,27 @@ class TrailMonitor:
             # PERMANENT failure — do NOT keep retrying.
             # _exit_fired stays True (no retry storm). Mark not running.
             # Fire the callback anyway so main.py resets in_position and
-            # the bot stays responsive to new bar-close signals. The user
-            # may need to manually flatten any residual position; the bot
-            # will not be able to manage what it cannot close.
+            # the bot stays responsive to new bar-close signals.
             logger.error(
                 f"[TRAIL] close_position FAILED after {MAX_ATTEMPTS} attempts "
                 f"(last error: {last_err}). Marking exit complete to prevent "
                 f"infinite retry. ⚠️ MANUAL POSITION CHECK ON DELTA REQUIRED."
             )
 
+        # FIX-FILL-PRICE: use actual exchange fill if captured, else fall back
+        # to the trail's claimed fire price (e.g. for already_closed path).
+        reported_exit_price = actual_fill_price if actual_fill_price is not None else exit_price
+        if actual_fill_price is not None and abs(actual_fill_price - exit_price) > 1.0:
+            logger.info(
+                f"[TRAIL] Exit price corrected: trail_fire={exit_price:.2f} "
+                f"actual_fill={actual_fill_price:.2f} "
+                f"diff={actual_fill_price - exit_price:+.2f}"
+            )
+
         self._running = False
         if self._on_exit_cb is not None:
             try:
-                await self._on_exit_cb(exit_price, reason, source)
+                await self._on_exit_cb(reported_exit_price, reason, source)
             except Exception as e:
                 logger.error(f"[TRAIL] exit callback error: {e}", exc_info=True)
 
