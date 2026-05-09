@@ -279,21 +279,13 @@ class ShivaSniperBot:
             if self._in_position:
                 return  # race-condition guard
 
-            # ── PINE-PARITY-SL: Anchor SL/TP to signal bar close, NOT fill ──────
-            # Pine Script never adjusts SL/TP for fill slippage.
-            # strategy.exit(stop=shortSL) uses entry-bar ATR × mult from
-            # the signal bar's close price — regardless of actual fill.
-            # recalc_levels_from_fill() was shifting SL to fill price, which
-            # caused immediate false SL hits when slippage > stop_dist.
-            # Fix: compute risk from snap.close (signal bar) and keep it fixed.
-            # Only entry_price is updated to fill for P&L / journal / Telegram.
-            risk = calc_levels(snap.close, snap.atr, sig.is_long, sig.is_trend)
+            risk_pre = calc_levels(snap.close, snap.atr, sig.is_long, sig.is_trend)
 
             try:
                 order = await self._order_mgr.place_entry(
                     is_long = sig.is_long,
-                    sl      = risk.sl,
-                    tp      = risk.tp,
+                    sl      = risk_pre.sl,
+                    tp      = risk_pre.tp,
                 )
             except Exception as e:
                 logger.error(f"[ENTRY] Order failed: {e}")
@@ -304,18 +296,8 @@ class ShivaSniperBot:
                 )
                 return
 
-            fill = float(order.get("average") or order.get("price") or snap.close)
-            # Update entry_price to actual fill for P&L calculations only.
-            # SL and TP remain pinned to snap.close — Pine parity preserved.
-            risk = RiskLevels(
-                entry_price = fill,
-                sl          = risk.sl,
-                tp          = risk.tp,
-                stop_dist   = risk.stop_dist,
-                atr         = risk.atr,
-                is_long     = risk.is_long,
-                is_trend    = risk.is_trend,
-            )
+            fill  = float(order.get("average") or order.get("price") or snap.close)
+            risk  = recalc_levels_from_fill(risk_pre, fill)
 
             self._in_position  = True
             self._risk         = risk
