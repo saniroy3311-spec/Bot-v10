@@ -191,42 +191,45 @@ def _compute_trail_sl(
       (updated every bar close via on_bar_close / self._current_atr).
 
     FIX-EXIT-07 (preserved): stage==0 uses stage-1 params (idx clamp).
+
+    FIX-DUAL-SOURCE-A (corrects FIX-TRAIL-PARITY): Restore Pine v6 semantics.
+
+    Pine docs (TradingCode):
+      "trail_points defines at how many instrument ticks of profit the
+       trailing stop activates. When that profit amount is hit,
+       strategy.exit() enables the trailing stop. After the trailing stop
+       activates, it follows the best prices [trail_offset] ticks behind."
+
+    So Pine's strategy.exit(trail_points=P, trail_offset=O):
+      • ACTIVATION: trail arms only when peak_profit >= P (= pts_mult * ATR)
+      • TRAIL SL:   placed at  peak - O  (long) / peak + O  (short)
+                    where O = off_mult * ATR
+      • Before activation: NO trail SL exists (only the hard SL is active).
+
+    The previous "FIX-TRAIL-PARITY" was incorrect on two counts:
+      1. It removed the activation guard ("peak_profit >= P"), claiming Pine
+         had no such threshold. That is wrong — trail_points IS the activation
+         threshold per Pine v6 docs.
+      2. It used "peak - (P - O) * ATR" as the fire price. Correct Pine formula
+         is "peak - O * ATR" (just the trail_offset behind peak).
+
+    With the previous incorrect code AND a Delta/Binance dual-source feed,
+    the trail would arm on the very first Binance tick (which sits ~30pts
+    above Delta's fill price), placing current_sl above the fill price and
+    firing immediately on any retracement. This produced a string of
+    zero-P&L exits at fill price — exactly the symptom seen in production.
     """
     idx = max(stage - 1, 0)
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
-    # FIX-TRAIL-SEMANTIC: Pine's strategy.exit(trail_points=P, trail_offset=O) means:
-    #   - Trail ACTIVATES when price moves P points from entry in profit direction
-    #   - Trail STOP is placed P points behind peak  (peak + P for short, peak - P for long)
-    #   - Trail FIRES when price crosses (stop - O) = peak + P - O for short
-    #                                               = peak - P + O for long
-    #
-    # Net effect: trail fires at peak + (P - O)*ATR for short
-    #                              peak - (P - O)*ATR for long
-    #
-    # Old (WRONG) code computed: trail fires at peak + O*ATR (using offset only)
-    # Correct code computes:     trail fires at peak + (pts_mult - off_mult)*ATR
-    #
-    # Example stage 1: pts=0.70, off=0.55 → net=0.15 × ATR behind peak
-    # Old code used 0.55 × ATR behind peak → trail was 3.7× too wide → exits too late
-    # FIX-TRAIL-PARITY: Pine strategy.exit(trail_points, trail_offset) has
-    # NO activation threshold from entry price. The trail fires from tick 1
-    # as soon as price moves favorably. The stop is placed trail_pts behind
-    # peak, and fires when price retreats trail_off from that stop.
-    # Net effect: trail fires at peak + (trail_pts - trail_off) for SHORT
-    #                                   peak - (trail_pts - trail_off) for LONG
-    #
-    # Old code required peak_profit >= trail_pts before firing — this caused
-    # the bot to miss exits that Pine caught (e.g. price moved 202pts but
-    # activation needed 212pts → bot kept initial SL, Pine trailed).
-    #
-    # The only guard needed: price must have moved favorably at all (peak != entry).
-    # We use a 1-point minimum to avoid firing on flat/zero movement.
-    if peak_profit_dist < 1.0:
+    # ACTIVATION: trail must reach trail_points worth of profit before arming.
+    activation_threshold = live_atr * pts_mult
+    if peak_profit_dist < activation_threshold:
         return None
 
-    net = live_atr * (pts_mult - off_mult)
-    return (peak_price - net) if is_long else (peak_price + net)
+    # Once activated, trail SL sits trail_offset behind the peak.
+    offset = live_atr * off_mult
+    return (peak_price - offset) if is_long else (peak_price + offset)
 
 
 def _check_be(current_profit: float, live_atr: float) -> bool:
@@ -268,6 +271,24 @@ class TrailMonitor:
 
         self._current_atr     : float = 0.0   # FIX-PARITY-01: live ATR updated each bar
 
+        # FIX-DUAL-SOURCE-B: Binance/Delta price-source offset compensation.
+        # The bot fills entries on Delta India but watches Binance aggTrade
+        # ticks for fast exit detection. Binance BTC futures typically trade
+        # ~30-50pts ABOVE Delta India BTC futures (different orderbooks,
+        # liquidity, regional premium). Without correction, the very first
+        # Binance tick after a Delta fill makes peak_price jump ~30pts above
+        # entry — the bot sees "instant 30pt profit" that does not actually
+        # exist in Delta's price space, and the trail arms / SL moves
+        # accordingly.
+        #
+        # Fix: on the first tick after entry, capture the Binance-Delta gap
+        # as `_source_offset = first_binance_tick - fill_price`. Subsequent
+        # ticks are translated to Delta-equivalent space via
+        # `delta_eq_price = binance_price - _source_offset` before being
+        # used for peak / SL / trail decisions.
+        self._source_offset   : Optional[float] = None
+        self._first_tick_ts_ms: int  = 0
+
     # ── Start / Stop ──────────────────────────────────────────────────────────
 
     def start(
@@ -285,6 +306,11 @@ class TrailMonitor:
         self._exit_fired   = False
         self._running      = True
         self._current_atr  = risk_levels.atr   # seed with entry-bar ATR; updated each bar close
+
+        # FIX-DUAL-SOURCE-B: reset offset for new trade. It will be captured
+        # on the first tick that arrives after the trail starts.
+        self._source_offset    = None
+        self._first_tick_ts_ms = 0
 
         # FIX-AUDIT-04: compute the end of the current candle boundary.
         self._entry_bar_end_ms = (
@@ -337,6 +363,20 @@ class TrailMonitor:
         state = self._state
         is_long     = risk.is_long
         entry_price = risk.entry_price
+
+        # ── FIX-DUAL-SOURCE-B: translate Binance bar OHLC to Delta-equivalent ─
+        # bar_close / bar_high / bar_low / bar_open arrive from the Binance
+        # signal feed (BTCUSDT). All downstream logic (stage upgrade, BE,
+        # peak update, trail recompute, same-bar exit check) compares these
+        # values against entry_price (a Delta fill). They must be in the
+        # same coordinate system. If we have already captured the offset
+        # from a tick, apply it here too.
+        if self._source_offset is not None:
+            bar_close = bar_close - self._source_offset
+            bar_high  = bar_high  - self._source_offset
+            bar_low   = bar_low   - self._source_offset
+            if bar_open > 0.0:
+                bar_open = bar_open - self._source_offset
 
         # ── 1. Update live ATR (FIX-PARITY-01) ──────────────────────────────
         # All trail distance calculations below use current_atr, not entry_atr.
@@ -431,7 +471,7 @@ class TrailMonitor:
 
     # ── WS price push — primary exit detection (FIX-PARITY-02) ──────────────
 
-    async def on_price_tick(self, price: float) -> None:
+    async def on_price_tick(self, price: float, source: str = "binance") -> None:
         """
         FIX-PARITY-02: Primary intrabar exit detection path.
 
@@ -442,15 +482,57 @@ class TrailMonitor:
 
         _tick_loop() continues as a 2-second safety net for cases where
         WS updates stall.
+
+        FIX-DUAL-SOURCE-B: The bot has multiple tick sources:
+          • binance_price_feed (aggTrade)  → Binance space, NEEDS translation
+          • ws_feed intrabar candles       → Delta  space, no translation
+          • _tick_loop REST safety net     → Delta  space, no translation
+        The `source` parameter ("binance" / "delta") determines whether to
+        apply the captured Binance→Delta offset before evaluating exits.
+        Callers pass source="delta" for Delta-sourced prices.
         """
         if not self._running or self._exit_fired or price <= 0:
             return
+
+        # FIX-DUAL-SOURCE-B: capture/apply Binance→Delta offset.
+        if source == "binance" and self._risk is not None:
+            if self._source_offset is None:
+                raw_offset = price - self._risk.entry_price
+                # Sanity cap: Binance/Delta gap is typically ±50 BTC pts.
+                # If the first tick is wildly different (>500 pts away from
+                # fill), it's almost certainly a bad/stale tick or a wrong
+                # symbol — don't poison the offset for the rest of the trade.
+                # Fall back to zero offset (no translation) and try again.
+                if abs(raw_offset) > 500.0:
+                    logger.warning(
+                        f"[TRAIL] Source offset rejected (|{raw_offset:+.2f}| > 500): "
+                        f"binance_first_tick={price:.2f} "
+                        f"delta_fill={self._risk.entry_price:.2f}  "
+                        f"will retry on next tick"
+                    )
+                    return  # don't capture, don't evaluate this tick
+                self._source_offset    = raw_offset
+                self._first_tick_ts_ms = int(time.time() * 1000)
+                logger.info(
+                    f"[TRAIL] Source offset captured: "
+                    f"binance_first_tick={price:.2f} "
+                    f"delta_fill={self._risk.entry_price:.2f} "
+                    f"offset={self._source_offset:+.2f}  "
+                    f"(subsequent Binance ticks corrected to Delta-equivalent space)"
+                )
+            price = price - self._source_offset
+
         await self._evaluate_tick(price)
 
     async def _evaluate_tick_pair(self, tp_side: float, sl_side: float) -> None:
         """
         FIX-PARITY-03: Evaluate TP-side price first, then SL-side.
         Scheduled by push_ws_candle() after updating peak_price.
+
+        FIX-DUAL-SOURCE-B: tp_side / sl_side here are ALREADY translated
+        to Delta-equivalent space by push_ws_candle (which applies the
+        offset to high/low before scheduling). Pass them straight through
+        as Delta-equivalent.
         """
         await self._evaluate_tick(tp_side)
         if not self._exit_fired:
@@ -514,6 +596,13 @@ class TrailMonitor:
 
         is_long     = risk.is_long
         entry_price = risk.entry_price
+
+        # NOTE: Source-offset translation (Binance → Delta-equivalent) is
+        # performed by the CALLER for tick paths sourced from Binance
+        # (on_price_tick, _evaluate_tick_pair). The REST safety net inside
+        # _tick_loop fetches Delta mark price directly and passes it through
+        # untranslated. Either way, the `price` argument here is in
+        # Delta-equivalent space.
 
         # ── Track intrabar peak for live trail SL computation ─────────────────
         if is_long:
@@ -751,26 +840,36 @@ class TrailMonitor:
 
     # ── Feed integration ───────────────────────────────────────────────────────
 
-    def push_ws_candle(self, high: float, low: float) -> None:
+    def push_ws_candle(self, high: float, low: float, source: str = "binance") -> None:
         """
-        Called by ws_feed on every intrabar WS candle update.
+        Called by ws_feed (Delta WS) and binance_price_feed (1m bucket flush).
 
         FIX-PARITY-01 (preserved): Updates peak_price from live high/low
           so trail SL tightens as the bar develops.
 
-        FIX-PARITY-03 (new): After updating peak, schedules an immediate
-          exit evaluation for both the TP-side and SL-side prices. This
-          closes the gap where a candle spike hit TP and reversed before
-          the next REST poll — the bot now sees it within one event-loop
-          iteration of the WS candle arriving.
+        FIX-PARITY-03 (preserved): After updating peak, schedules an
+          immediate exit evaluation for both the TP-side and SL-side prices.
 
-          TP-side: high for longs (TP is above entry), low for shorts.
-          SL-side: low for longs (SL is below entry), high for shorts.
+        FIX-DUAL-SOURCE-B: Multiple callers send high/low from different
+        price sources:
+          • binance_price_feed 1m flush  → Binance space (translate)
+          • ws_feed FIX-PEAK-REST hook   → Binance space (translate)
+          • ws_feed Delta intrabar h/l   → Delta  space (no translate)
+        Callers pass source="delta" for Delta-sourced extremes.
         """
         if not self._running or self._exit_fired or self._state is None or self._risk is None:
             return
 
         is_long = self._risk.is_long
+
+        # FIX-DUAL-SOURCE-B: translate Binance high/low to Delta-equivalent.
+        if source == "binance":
+            if self._source_offset is None:
+                # Offset not captured yet — skip this update; the next
+                # aggTrade tick will set it and future updates will work.
+                return
+            high = high - self._source_offset
+            low  = low  - self._source_offset
 
         # Update intrabar peak (unchanged from original)
         if is_long:
