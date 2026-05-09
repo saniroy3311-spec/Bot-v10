@@ -280,10 +280,46 @@ class CandleFeed:
             binance_async = ccxt_async.binance({"enableRateLimit": True})
             try:
                 await binance_async.load_markets()
-                ohlcv = await binance_async.fetch_ohlcv(
-                    BINANCE_SYMBOL, CANDLE_TIMEFRAME, limit=fetch_limit
-                )
-                self._df = self._to_df(ohlcv)
+                # Binance caps at 1000 bars per call — paginate backward
+                all_ohlcv = []
+                earliest_ts = None
+
+                while len(all_ohlcv) < fetch_limit:
+                    batch_size = min(fetch_limit - len(all_ohlcv), 1000)
+                    if earliest_ts is None:
+                        # First call: get most recent bars
+                        batch = await binance_async.fetch_ohlcv(
+                            BINANCE_SYMBOL, CANDLE_TIMEFRAME, limit=batch_size
+                        )
+                    else:
+                        # Subsequent calls: go further back in time
+                        # fetch bars ending before our earliest timestamp
+                        go_back_ms = batch_size * self._period_ms
+                        since_ts = earliest_ts - go_back_ms
+                        batch = await binance_async.fetch_ohlcv(
+                            BINANCE_SYMBOL, CANDLE_TIMEFRAME,
+                            since=since_ts, limit=batch_size
+                        )
+                    if not batch:
+                        break
+
+                    if earliest_ts is None:
+                        all_ohlcv = batch
+                    else:
+                        # Prepend older bars, avoiding duplicates
+                        cutoff = earliest_ts
+                        older = [b for b in batch if int(b[0]) < cutoff]
+                        all_ohlcv = older + all_ohlcv
+
+                    earliest_ts = int(all_ohlcv[0][0])
+                    logger.info(
+                        f"[BINANCE-SIGNAL] Fetched {len(all_ohlcv)}/{fetch_limit} bars..."
+                    )
+
+                    if len(batch) < batch_size:
+                        break  # no more history available
+
+                self._df = self._to_df(all_ohlcv[-fetch_limit:])
                 logger.info(
                     f"[BINANCE-SIGNAL] Loaded {len(self._df)} Binance bars ✅ "
                     f"(indicators will match Pine's data source)"
