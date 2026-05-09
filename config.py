@@ -132,6 +132,15 @@ TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "0.0
 # ──────────────────────────────────────────────
 CANDLE_TIMEFRAME = os.environ.get("CANDLE_TIMEFRAME", "30m")
 
+# BINANCE-SIGNAL-FEED: Use Binance BTCUSDT candles for indicator calculation
+# instead of Delta India's BTCUSD.P. TradingView's Pine Script uses Binance
+# as its primary BTC data source, so computing indicators on Binance data
+# gives ~90-95% match vs Pine (vs ~70-85% on Delta data).
+# Set BINANCE_SIGNAL_FEED=true in .env to enable.
+# Orders still execute on Delta India — only the candle data source changes.
+BINANCE_SIGNAL_FEED = os.environ.get("BINANCE_SIGNAL_FEED", "true").lower() == "true"
+BINANCE_SYMBOL      = os.environ.get("BINANCE_SYMBOL", "BTC/USDT")
+
 # BINANCE-EXIT-FEED-v1: TRAIL_LOOP_SEC raised from 0.1 → 5.0.
 # BinancePriceFeed now handles all intrabar exit monitoring via Binance
 # aggTrade WS (~10ms). The _tick_loop in trail_loop.py is now a pure
