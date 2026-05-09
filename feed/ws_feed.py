@@ -511,9 +511,14 @@ class CandleFeed:
                             f"true_close={cb[4]:.2f}"
                         )
                         # Sync trail monitor peak_price with true bar extreme
+                        # FIX-DUAL-SOURCE-B: pass the actual source so the trail
+                        # monitor can apply the Binance→Delta offset only when
+                        # the values came from Binance (BTCUSDT). Delta values
+                        # are already in Delta-equivalent space.
                         if self.trail_monitor is not None:
                             self.trail_monitor.push_ws_candle(
-                                float(cb[2]), float(cb[3])
+                                float(cb[2]), float(cb[3]),
+                                source = "binance" if feed_name == "Binance" else "delta",
                             )
                     else:
                         logger.warning(
@@ -571,12 +576,19 @@ class CandleFeed:
             if self.trail_monitor is not None:
                 # FIX-PARITY-02: push live close price as a price tick so the
                 # trail loop evaluates SL/TP immediately — no REST round-trip.
+                # FIX-DUAL-SOURCE-B: this `c` is the Delta India intrabar close
+                # (the WS subscription is wss://socket.india.delta.exchange).
+                # Tag source="delta" so the trail monitor does NOT subtract the
+                # Binance offset from it.
                 loop = asyncio.get_running_loop()
-                loop.create_task(self.trail_monitor.on_price_tick(c))
+                loop.create_task(
+                    self.trail_monitor.on_price_tick(c, source="delta")
+                )
 
                 # FIX-PARITY-03 (via push_ws_candle): update intrabar peak and
                 # schedule TP/SL evaluation for both candle extremes.
-                self.trail_monitor.push_ws_candle(h, l)
+                # FIX-DUAL-SOURCE-B: h/l here are Delta WS values, source="delta".
+                self.trail_monitor.push_ws_candle(h, l, source="delta")
 
     # ── REST polling fallback ──────────────────────────────────────────────────
 
@@ -630,7 +642,14 @@ class CandleFeed:
                         f"true_high={cb[2]:.2f} true_low={cb[3]:.2f} true_close={cb[4]:.2f}"
                     )
                     if self.trail_monitor is not None:
-                        self.trail_monitor.push_ws_candle(float(cb[2]), float(cb[3]))
+                        # FIX-DUAL-SOURCE-B: source matches whichever exchange
+                        # was queried above for the REST poll.
+                        self.trail_monitor.push_ws_candle(
+                            float(cb[2]), float(cb[3]),
+                            source = "binance" if (
+                                BINANCE_SIGNAL_FEED and self._binance_exchange is not None
+                            ) else "delta",
+                        )
                 except Exception as e:
                     logger.warning(f"[FEED] FIX-PEAK-REST (REST path) failed: {e}")
 
