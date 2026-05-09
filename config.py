@@ -127,6 +127,12 @@ COMMISSION_PCT           = 0.059 / 100   # FIX-COMM-001: actual Delta India take
 BRACKET_SL_BUFFER        = float(os.environ.get("BRACKET_SL_BUFFER",        "10.0"))
 TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "0.0"))
 
+# FIX-BRACKET-SL: When true, Python tick loop does NOT fire market closes for
+# SL crosses. Delta bracket SL is sole authority for stop exits. Eliminates
+# premature exits from Binance-Delta spread drift. TP and Max SL still fire
+# via Python. Default true (production-safe).
+SL_FIRE_VIA_BRACKET = os.environ.get("SL_FIRE_VIA_BRACKET", "true").lower() == "true"
+
 # ──────────────────────────────────────────────
 # TIMING
 # ──────────────────────────────────────────────
