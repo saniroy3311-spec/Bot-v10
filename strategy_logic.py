@@ -349,35 +349,24 @@ def upgrade_trail_stage(current_stage: int, peak_profit_dist: float, atr: float)
 
 
 def compute_trail_sl(stage: int, peak_price: float, peak_profit_dist: float, is_long: bool, atr: float) -> Optional[float]:
-    # FIX-TRAIL-PINE-PARITY (replaces the previous activation-gate version):
+    # Pine Script exact parity (matches monitor/trail_loop.py _compute_trail_sl):
+    #   trail_points (pts_mult) = ACTIVATION threshold — profit must reach this first.
+    #   trail_offset (off_mult) = DISTANCE stop is placed from the peak price.
     #
-    # Pine's strategy.exit(trail_points=P, trail_offset=O) places the trailing
-    # stop at `O * ATR` behind the running peak from entry tick 1 — there is
-    # no "wait for profit >= P*ATR before activating" gate on the offset.
+    # If peak profit has not yet reached the activation threshold for this stage,
+    # return None (trail not yet active). Once activated, stop = peak ± offset.
     #
-    # Old behavior caused live divergence on trades where peak profit never
-    # reached pts_mult*ATR (~0.7 × ATR ≈ 190pts on BTC at 273 ATR). Pine
-    # would trail and capture ~+47 USD; the bot stayed pinned to the initial
-    # SL and lost ~−333 USD on the same setup.
-    #
-    # Stage activation in *this* codebase is handled by `upgrade_trail_stage`,
-    # which advances `state.stage` only when bar-close profit reaches
-    # `trigger_mult * ATR`. The OFFSET (this function) just trails the peak
-    # at `off_mult * ATR` for whatever stage is currently active.
-    #
-    # Stage offset multipliers (from TRAIL_STAGES):
-    #   Stage 1: 0.55 ATR behind peak
-    #   Stage 2: 0.45 ATR behind peak
-    #   Stage 3: 0.35 ATR behind peak
-    #   Stage 4: 0.25 ATR behind peak
-    #   Stage 5: 0.15 ATR behind peak
-    if stage == 0:
-        return None
-    if peak_profit_dist <= 0:
-        return None
-    _, _pts_mult, off_mult = TRAIL_STAGES[max(stage - 1, 0)]
-    offset = atr * off_mult
-    return (peak_price - offset) if is_long else (peak_price + offset)
+    # Stage activation / offset (ATR multiples from config TRAIL_STAGES):
+    #   Stage 1: activate at 0.70 ATR profit, stop 0.55 ATR from peak
+    #   Stage 2: activate at 0.55 ATR profit, stop 0.45 ATR from peak
+    #   Stage 3: activate at 0.45 ATR profit, stop 0.35 ATR from peak
+    #   Stage 4: activate at 0.30 ATR profit, stop 0.25 ATR from peak
+    #   Stage 5: activate at 0.20 ATR profit, stop 0.15 ATR from peak
+    _, pts_mult, off_mult = TRAIL_STAGES[max(stage - 1, 0)]
+    activation = atr * pts_mult   # profit must be >= this to trail
+    offset     = atr * off_mult   # stop placed this far from peak
+    if peak_profit_dist < activation:
+        return None  # trail not yet activated for this stage
 
 
 def should_trigger_be(profit_dist: float, atr: float) -> bool:
