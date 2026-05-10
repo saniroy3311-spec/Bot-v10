@@ -103,7 +103,7 @@ PRESERVED FROM FIX-WS-v3 + FIX-AUDIT (all unchanged):
   - WS primary, REST fallback after 5 failures
   - Historical load via REST on startup (ccxt.async_support)
   - Heartbeat every 30s
-  - MIN_BARS=1500 guard
+  - MIN_BARS=200 guard (Pine parity — EMA(200) warmup, not 1500)
   - _processing guard prevents re-entrant on_bar_close
 ════════════════════════════════════════════════════════════════════════════════
 """
@@ -127,7 +127,13 @@ from config import (
 )
 
 logger   = logging.getLogger(__name__)
-MIN_BARS = 1500
+# FIX-PARITY-MIN-BARS: was 1500, now 200.
+# Pine Script warms up from bar 1 — it just returns `na` until indicators
+# have enough history. EMA(200) needs only 200 bars of history to produce
+# stable values. Setting MIN_BARS=1500 made the bot wait ~31 days of 30m
+# candles before evaluating ANY signal, missing every trade in that window.
+# 200 = enough for EMA(200) warmup, matches Pine's effective behaviour.
+MIN_BARS = 200
 
 _INDIA_LIVE    = "https://api.india.delta.exchange"
 _INDIA_TESTNET = "https://testnet-api.india.delta.exchange"
