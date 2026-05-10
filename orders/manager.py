@@ -338,6 +338,13 @@ class OrderManager:
             logger.warning(f"[OM] fetch_open_position failed: {exc}")
         return None
 
+    # Backward-compat alias — older modules (phase3, execution.py, and any stale
+    # VPS code) call this name. Both names return the same data. This prevents
+    # the "'OrderManager' object has no attribute 'fetch_position'" AttributeError
+    # from crashing the bar handler mid-trade.
+    async def fetch_position(self) -> Optional[dict]:
+        return await self.fetch_open_position()
+
     # ── Order placement ───────────────────────────────────────────────────────
 
     async def place_entry(
