@@ -197,6 +197,28 @@ class ShivaSniperBot:
           - Stage upgrades + BE only fire at bar close.
           - TP / SL / Trail SL checked at bar close AND intrabar (WS ticks).
         """
+        # ── 0. State sanity check ─────────────────────────────────────────────
+        # If memory thinks we're long but Delta is actually flat (e.g. previous
+        # bracket SL hit was missed by Python, or an exception left state stuck),
+        # reset so the bot can take new signals. Without this, ONE stuck state
+        # blocks all future trades for the rest of the session.
+        if self._in_position and not self._entry_lock.locked():
+            try:
+                actual = await self._order_mgr.fetch_open_position()
+                if actual is None:
+                    logger.warning(
+                        "[BAR] State drift detected: in_position=True but Delta "
+                        "is flat. Resetting state — bot will accept new signals."
+                    )
+                    self._in_position = False
+                    self._risk        = None
+                    self._trail_state = None
+                    self._signal_type = "None"
+                    if self._trail_mon._running:
+                        self._trail_mon.stop()
+            except Exception as e:
+                logger.warning(f"[BAR] State sanity check failed: {e}")
+
         # ── 1. Compute indicators ─────────────────────────────────────────────
         try:
             snap = compute(df)
@@ -297,7 +319,25 @@ class ShivaSniperBot:
                 return
 
             fill  = float(order.get("average") or order.get("price") or snap.close)
-            risk  = recalc_levels_from_fill(risk_pre, fill)
+
+            # PINE-PARITY-SL: SL/TP stay anchored to signal-bar close (risk_pre),
+            # NOT shifted to the actual fill price. Pine's strategy.entry()
+            # simulates fill at bar close and computes SL/TP from that close.
+            # Calling recalc_levels_from_fill() here caused two production bugs:
+            #   1) Bracket attach failures with "bracket_order_immediate_execution"
+            #      because the shifted SL was within Delta's price drift.
+            #   2) Instant Trail-SL exits within 1-2 seconds of entry, because
+            #      the Binance↔Delta offset put price right at the shifted SL.
+            # Keep risk_pre's SL/TP; only update entry_price for logging/journal.
+            risk = RiskLevels(
+                entry_price = fill,
+                sl          = risk_pre.sl,
+                tp          = risk_pre.tp,
+                stop_dist   = risk_pre.stop_dist,
+                atr         = risk_pre.atr,
+                is_long     = risk_pre.is_long,
+                is_trend    = risk_pre.is_trend,
+            )
 
             self._in_position  = True
             self._risk         = risk
