@@ -198,24 +198,65 @@ class ShivaSniperBot:
           - TP / SL / Trail SL checked at bar close AND intrabar (WS ticks).
         """
         # ── 0. State sanity check ─────────────────────────────────────────────
-        # If memory thinks we're long but Delta is actually flat (e.g. previous
-        # bracket SL hit was missed by Python, or an exception left state stuck),
-        # reset so the bot can take new signals. Without this, ONE stuck state
-        # blocks all future trades for the rest of the session.
+        # FIX-BRACKET-RECOVERY (2026-05-11):
+        # When SL_FIRE_VIA_BRACKET=true, the Python tick loop intentionally
+        # does NOT fire market closes on SL crosses — Delta's bracket SL
+        # handles them at matching-engine speed. The side effect: when the
+        # bracket fires, Python has no idea the position closed. No Telegram
+        # exit, no journal row, no P&L logged — the trade simply disappears.
+        #
+        # This block detects that drift (memory says in_position, Delta says
+        # flat) and routes through the normal _on_trail_exit() path so the
+        # Telegram exit, journal entry, and P&L all get recorded properly.
+        #
+        # Best-effort exit price = last trailed SL (most accurate for bracket
+        # SL fills), falling back to original risk SL, then bar close.
         if self._in_position and not self._entry_lock.locked():
             try:
                 actual = await self._order_mgr.fetch_open_position()
                 if actual is None:
                     logger.warning(
                         "[BAR] State drift detected: in_position=True but Delta "
-                        "is flat. Resetting state — bot will accept new signals."
+                        "is flat. Bracket SL/TP fired silently — recovering exit."
                     )
-                    self._in_position = False
-                    self._risk        = None
-                    self._trail_state = None
-                    self._signal_type = "None"
+
+                    # Determine best-effort exit price.
+                    exit_price: float
+                    if self._trail_state is not None:
+                        exit_price = float(self._trail_state.current_sl)
+                    elif self._risk is not None and self._risk.sl > 0:
+                        exit_price = float(self._risk.sl)
+                    else:
+                        # Last resort: use current bar close.
+                        try:
+                            exit_price = float(df["close"].iloc[-1])
+                        except Exception:
+                            exit_price = 0.0
+
+                    # Stop trail BEFORE firing exit so it doesn't double-fire
+                    # on the next price tick.
                     if self._trail_mon._running:
                         self._trail_mon.stop()
+
+                    # Route through the normal exit path — Telegram, journal,
+                    # and P&L are all handled inside _on_trail_exit, which
+                    # also resets in_position / risk / trail_state.
+                    try:
+                        await self._on_trail_exit(
+                            exit_price = exit_price,
+                            reason     = "Bracket SL/TP (recovered)",
+                            source     = "drift-check",
+                        )
+                    except Exception as exit_err:
+                        logger.error(
+                            f"[BAR] Drift-recovery exit failed: {exit_err}",
+                            exc_info=True,
+                        )
+                        # Hard reset so we don't get stuck.
+                        self._in_position = False
+                        self._risk        = None
+                        self._trail_state = None
+                        self._signal_type = "None"
             except Exception as e:
                 logger.warning(f"[BAR] State sanity check failed: {e}")
 
