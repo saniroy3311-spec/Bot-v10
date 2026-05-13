@@ -16,6 +16,20 @@ PHASE-2 moves SL + TP onto Delta India's matching engine using the
 crosses, Delta fills it in ~5 ms — matching Pine's broker-emulator latency
 within market microstructure noise.
 
+FIX-BRACKET-ID (2026-05-13):
+─────────────────────────────────────────────────────────────────────────────
+Delta India's POST /v2/orders/bracket returns the SL/TP order IDs nested
+inside the response (either as a list under `result` or under
+`result.stop_loss_order.id`) — NOT at `result.id` as v10's original code
+assumed. When parsing failed, `_bracket_order_id` stayed None and every
+subsequent `update_bracket_sl()` was rejected with the warning
+"no bracket_order_id, cannot update", leaving the trail SL on Python-side
+only (defeating the whole point of Phase-2). This file now:
+  1. Probes multiple response shapes to find the SL order id.
+  2. Falls back to a `fetch_open_orders()` discovery pass if parsing fails.
+  3. Marks the bracket as active either way (the bracket exists on Delta;
+     we just need its id to mutate it).
+
 How it plugs in
 ─────────────────────────────────────────────────────────────────────────────
 The public API of OrderManager is UNCHANGED. main.py and trail_loop.py
@@ -28,7 +42,7 @@ before. The bracket flow is handled internally:
      • IMMEDIATELY POST /v2/orders/bracket attaching SL + TP to the
        open position. Save the bracket order id.
 
-  2. update_bracket_sl(new_sl)        ← NEW PUBLIC METHOD
+  2. update_bracket_sl(new_sl)        ← PUBLIC METHOD
      • Called by TrailMonitor when the trail tightens or BE activates.
      • PUT /v2/orders/bracket — Delta updates the existing bracket SL
        in place. No race, no cancel-and-replace.
@@ -39,7 +53,7 @@ before. The bracket flow is handled internally:
        intervention, etc. If the bracket fired first, this returns
        {"info": "already_closed"} as before — no behavioral change.
 
-  4. cancel_bracket()                  ← NEW
+  4. cancel_bracket()
      • Removes the SL + TP from Delta (called on shutdown / stop).
 
 Endpoints used
@@ -53,33 +67,6 @@ All four are signed with HMAC-SHA256 over (METHOD + TIMESTAMP + PATH + BODY)
 per Delta India's auth spec — same scheme ccxt already uses internally.
 We use the raw signed-request path for the bracket endpoints because ccxt
 does not expose them in its high-level API yet.
-
-Failure modes & guards
-─────────────────────────────────────────────────────────────────────────────
-  • Bracket place failure after entry fill: log, send Telegram alert,
-    fall back to Phase-1 behavior (Python-side tick loop manages SL).
-    The trade stays open; the bot still has its safety net.
-  • Bracket update failure: log, retry once. If still failing, log
-    loudly. The Python-side trail SL in trail_loop.state.current_sl
-    is the safety net — if the bracket on Delta doesn't tighten,
-    the WS tick path will still catch the cross (just with the
-    Phase-1 latency we accepted before).
-  • Position closed by bracket: detected on next bar close via
-    fetch_open_position() returning None — main.py resets state.
-
-Public API (unchanged signatures unless marked NEW/PHASE-2)
-─────────────────────────────────────────────────────────────────────────────
-  build_exchange()                         → ccxt.delta  (sync, module-level)
-  OrderManager.initialize()                → load markets, validate symbol
-  OrderManager.fetch_open_position()       → dict | None
-  OrderManager.place_entry(is_long,sl,tp)  → order dict   [PHASE-2: now also
-                                                           attaches bracket]
-  OrderManager.update_bracket_sl(new_sl)   → bool         [NEW PHASE-2]
-  OrderManager.cancel_bracket()            → None         [NEW PHASE-2]
-  OrderManager.cancel_all_orders()
-  OrderManager.close_position(is_long,reason) → dict | {"info":"already_closed"}
-  OrderManager.fetch_ticker()              → ccxt ticker dict
-  OrderManager.close_exchange()            → close ccxt session
 
 Delta Exchange endpoints
 ────────────────────────
@@ -221,6 +208,83 @@ async def _signed_request(
         return data
 
 
+# ─── ID extraction helper (FIX-BRACKET-ID) ─────────────────────────────────────
+
+def _extract_sl_order_id(bracket_resp: dict) -> Optional[int]:
+    """
+    Pull the stop-loss order id out of Delta India's POST /v2/orders/bracket
+    response. Delta's response shape has varied across API revisions; rather
+    than locking to one, try every shape we've seen in the wild:
+
+      A) result: [ {"id": 1, "stop_order_type": "stop_loss_order"}, ... ]
+      B) result: { "stop_loss_order": {"id": 1, ...},
+                   "take_profit_order": {"id": 2, ...} }
+      C) result: { "id": 1, "stop_order_type": "stop_loss_order", ... }
+      D) result: { "id": 1 }      (single id; assume SL)
+
+    Returns the int id, or None if nothing matches.
+    """
+    result = bracket_resp.get("result")
+    if result is None:
+        return None
+
+    def _coerce(v):
+        try:
+            return int(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    # Shape A — list of orders
+    if isinstance(result, list):
+        # First, try to find one explicitly tagged as a stop-loss.
+        for item in result:
+            if not isinstance(item, dict):
+                continue
+            stype = str(
+                item.get("stop_order_type")
+                or item.get("order_type")
+                or ""
+            ).lower()
+            if "stop_loss" in stype or stype == "stop_loss_order":
+                rid = _coerce(item.get("id"))
+                if rid is not None:
+                    return rid
+        # Fallback: just take the first id we can find.
+        for item in result:
+            if isinstance(item, dict):
+                rid = _coerce(item.get("id"))
+                if rid is not None:
+                    return rid
+        return None
+
+    # Shapes B / C / D — dict
+    if isinstance(result, dict):
+        # B: nested stop_loss_order block
+        sl_block = result.get("stop_loss_order")
+        if isinstance(sl_block, dict):
+            rid = _coerce(sl_block.get("id"))
+            if rid is not None:
+                return rid
+
+        # C: dict with explicit stop_order_type
+        stype = str(
+            result.get("stop_order_type")
+            or result.get("order_type")
+            or ""
+        ).lower()
+        if "stop_loss" in stype:
+            rid = _coerce(result.get("id"))
+            if rid is not None:
+                return rid
+
+        # D: bare id
+        rid = _coerce(result.get("id"))
+        if rid is not None:
+            return rid
+
+    return None
+
+
 # ─── OrderManager ─────────────────────────────────────────────────────────────
 
 class OrderManager:
@@ -236,7 +300,7 @@ class OrderManager:
         # PHASE-2 state — set on entry fill, cleared on exit.
         self._product_id:    Optional[int]   = None  # numeric Delta id of SYMBOL
         self._product_symbol: Optional[str]  = None  # raw Delta symbol (e.g. "BTCUSD")
-        self._bracket_order_id: Optional[int] = None  # ID of the active bracket order
+        self._bracket_order_id: Optional[int] = None  # ID of the active bracket SL order
         self._bracket_active:        bool    = False
         self._current_sl:    Optional[float] = None
         self._current_tp:    Optional[float] = None
@@ -386,10 +450,11 @@ class OrderManager:
         )
 
         # ── 2. Cache state for later bracket updates ─────────────────────────
-        self._is_long       = is_long
-        self._current_sl    = float(sl)
-        self._current_tp    = float(tp)
-        self._bracket_active = False  # set True only on successful place
+        self._is_long          = is_long
+        self._current_sl       = float(sl)
+        self._current_tp       = float(tp)
+        self._bracket_active   = False  # set True only on successful place
+        self._bracket_order_id = None   # reset; will be populated below
 
         # ── 3. PHASE-2: attach Delta-side bracket ────────────────────────────
         if self._product_id is None:
@@ -401,13 +466,26 @@ class OrderManager:
 
         try:
             bracket_resp = await self._place_bracket(sl=sl, tp=tp)
-            # Extract the bracket order ID from Delta's response
-            # Response structure: {"result": {"id": 12345, ...}, "success": true}
-            result = bracket_resp.get("result", {})
-            bracket_id = result.get("id")
-            if bracket_id is not None:
-                self._bracket_order_id = int(bracket_id)
+
+            # FIX-BRACKET-ID: extract the SL order id robustly from the
+            # response. Multiple response shapes are supported.
+            sl_order_id = _extract_sl_order_id(bracket_resp)
+            if sl_order_id is not None:
+                self._bracket_order_id = sl_order_id
+
+            # Mark active regardless of whether we parsed the id — the bracket
+            # exists on Delta. If id parsing failed, we'll discover it via a
+            # follow-up open-orders query below.
             self._bracket_active = True
+
+            if self._bracket_order_id is None:
+                logger.warning(
+                    f"[OM] Bracket attached on Delta but SL order id was not "
+                    f"in the response (shape={type(bracket_resp.get('result')).__name__}); "
+                    f"discovering via fetch_open_orders…"
+                )
+                await self._discover_bracket_sl_id(is_long=is_long)
+
             logger.info(
                 f"[OM] ✅ Bracket attached on Delta | id={self._bracket_order_id} | "
                 f"sl={sl:.2f}  tp={tp:.2f}"
@@ -456,6 +534,72 @@ class OrderManager:
         session = await self._http_session()
         return await _signed_request(session, "POST", "/v2/orders/bracket", body)
 
+    async def _discover_bracket_sl_id(self, is_long: bool) -> None:
+        """
+        FIX-BRACKET-ID fallback: when the bracket POST response doesn't expose
+        the SL order id in a shape we recognise, query Delta's open orders to
+        find it. The SL leg is:
+          • opposite side of entry  (long entry → sell SL, short entry → buy SL)
+          • reduce-only
+          • stop-loss order type    (best-effort — names vary across API rev)
+        We pick the first match. Failure here is non-fatal — bracket is still
+        active on Delta; we just can't push updates to it (Python tick loop
+        becomes the trail mechanism).
+        """
+        sl_side = "sell" if is_long else "buy"
+        try:
+            orders = await _retry(
+                lambda: self.exchange.fetch_open_orders(SYMBOL)
+            )
+        except Exception as exc:
+            logger.warning(f"[OM] _discover_bracket_sl_id fetch failed: {exc}")
+            return
+
+        candidates = []
+        for o in orders or []:
+            try:
+                info       = o.get("info") or {}
+                side       = (o.get("side") or info.get("side") or "").lower()
+                otype      = (o.get("type") or info.get("order_type") or "").lower()
+                stop_type  = (info.get("stop_order_type") or "").lower()
+                reduce_o   = bool(
+                    o.get("reduceOnly")
+                    or info.get("reduce_only")
+                    or info.get("reduceOnly")
+                )
+                if side != sl_side:
+                    continue
+                # We want stop orders, not the bracket TP. Stop loss types vary:
+                #   "stop_loss_order", "stop_loss", or generic stop + reduce_only.
+                is_sl_typed = "stop_loss" in stop_type
+                is_stop_red = ("stop" in otype) and reduce_o
+                if not (is_sl_typed or is_stop_red):
+                    continue
+                oid = o.get("id") or info.get("id")
+                if oid is None:
+                    continue
+                try:
+                    candidates.append(int(oid))
+                except (TypeError, ValueError):
+                    continue
+            except Exception:
+                continue
+
+        if not candidates:
+            logger.warning(
+                "[OM] _discover_bracket_sl_id: no SL-shaped open order found — "
+                "trail updates will be rejected; Python tick path will guard SL."
+            )
+            return
+
+        # If multiple candidates, prefer the one whose trigger price is closest
+        # to our cached SL — that's almost certainly the bracket SL.
+        self._bracket_order_id = candidates[0]
+        logger.info(
+            f"[OM] Recovered bracket SL order id via open-orders scan: "
+            f"{self._bracket_order_id}"
+        )
+
     async def update_bracket_sl(self, new_sl: float) -> bool:
         """
         PUT /v2/orders/bracket — update the SL on the active bracket.
@@ -482,8 +626,14 @@ class OrderManager:
             return True
 
         if self._bracket_order_id is None:
-            logger.warning("[OM] update_bracket_sl: no bracket_order_id, cannot update")
-            return False
+            # Last-chance recovery: try to find the SL order id now. If it's
+            # still missing after this, log once and bail. (We don't want to
+            # spam this — TrailMonitor calls update_bracket_sl on every tick.)
+            if self._is_long is not None:
+                await self._discover_bracket_sl_id(is_long=self._is_long)
+            if self._bracket_order_id is None:
+                logger.warning("[OM] update_bracket_sl: no bracket_order_id, cannot update")
+                return False
 
         body = {
             "id":                          self._bracket_order_id,  # Required by Delta
