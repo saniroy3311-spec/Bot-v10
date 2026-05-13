@@ -29,6 +29,16 @@ FIX-5  | _dmi() renamed _dmi_series() to avoid shadowing the module-level
          helper. The old name conflict caused the wrong function to be called
          inside compute_full_series().
 
+FIX-BREAKOUT-BUFFER | BREAKOUT_BUFFER_PTS applied in evaluate().
+         Bot was firing on Delta micro-breakouts that Pine (TradingView data)
+         never saw. Root cause: Delta and TradingView have different OHLCV
+         values for the same bar. A bar can close above Delta's prev_high
+         but NOT above TradingView's prev_high — bot fires, Pine doesn't.
+         Fix: require close > prev_high + BREAKOUT_BUFFER_PTS (default 30pts
+         via .env) before firing trend entries. Set BREAKOUT_BUFFER_PTS=0
+         in .env to disable. Controlled entirely from .env — no code change
+         needed to tune.
+
 PRESERVED FROM ORIGINAL
 ─────────────────────────────────────────────────────────────────────────────
   - All Pine-exact indicator maths (RMA, EMA, ATR, RSI, DMI)
@@ -57,6 +67,7 @@ from config import (
     TREND_RR, RANGE_RR, TREND_ATR_MULT, RANGE_ATR_MULT,
     MAX_SL_MULT, MAX_SL_POINTS, TRAIL_STAGES, BE_MULT,
     COMMISSION_PCT,
+    BREAKOUT_BUFFER_PTS,   # FIX-BREAKOUT-BUFFER: wire into entry condition
 )
 
 # FIX-1: RiskLevels and TrailState were used but never imported or defined.
@@ -443,6 +454,14 @@ def evaluate(snap: IndicatorSnapshot, has_position: bool = False) -> Signal:
         rangeLong  = rangeRegime and rsi < rsiOS and filters
         rangeShort = rangeRegime and rsi > rsiOB and filters
 
+    FIX-BREAKOUT-BUFFER: BREAKOUT_BUFFER_PTS added to trend entry conditions.
+        Bot was entering on Delta micro-breakouts that Pine (TradingView data)
+        never saw — Delta and TradingView have different OHLCV for the same bar.
+        Buffer ensures close must exceed prev_high/low by enough pts to confirm
+        it's a real breakout visible on both feeds.
+        Controlled via .env: BREAKOUT_BUFFER_PTS=30 (default 20)
+        Set to 0 to match exact Pine condition with no buffer.
+
     Returns Signal(NONE) if in position or no conditions met.
     NOTE: Pine has NO bar-close signal-reversal exit. Exits are
     handled entirely by trail_loop.py at tick resolution.
@@ -456,18 +475,19 @@ def evaluate(snap: IndicatorSnapshot, has_position: bool = False) -> Signal:
 
     # Pine: close > high[1]  →  snap.close > snap.prev_high
     # Pine: close < low[1]   →  snap.close < snap.prev_low
+    # FIX-BREAKOUT-BUFFER: add BREAKOUT_BUFFER_PTS to filter feed divergence.
     trend_long = (
         tr
         and snap.ema_fast > snap.ema_trend
         and snap.dip > snap.dim
-        and snap.close > snap.prev_high
+        and snap.close > snap.prev_high + BREAKOUT_BUFFER_PTS
         and f
     )
     trend_short = (
         tr
         and snap.ema_fast < snap.ema_trend
         and snap.dim > snap.dip
-        and snap.close < snap.prev_low
+        and snap.close < snap.prev_low - BREAKOUT_BUFFER_PTS
         and f
     )
     range_long  = rr and snap.rsi < RSI_OS and f
