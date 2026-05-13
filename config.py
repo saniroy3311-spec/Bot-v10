@@ -96,26 +96,32 @@ MAX_SL_MULT    = float(os.environ.get("MAX_SL_MULT",    "2.0"))
 MAX_SL_POINTS  = float(os.environ.get("MAX_SL_POINTS",  "1500.0"))
 
 # ──────────────────────────────────────────────
+# PINE MINTICK (FIX-MINTICK-01)
+# ──────────────────────────────────────────────
+# Pine's strategy.exit(trail_points=P, trail_offset=O) interprets P and O
+# as syminfo.mintick units — NOT raw USD points. For BTCUSD.P on Delta India,
+# mintick = 0.1. So Pine's trail_points = pts_mult * ATR * 0.1 in USD terms.
+# Without this correction the bot needs 10× more profit to arm the trail
+# vs Pine (143 USD vs 14 USD on a 204 ATR trade).
+# Override via .env: PINE_MINTICK=0.1
+PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "0.1"))
+
+# ──────────────────────────────────────────────
 # 5-STAGE TRAIL ENGINE
 # ──────────────────────────────────────────────
 # Format: (trigger_ATR_mult, trail_points_mult, trail_offset_mult)
 #
-# FIX-TRAIL-FAST: Offsets tightened for faster live profit capture.
-# Trail SL now follows price more closely after each stage activates.
-# Triggers and points_mult unchanged — only offset_mult reduced.
-#
-# Rollback values (Pine parity):
-#   (1.0,  0.70, 0.55)
-#   (2.0,  0.55, 0.45)
-#   (3.0,  0.45, 0.35)
-#   (5.0,  0.30, 0.25)
-#   (8.0,  0.20, 0.15)
+# FIX-MINTICK-01: Restored to original Pine parity values.
+# All three multipliers are scaled by PINE_MINTICK (0.1) inside trail_loop.py,
+# so effective USD distances = mult * ATR * 0.1
+# Example stage 1: activation = 0.70 * 204 * 0.1 = 14.3 USD (matches Pine)
+#                  offset     = 0.55 * 204 * 0.1 = 11.2 USD (matches Pine)
 TRAIL_STAGES = [
-    (1.0,  0.70, 0.28),   # Stage 1  | was 0.35
-    (2.0,  0.55, 0.24),   # Stage 2  | was 0.30
-    (3.0,  0.45, 0.18),   # Stage 3  | was 0.22
-    (5.0,  0.30, 0.12),   # Stage 4  | was 0.15
-    (8.0,  0.20, 0.08),   # Stage 5  | was 0.10
+    (1.0,  0.70, 0.55),   # Stage 1
+    (2.0,  0.55, 0.45),   # Stage 2
+    (3.0,  0.45, 0.35),   # Stage 3
+    (5.0,  0.30, 0.25),   # Stage 4
+    (8.0,  0.20, 0.15),   # Stage 5
 ]
 
 # ──────────────────────────────────────────────
