@@ -236,6 +236,7 @@ class OrderManager:
         # PHASE-2 state — set on entry fill, cleared on exit.
         self._product_id:    Optional[int]   = None  # numeric Delta id of SYMBOL
         self._product_symbol: Optional[str]  = None  # raw Delta symbol (e.g. "BTCUSD")
+        self._bracket_order_id: Optional[int] = None  # ID of the active bracket order
         self._bracket_active:        bool    = False
         self._current_sl:    Optional[float] = None
         self._current_tp:    Optional[float] = None
@@ -399,10 +400,17 @@ class OrderManager:
             return order
 
         try:
-            await self._place_bracket(sl=sl, tp=tp)
+            bracket_resp = await self._place_bracket(sl=sl, tp=tp)
+            # Extract the bracket order ID from Delta's response
+            # Response structure: {"result": {"id": 12345, ...}, "success": true}
+            result = bracket_resp.get("result", {})
+            bracket_id = result.get("id")
+            if bracket_id is not None:
+                self._bracket_order_id = int(bracket_id)
             self._bracket_active = True
             logger.info(
-                f"[OM] ✅ Bracket attached on Delta | sl={sl:.2f}  tp={tp:.2f}"
+                f"[OM] ✅ Bracket attached on Delta | id={self._bracket_order_id} | "
+                f"sl={sl:.2f}  tp={tp:.2f}"
             )
         except Exception as exc:
             # Entry succeeded but bracket attach failed. Log loudly and rely on
@@ -473,7 +481,12 @@ class OrderManager:
         if self._current_sl is not None and abs(new_sl - self._current_sl) < 0.5:
             return True
 
+        if self._bracket_order_id is None:
+            logger.warning("[OM] update_bracket_sl: no bracket_order_id, cannot update")
+            return False
+
         body = {
+            "id":                          self._bracket_order_id,  # Required by Delta
             "product_id":                  self._product_id,
             "product_symbol":              self._product_symbol,
             "bracket_stop_loss_price":     str(round(new_sl, 2)),
@@ -533,10 +546,11 @@ class OrderManager:
             else:
                 logger.warning(f"[OM] cancel_bracket failed (ignored): {exc}")
         finally:
-            self._bracket_active = False
-            self._current_sl     = None
-            self._current_tp     = None
-            self._is_long        = None
+            self._bracket_active   = False
+            self._bracket_order_id = None
+            self._current_sl       = None
+            self._current_tp       = None
+            self._is_long          = None
 
     # ── Order management ──────────────────────────────────────────────────────
 
