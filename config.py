@@ -10,6 +10,11 @@ CHANGE IN THIS VERSION:
     close enough to match Pine's sub-second exit behavior.
     Delta Exchange REST API easily handles 10 requests/second.
     Override via .env: TRAIL_LOOP_SEC=0.1
+
+  FIX-TRAIL-FAST | Trail offsets tightened for faster profit capture.
+    Offsets reduced across all 5 stages so the trail SL follows price
+    more closely after activation. Triggers and points unchanged.
+    Old values preserved in comments for easy rollback.
 """
 import os
 
@@ -49,14 +54,14 @@ RSI_LEN       = 14
 # ──────────────────────────────────────────────
 # REGIME THRESHOLDS
 # ──────────────────────────────────────────────
-ADX_TREND_TH = int(os.environ.get("ADX_TREND_TH", "20"))   # Pine v6.5-30M: adxTrendTh = 20 (30M-OPT-004, was 22 on 5m)
+ADX_TREND_TH = int(os.environ.get("ADX_TREND_TH", "20"))
 ADX_RANGE_TH = int(os.environ.get("ADX_RANGE_TH", "18"))
 
 # ──────────────────────────────────────────────
 # ENTRY FILTERS
 # ──────────────────────────────────────────────
-FILTER_ATR_MULT    = float(os.environ.get("FILTER_ATR_MULT",  "1.6"))   # Pine v6.5-30M: filterATRmul = 1.6 (30M-OPT-005, was 1.4 on 5m)
-FILTER_BODY_MULT   = float(os.environ.get("FILTER_BODY_MULT", "0.4"))   # Pine v6.5-30M: filterBody = 0.4 (30M-OPT-005, was 0.5 on 5m)
+FILTER_ATR_MULT    = float(os.environ.get("FILTER_ATR_MULT",  "1.6"))
+FILTER_BODY_MULT   = float(os.environ.get("FILTER_BODY_MULT", "0.4"))
 # FIX-VOL-PARITY: Volume filter DISABLED by default for Pine parity.
 #
 # WHY: Pine Script runs on TradingView's own volume data. Delta Exchange
@@ -83,10 +88,10 @@ FILTER_VOL_MULT = float(os.environ.get("FILTER_VOL_MULT", "0.05"))
 # ──────────────────────────────────────────────
 # RISK / REWARD
 # ──────────────────────────────────────────────
-TREND_RR       = float(os.environ.get("TREND_RR",       "5.0"))   # Pine v6.5-30M: trendRR = 5.0 (30M-OPT-003, was 4.0 on 5m)
-RANGE_RR       = float(os.environ.get("RANGE_RR",       "3.0"))   # Pine v6.5-30M: rangeRR = 3.0 (30M-OPT-003, was 2.5 on 5m)
-TREND_ATR_MULT = float(os.environ.get("TREND_ATR_MULT", "0.9"))   # Pine v6.5-30M: trendATRmul = 0.9 (30M-OPT-002, was 0.6 on 5m)
-RANGE_ATR_MULT = float(os.environ.get("RANGE_ATR_MULT", "0.7"))   # Pine v6.5-30M: rangeATRmul = 0.7 (30M-OPT-002, was 0.5 on 5m)
+TREND_RR       = float(os.environ.get("TREND_RR",       "5.0"))
+RANGE_RR       = float(os.environ.get("RANGE_RR",       "3.0"))
+TREND_ATR_MULT = float(os.environ.get("TREND_ATR_MULT", "0.9"))
+RANGE_ATR_MULT = float(os.environ.get("RANGE_ATR_MULT", "0.7"))
 MAX_SL_MULT    = float(os.environ.get("MAX_SL_MULT",    "2.0"))
 MAX_SL_POINTS  = float(os.environ.get("MAX_SL_POINTS",  "1500.0"))
 
@@ -94,18 +99,23 @@ MAX_SL_POINTS  = float(os.environ.get("MAX_SL_POINTS",  "1500.0"))
 # 5-STAGE TRAIL ENGINE
 # ──────────────────────────────────────────────
 # Format: (trigger_ATR_mult, trail_points_mult, trail_offset_mult)
-# Matches Pine Script inputs exactly:
-#   trail1Trigger=1.0, trail1Pts=0.70, trail1Off=0.55
-#   trail2Trigger=2.0, trail2Pts=0.55, trail2Off=0.45
-#   trail3Trigger=3.0, trail3Pts=0.45, trail3Off=0.35
-#   trail4Trigger=5.0, trail4Pts=0.30, trail4Off=0.25
-#   trail5Trigger=8.0, trail5Pts=0.20, trail5Off=0.15
+#
+# FIX-TRAIL-FAST: Offsets tightened for faster live profit capture.
+# Trail SL now follows price more closely after each stage activates.
+# Triggers and points_mult unchanged — only offset_mult reduced.
+#
+# Rollback values (Pine parity):
+#   (1.0,  0.70, 0.55)
+#   (2.0,  0.55, 0.45)
+#   (3.0,  0.45, 0.35)
+#   (5.0,  0.30, 0.25)
+#   (8.0,  0.20, 0.15)
 TRAIL_STAGES = [
-    (1.0,  0.70, 0.55),   # Stage 1
-    (2.0,  0.55, 0.45),   # Stage 2
-    (3.0,  0.45, 0.35),   # Stage 3
-    (5.0,  0.30, 0.25),   # Stage 4
-    (8.0,  0.20, 0.15),   # Stage 5
+    (1.0,  0.70, 0.35),   # Stage 1  | was 0.55
+    (2.0,  0.55, 0.30),   # Stage 2  | was 0.45
+    (3.0,  0.45, 0.22),   # Stage 3  | was 0.35
+    (5.0,  0.30, 0.15),   # Stage 4  | was 0.25
+    (8.0,  0.20, 0.10),   # Stage 5  | was 0.15
 ]
 
 # ──────────────────────────────────────────────
@@ -115,10 +125,13 @@ BE_MULT = float(os.environ.get("BE_MULT", "1.0"))
 RSI_OB  = int(os.environ.get("RSI_OB", "70"))
 RSI_OS  = int(os.environ.get("RSI_OS", "30"))
 
-# FIX-BREAKOUT-BUFFER: minimum pts close must exceed high[1] / be below low[1]
-# for trend entries. Filters Delta-only micro-breakouts that Pine (TradingView
-# data, ~120pts premium) would not see as real breakouts. Default 20pts.
-BREAKOUT_BUFFER_PTS = float(os.environ.get("BREAKOUT_BUFFER_PTS", "20.0"))
+# BREAKOUT-BUFFER: extra pts close must clear prev high/low before trend entry fires.
+# Default 0 = exact Pine parity.
+# WHY 0: BINANCE_SIGNAL_FEED=true means bot computes indicators on Binance OHLCV,
+# the same data source as TradingView/Pine. Feed divergence is eliminated at the
+# indicator level, so no buffer is needed to match Pine entries.
+# Set > 0 only if switching BINANCE_SIGNAL_FEED=false (Delta data mode).
+BREAKOUT_BUFFER_PTS = float(os.environ.get("BREAKOUT_BUFFER_PTS", "0"))
 
 # ──────────────────────────────────────────────
 # COMMISSION + BUFFERS
