@@ -1,17 +1,31 @@
 """
-monitor/trail_loop.py — Shiva Sniper v10 — FIX-PARITY-v5 (FIX-PUSH-SL)
+monitor/trail_loop.py — Shiva Sniper v10 — FIX-PARITY-v6 (FIX-INTRABAR + FIX-PUSH-SL)
 ════════════════════════════════════════════════════════════════════════════
 
-NEW FIX IN THIS VERSION (FIX-PUSH-SL  —  CRITICAL):
+NEW IN THIS VERSION (FIX-INTRABAR  —  intentional Pine-parity divergence):
 ──────────────────────────────────────────────────────────────────────────
-The previous code defined `_push_sl_to_delta()` but NEVER CALLED it.
-Result: state.current_sl tightened in Python RAM as the trade ran, but
-Delta's bracket stop order stayed at the ORIGINAL SL forever. Effective
-behaviour: trail was pure decoration — winners that should have locked
-profit gave it all back, and a restart wiped the in-memory tightened SL.
+Stage upgrades and Breakeven activation moved from bar-close-only into
+_evaluate_tick(). Previously gated by FIX-EXIT-01 / FIX-EXIT-05 to mirror
+Pine's calc_on_every_tick=false; now they ratchet on every Binance tick
+the moment intrabar peak_profit crosses the relevant threshold.
 
-Six call sites added — every place that mutates state.current_sl now
-also pushes the new level to Delta's bracket via OrderManager:
+  FIX-INTRABAR-01: stage upgrade in _evaluate_tick() using peak_profit.
+                   Monotonic — never downgrades. Diverges from Pine in
+                   the direction of faster trail tightening.
+  FIX-INTRABAR-02: BE activation in _evaluate_tick() using peak_profit.
+                   Fires at most once per trade (state.be_done guard).
+                   New push sites FIX-PUSH-SL-07 (long) / FIX-PUSH-SL-08
+                   (short) push the new BE SL to Delta immediately.
+
+The on_bar_close() copies of both checks are LEFT IN PLACE as a safety
+net — they become idempotent no-ops once the intrabar path has fired,
+but still catch the rare case where ticks were missed and only the bar
+close presents the qualifying profit.
+
+PRESERVED FROM v5 (FIX-PUSH-SL — wire trail SL updates to Delta bracket):
+──────────────────────────────────────────────────────────────────────────
+Six call sites added — every place that mutates state.current_sl pushes
+the new level to Delta's bracket via OrderManager.update_bracket_sl():
 
   on_bar_close():
     • BE long  activation                        → push (FIX-PUSH-SL-01)
@@ -22,11 +36,12 @@ also pushes the new level to Delta's bracket via OrderManager:
   _evaluate_tick():
     • intrabar trail tighten — long              → push (FIX-PUSH-SL-05)
     • intrabar trail tighten — short             → push (FIX-PUSH-SL-06)
+    • intrabar BE activation — long              → push (FIX-PUSH-SL-07)  ← new
+    • intrabar BE activation — short             → push (FIX-PUSH-SL-08)  ← new
 
-Also: the four "trail SL ->" logger.debug entries were promoted to
-logger.info so the SL tightening is visible in production logs alongside
-the new "[OM] update_bracket_sl" lines from orders/manager.py. Without
-this, parity with Pine is impossible to verify post-hoc.
+Also: four "trail SL ->" logger.debug entries promoted to logger.info so
+SL tightening is visible in production logs alongside the "[OM] 🎯
+Bracket SL updated on Delta" lines from orders/manager.py.
 
 ──────────────────────────────────────────────────────────────────────────
 
@@ -648,6 +663,46 @@ class TrailMonitor:
             (state.peak_price - entry_price) if is_long
             else (entry_price - state.peak_price)
         )
+
+        # ── INTRABAR STAGE UPGRADE (FIX-INTRABAR-01) ──────────────────────────
+        # Was previously bar-close-only (FIX-EXIT-01) to mirror Pine's
+        # calc_on_every_tick=false. Moved intrabar by user request — stages
+        # now ratchet up the instant peak_profit crosses each ATR×trigger
+        # threshold, not at the next bar close. Diverges from Pine in the
+        # direction of FASTER trail tightening. Stage downgrades are blocked
+        # by _upgrade_stage()'s monotonic guard, so a wick that crosses then
+        # retraces still locks the higher stage permanently.
+        new_stage = _upgrade_stage(state.stage, peak_profit, self._current_atr)
+        if new_stage > state.stage:
+            logger.info(
+                f"[TRAIL] Stage {state.stage} -> {new_stage} (intrabar) | "
+                f"peak_profit={peak_profit:.2f} live_atr={self._current_atr:.2f}"
+            )
+            state.stage = new_stage
+
+        # ── INTRABAR BREAKEVEN ACTIVATION (FIX-INTRABAR-02) ───────────────────
+        # Was previously bar-close-only (FIX-EXIT-05). Now snaps SL to entry
+        # the moment peak_profit crosses BE_MULT × live_atr. Once armed,
+        # state.be_done blocks re-arming, so this fires at most once per
+        # trade. Pushes the new SL to Delta immediately.
+        if not state.be_done and _check_be(peak_profit, self._current_atr):
+            be_sl = entry_price
+            if is_long and be_sl > state.current_sl:
+                state.current_sl = be_sl
+                state.be_done    = True
+                logger.info(
+                    f"[TRAIL] Breakeven activated (intrabar): SL -> {be_sl:.2f} "
+                    f"(peak_profit={peak_profit:.2f} live_atr={self._current_atr:.2f})"
+                )
+                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-07: intrabar BE long
+            elif not is_long and be_sl < state.current_sl:
+                state.current_sl = be_sl
+                state.be_done    = True
+                logger.info(
+                    f"[TRAIL] Breakeven activated (intrabar): SL -> {be_sl:.2f} "
+                    f"(peak_profit={peak_profit:.2f} live_atr={self._current_atr:.2f})"
+                )
+                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-08: intrabar BE short
 
         # ── 1. TP hit ─────────────────────────────────────────────────────────
         if is_long and price >= risk.tp:
