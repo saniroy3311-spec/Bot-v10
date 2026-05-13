@@ -1,6 +1,34 @@
 """
-monitor/trail_loop.py — Shiva Sniper v10 — FIX-PARITY-v4
+monitor/trail_loop.py — Shiva Sniper v10 — FIX-PARITY-v5 (FIX-PUSH-SL)
 ════════════════════════════════════════════════════════════════════════════
+
+NEW FIX IN THIS VERSION (FIX-PUSH-SL  —  CRITICAL):
+──────────────────────────────────────────────────────────────────────────
+The previous code defined `_push_sl_to_delta()` but NEVER CALLED it.
+Result: state.current_sl tightened in Python RAM as the trade ran, but
+Delta's bracket stop order stayed at the ORIGINAL SL forever. Effective
+behaviour: trail was pure decoration — winners that should have locked
+profit gave it all back, and a restart wiped the in-memory tightened SL.
+
+Six call sites added — every place that mutates state.current_sl now
+also pushes the new level to Delta's bracket via OrderManager:
+
+  on_bar_close():
+    • BE long  activation                        → push (FIX-PUSH-SL-01)
+    • BE short activation                        → push (FIX-PUSH-SL-02)
+    • bar-close trail tighten — long             → push (FIX-PUSH-SL-03)
+    • bar-close trail tighten — short            → push (FIX-PUSH-SL-04)
+
+  _evaluate_tick():
+    • intrabar trail tighten — long              → push (FIX-PUSH-SL-05)
+    • intrabar trail tighten — short             → push (FIX-PUSH-SL-06)
+
+Also: the four "trail SL ->" logger.debug entries were promoted to
+logger.info so the SL tightening is visible in production logs alongside
+the new "[OM] update_bracket_sl" lines from orders/manager.py. Without
+this, parity with Pine is impossible to verify post-hoc.
+
+──────────────────────────────────────────────────────────────────────────
 
 NEW FIX IN THIS VERSION (FIX-PARITY-v4):
 ──────────────────────────────────────────────────────────────────────────
@@ -400,11 +428,13 @@ class TrailMonitor:
                 state.current_sl = be_sl
                 state.be_done    = True
                 logger.info(f"[TRAIL] Breakeven activated: SL -> {be_sl:.2f} (live_atr={current_atr:.2f})")
+                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-01: BE long
 
             elif not is_long and be_sl < state.current_sl:
                 state.current_sl = be_sl
                 state.be_done    = True
                 logger.info(f"[TRAIL] Breakeven activated: SL -> {be_sl:.2f} (live_atr={current_atr:.2f})")
+                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-02: BE short
 
 
         # ── 4. Update peak price with this bar's high/low ─────────────────────
@@ -424,10 +454,11 @@ class TrailMonitor:
             )
             if _bar_trail_sl is not None and _bar_trail_sl > state.current_sl:
                 state.current_sl = _bar_trail_sl
-                logger.debug(
+                logger.info(
                     f"[TRAIL] Bar-close trail SL -> {_bar_trail_sl:.2f} "
                     f"(stage {state.stage}, live_atr={current_atr:.2f})"
                 )
+                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-03: bar-close trail long
 
         else:
             bar_peak_profit = entry_price - bar_low
@@ -436,10 +467,11 @@ class TrailMonitor:
             )
             if _bar_trail_sl is not None and _bar_trail_sl < state.current_sl:
                 state.current_sl = _bar_trail_sl
-                logger.debug(
+                logger.info(
                     f"[TRAIL] Bar-close trail SL -> {_bar_trail_sl:.2f} "
                     f"(stage {state.stage}, live_atr={current_atr:.2f})"
                 )
+                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-04: bar-close trail short
 
 
         # ── 6. Same-bar exit check ────────────────────────────────────────────
@@ -697,17 +729,19 @@ class TrailMonitor:
         if trail_sl is not None:
             if is_long and trail_sl > state.current_sl:
                 state.current_sl = trail_sl
-                logger.debug(
+                logger.info(
                     f"[TRAIL] Trail SL -> {trail_sl:.2f} "
                     f"(stage {state.stage}, live_atr={self._current_atr:.2f})"
                 )
+                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-05: tick trail long
 
             elif not is_long and trail_sl < state.current_sl:
                 state.current_sl = trail_sl
-                logger.debug(
+                logger.info(
                     f"[TRAIL] Trail SL -> {trail_sl:.2f} "
                     f"(stage {state.stage}, live_atr={self._current_atr:.2f})"
                 )
+                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-06: tick trail short
 
 
         # Re-check SL after trail update (in case trail just moved past current price)
