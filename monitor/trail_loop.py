@@ -168,7 +168,7 @@ from typing import Callable, Optional
 from config import (
     TRAIL_STAGES, BE_MULT, MAX_SL_MULT, MAX_SL_POINTS,
     TRAIL_LOOP_SEC, BRACKET_SL_BUFFER, TRAIL_SL_PRE_FIRE_BUFFER,
-    CANDLE_TIMEFRAME, SL_FIRE_VIA_BRACKET,
+    CANDLE_TIMEFRAME, SL_FIRE_VIA_BRACKET, PINE_MINTICK,
 )
 from risk.calculator import RiskLevels, TrailState
 
@@ -208,7 +208,7 @@ def _upgrade_stage(current_stage: int, profit_dist: float, live_atr: float) -> i
     new_stage = current_stage
     for i in range(len(TRAIL_STAGES) - 1, -1, -1):
         trigger_mult, _, _ = TRAIL_STAGES[i]
-        if profit_dist >= live_atr * trigger_mult:
+        if profit_dist >= live_atr * trigger_mult * PINE_MINTICK:   # FIX-MINTICK-01
             candidate = i + 1
             if candidate > new_stage:
                 new_stage = candidate
@@ -266,12 +266,12 @@ def _compute_trail_sl(
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
     # ACTIVATION: trail must reach trail_points worth of profit before arming.
-    activation_threshold = live_atr * pts_mult
+    activation_threshold = live_atr * pts_mult * PINE_MINTICK   # FIX-MINTICK-01
     if peak_profit_dist < activation_threshold:
         return None
 
     # Once activated, trail SL sits trail_offset behind the peak.
-    offset = live_atr * off_mult
+    offset = live_atr * off_mult * PINE_MINTICK                  # FIX-MINTICK-01
     return (peak_price - offset) if is_long else (peak_price + offset)
 
 
