@@ -131,7 +131,7 @@ TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "0.0
 # SL crosses. Delta bracket SL is sole authority for stop exits. Eliminates
 # premature exits from Binance-Delta spread drift. TP and Max SL still fire
 # via Python. Default true (production-safe).
-SL_FIRE_VIA_BRACKET = os.environ.get("SL_FIRE_VIA_BRACKET", "true").lower() == "true"
+SL_FIRE_VIA_BRACKET = os.environ.get("SL_FIRE_VIA_BRACKET", "false").lower() == "true"
 
 # ──────────────────────────────────────────────
 # TIMING
