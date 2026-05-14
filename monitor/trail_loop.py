@@ -1033,20 +1033,29 @@ class TrailMonitor:
         matching-engine latency (~5ms), instead of the Python tick loop
         round-tripping a market close (~250-500ms).
 
-        The Python-side `state.current_sl` continues to be updated as
-        before — it's the safety net if the bracket update fails or if
-        the WS feed sees a tick before Delta processes the update.
-        Both paths are idempotent: whichever fires first wins, and
-        `_exit_fired` blocks the second one.
-
-        This method is fire-and-forget. Failures are logged inside
-        OrderManager.update_bracket_sl and do NOT propagate — the trade
-        remains protected by the Python tick path either way.
+        FIX-BRACKET-FIRED: if update_bracket_sl returns "BRACKET_FILLED",
+        the bracket SL already fired on Delta and the position is gone.
+        We fire the exit callback immediately so main.py resets state
+        without waiting for the next bar close to discover the flat position.
+        This is the fix for the open_order_not_found spam bug — previously
+        the bot would hammer Delta with hundreds of failed update calls across
+        the entire bar before discovering the exit at bar close.
         """
         if self._order_mgr is None:
             return
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(self._order_mgr.update_bracket_sl(new_sl))
+
+            async def _push_and_check(sl: float) -> None:
+                result = await self._order_mgr.update_bracket_sl(sl)
+                if result == "BRACKET_FILLED" and not self._exit_fired:
+                    logger.info(
+                        "[TRAIL] Bracket exit detected via update_bracket_sl — "
+                        "firing exit callback immediately."
+                    )
+                    reason = "Bracket SL/TP (exchange-side)"
+                    await self._fire_exit(sl, reason, source="bracket")
+
+            loop.create_task(_push_and_check(new_sl))
         except RuntimeError:
             pass  # no running loop — called from test / sync context
