@@ -353,7 +353,12 @@ class TrailMonitor:
         self._running      = True
         self._current_atr  = risk_levels.atr   # seed with entry-bar ATR; updated each bar close
         self._intrabar_tr_buf.clear()              # FIX-LIVE-ATR: reset on new trade
-        self._prev_bar_close = 0.0                 # FIX-LIVE-ATR: reset on new trade
+        # FIX-LIVE-ATR: seed prev_bar_close with entry bar's open price.
+        # This means the VERY FIRST push_ws_candle tick after entry can already
+        # compute a true range (high - open, low - open) and start filling the
+        # buffer — no waiting for the first bar close. Without this, _prev_bar_close
+        # stays 0.0 and _update_live_atr() returns early for the whole entry bar.
+        self._prev_bar_close = risk_levels.entry_bar_open if risk_levels.entry_bar_open > 0.0 else 0.0
 
         # FIX-DUAL-SOURCE-B: reset offset for new trade. It will be captured
         # on the first tick that arrives after the trail starts.
