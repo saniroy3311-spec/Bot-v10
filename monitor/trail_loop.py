@@ -22,28 +22,12 @@ net — they become idempotent no-ops once the intrabar path has fired,
 but still catch the rare case where ticks were missed and only the bar
 close presents the qualifying profit.
 
-PRESERVED FROM v5 (FIX-PUSH-SL — wire trail SL updates to Delta bracket):
+FIX-BRACKET-CHURN (this version):
 ──────────────────────────────────────────────────────────────────────────
-Six call sites added — every place that mutates state.current_sl pushes
-the new level to Delta's bracket via OrderManager.update_bracket_sl():
-
-  on_bar_close():
-    • BE long  activation                        → push (FIX-PUSH-SL-01)
-    • BE short activation                        → push (FIX-PUSH-SL-02)
-    • bar-close trail tighten — long             → push (FIX-PUSH-SL-03)
-    • bar-close trail tighten — short            → push (FIX-PUSH-SL-04)
-
-  _evaluate_tick():
-    • intrabar trail tighten — long              → push (FIX-PUSH-SL-05)
-    • intrabar trail tighten — short             → push (FIX-PUSH-SL-06)
-    • intrabar BE activation — long              → push (FIX-PUSH-SL-07)  ← new
-    • intrabar BE activation — short             → push (FIX-PUSH-SL-08)  ← new
-
-Also: four "trail SL ->" logger.debug entries promoted to logger.info so
-SL tightening is visible in production logs alongside the "[OM] 🎯
-Bracket SL updated on Delta" lines from orders/manager.py.
-
-──────────────────────────────────────────────────────────────────────────
+All _push_sl_to_delta() call sites removed. The bracket is placed ONCE
+at the initial SL (emergency crash/disconnect safety net) and never
+amended. Python fires all real exits via close_position() on tick.
+SL_FIRE_VIA_BRACKET flag and BRACKET_SL_BUFFER config removed.
 
 NEW FIX IN THIS VERSION (FIX-PARITY-v4):
 ──────────────────────────────────────────────────────────────────────────
@@ -167,8 +151,8 @@ from typing import Callable, Optional
 
 from config import (
     TRAIL_STAGES, BE_MULT, MAX_SL_MULT, MAX_SL_POINTS,
-    TRAIL_LOOP_SEC, BRACKET_SL_BUFFER, TRAIL_SL_PRE_FIRE_BUFFER,
-    CANDLE_TIMEFRAME, SL_FIRE_VIA_BRACKET, PINE_MINTICK,
+    TRAIL_LOOP_SEC, TRAIL_SL_PRE_FIRE_BUFFER,
+    CANDLE_TIMEFRAME, PINE_MINTICK,
 )
 from risk.calculator import RiskLevels, TrailState
 
@@ -444,13 +428,11 @@ class TrailMonitor:
                 state.current_sl = be_sl
                 state.be_done    = True
                 logger.info(f"[TRAIL] Breakeven activated: SL -> {be_sl:.2f} (live_atr={current_atr:.2f})")
-                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-01: BE long
 
             elif not is_long and be_sl < state.current_sl:
                 state.current_sl = be_sl
                 state.be_done    = True
                 logger.info(f"[TRAIL] Breakeven activated: SL -> {be_sl:.2f} (live_atr={current_atr:.2f})")
-                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-02: BE short
 
 
         # ── 4. Update peak price with this bar's high/low ─────────────────────
@@ -474,7 +456,6 @@ class TrailMonitor:
                     f"[TRAIL] Bar-close trail SL -> {_bar_trail_sl:.2f} "
                     f"(stage {state.stage}, live_atr={current_atr:.2f})"
                 )
-                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-03: bar-close trail long
 
         else:
             bar_peak_profit = entry_price - bar_low
@@ -487,7 +468,6 @@ class TrailMonitor:
                     f"[TRAIL] Bar-close trail SL -> {_bar_trail_sl:.2f} "
                     f"(stage {state.stage}, live_atr={current_atr:.2f})"
                 )
-                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-04: bar-close trail short
 
 
         # ── 6. Same-bar exit check ────────────────────────────────────────────
@@ -695,7 +675,6 @@ class TrailMonitor:
                     f"[TRAIL] Breakeven activated (intrabar): SL -> {be_sl:.2f} "
                     f"(peak_profit={peak_profit:.2f} live_atr={self._current_atr:.2f})"
                 )
-                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-07: intrabar BE long
             elif not is_long and be_sl < state.current_sl:
                 state.current_sl = be_sl
                 state.be_done    = True
@@ -703,7 +682,6 @@ class TrailMonitor:
                     f"[TRAIL] Breakeven activated (intrabar): SL -> {be_sl:.2f} "
                     f"(peak_profit={peak_profit:.2f} live_atr={self._current_atr:.2f})"
                 )
-                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-08: intrabar BE short
 
         # ── 1. TP hit ─────────────────────────────────────────────────────────
         if is_long and price >= risk.tp:
@@ -714,11 +692,6 @@ class TrailMonitor:
             return
 
         # ── 2. Hard SL / BE SL / Trail SL ────────────────────────────────────
-        # FIX-BRACKET-SL: When SL_FIRE_VIA_BRACKET=True, Python does NOT fire
-        # market closes for SL crosses — Delta's bracket SL order handles them
-        # at matching-engine speed with no spread-drift risk. Python still
-        # updates state.current_sl (step 4 below) and pushes tighter levels
-        # to Delta via _push_sl_to_delta. TP and Max SL still fire via Python.
         if is_long and price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER:
             trail_improved = state.current_sl > risk.sl
             be_at_entry    = state.be_done and abs(state.current_sl - entry_price) < 1e-6
@@ -728,15 +701,8 @@ class TrailMonitor:
                 reason = "Breakeven SL"
             else:
                 reason = "Initial SL"
-            if not SL_FIRE_VIA_BRACKET:
-                await self._fire_exit(price, reason, source="tick")
-                return
-            else:
-                logger.debug(
-                    f"[TRAIL] SL cross detected long (price={price:.2f} sl={state.current_sl:.2f}) "
-                    f"reason={reason} — deferring to Delta bracket"
-                )
-                return
+            await self._fire_exit(price, reason, source="tick")
+            return
         if not is_long and price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER:
             trail_improved = state.current_sl < risk.sl
             be_at_entry    = state.be_done and abs(state.current_sl - entry_price) < 1e-6
@@ -746,15 +712,8 @@ class TrailMonitor:
                 reason = "Breakeven SL"
             else:
                 reason = "Initial SL"
-            if not SL_FIRE_VIA_BRACKET:
-                await self._fire_exit(price, reason, source="tick")
-                return
-            else:
-                logger.debug(
-                    f"[TRAIL] SL cross detected short (price={price:.2f} sl={state.current_sl:.2f}) "
-                    f"reason={reason} — deferring to Delta bracket"
-                )
-                return
+            await self._fire_exit(price, reason, source="tick")
+            return
 
         # ── 3. Max SL (FIX-EXIT-03 + FIX-AUDIT-04) ───────────────────────────
         if not state.max_sl_fired:
@@ -789,7 +748,6 @@ class TrailMonitor:
                     f"[TRAIL] Trail SL -> {trail_sl:.2f} "
                     f"(stage {state.stage}, live_atr={self._current_atr:.2f})"
                 )
-                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-05: tick trail long
 
             elif not is_long and trail_sl < state.current_sl:
                 state.current_sl = trail_sl
@@ -797,11 +755,9 @@ class TrailMonitor:
                     f"[TRAIL] Trail SL -> {trail_sl:.2f} "
                     f"(stage {state.stage}, live_atr={self._current_atr:.2f})"
                 )
-                self._push_sl_to_delta(state.current_sl)   # FIX-PUSH-SL-06: tick trail short
 
 
         # Re-check SL after trail update (in case trail just moved past current price)
-        # FIX-BRACKET-SL: same gate — if bracket handles SL, skip Python fire here too.
         if is_long and price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER:
             _trail_improved = state.current_sl > risk.sl
             _be_at_entry    = state.be_done and abs(state.current_sl - entry_price) < 1e-6
@@ -811,9 +767,8 @@ class TrailMonitor:
                 _recheck_reason = "Breakeven SL"
             else:
                 _recheck_reason = "Initial SL"
-            if not SL_FIRE_VIA_BRACKET:
-                await self._fire_exit(price, _recheck_reason, source="tick")
-                return
+            await self._fire_exit(price, _recheck_reason, source="tick")
+            return
         if not is_long and price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER:
             _trail_improved = state.current_sl < risk.sl
             _be_at_entry    = state.be_done and abs(state.current_sl - entry_price) < 1e-6
@@ -823,8 +778,7 @@ class TrailMonitor:
                 _recheck_reason = "Breakeven SL"
             else:
                 _recheck_reason = "Initial SL"
-            if not SL_FIRE_VIA_BRACKET:
-                await self._fire_exit(price, _recheck_reason, source="tick")
+            await self._fire_exit(price, _recheck_reason, source="tick")
 
     # ── Exit helper ───────────────────────────────────────────────────────────
 
@@ -1045,41 +999,3 @@ class TrailMonitor:
         except RuntimeError:
             pass  # no running loop — called from test or non-async context
 
-    # ── PHASE-2: push tightened SL to Delta-side bracket ──────────────────────
-
-    def _push_sl_to_delta(self, new_sl: float) -> None:
-        """
-        Schedule an async update of the Delta-side bracket SL.
-
-        Called every time `state.current_sl` is tightened — by BE activation,
-        bar-close trail update, or intrabar peak-driven trail. Pushing the
-        new SL to Delta means the exchange itself catches the cross at
-        matching-engine latency (~5ms), instead of the Python tick loop
-        round-tripping a market close (~250-500ms).
-
-        FIX-BRACKET-FIRED: if update_bracket_sl returns "BRACKET_FILLED",
-        the bracket SL already fired on Delta and the position is gone.
-        We fire the exit callback immediately so main.py resets state
-        without waiting for the next bar close to discover the flat position.
-        This is the fix for the open_order_not_found spam bug — previously
-        the bot would hammer Delta with hundreds of failed update calls across
-        the entire bar before discovering the exit at bar close.
-        """
-        if self._order_mgr is None:
-            return
-        try:
-            loop = asyncio.get_running_loop()
-
-            async def _push_and_check(sl: float) -> None:
-                result = await self._order_mgr.update_bracket_sl(sl)
-                if result == "BRACKET_FILLED" and not self._exit_fired:
-                    logger.info(
-                        "[TRAIL] Bracket exit detected via update_bracket_sl — "
-                        "firing exit callback immediately."
-                    )
-                    reason = "Bracket SL/TP (exchange-side)"
-                    await self._fire_exit(sl, reason, source="bracket")
-
-            loop.create_task(_push_and_check(new_sl))
-        except RuntimeError:
-            pass  # no running loop — called from test / sync context
