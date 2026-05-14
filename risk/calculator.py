@@ -168,3 +168,32 @@ def calc_real_pl(
     )
     comm = entry_price * qty * COMMISSION_PCT
     return raw_pl - comm
+
+
+def lots_to_btc(lots: int, price: float) -> float:
+    """
+    Convert inverse perpetual lots to BTC notional.
+    Delta BTCUSD inverse perp: 1 lot = 1 USD / price BTC.
+    """
+    if price <= 0:
+        return 0.0
+    return lots / price
+
+
+def calc_pl_breakdown(
+    entry_price: float,
+    exit_price:  float,
+    qty:         int,
+    is_long:     bool,
+) -> dict:
+    """
+    Return a dict with raw_pl, commission, and net_pl.
+    Used by gsheet.py for logging.
+    """
+    raw_pl = (
+        (exit_price - entry_price) * qty if is_long
+        else (entry_price - exit_price) * qty
+    )
+    comm   = entry_price * qty * COMMISSION_PCT
+    net_pl = raw_pl - comm
+    return {"raw_pl": raw_pl, "commission": comm, "net_pl": net_pl}
