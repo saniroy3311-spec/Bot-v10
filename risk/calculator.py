@@ -54,13 +54,14 @@ class RiskLevels:
     is_long     — True = long, False = short
     is_trend    — True = trend regime, False = range regime
     """
-    entry_price: float
-    sl:          float
-    tp:          float
-    stop_dist:   float
-    atr:         float
-    is_long:     bool
-    is_trend:    bool
+    entry_price:     float
+    sl:              float
+    tp:              float
+    stop_dist:       float
+    atr:             float
+    is_long:         bool
+    is_trend:        bool
+    entry_bar_open:  float = 0.0   # FIX-LIVE-ATR: bar open at entry, seeds intrabar TR buffer
 
 
 @dataclass
@@ -85,10 +86,11 @@ class TrailState:
 # ─── Core helpers ──────────────────────────────────────────────────────────────
 
 def calc_levels(
-    entry_price: float,
-    atr:         float,
-    is_long:     bool,
-    is_trend:    bool,
+    entry_price:    float,
+    atr:            float,
+    is_long:        bool,
+    is_trend:       bool,
+    entry_bar_open: float = 0.0,
 ) -> RiskLevels:
     """
     Compute initial SL and TP from entry price + ATR.
@@ -112,13 +114,14 @@ def calc_levels(
         tp = entry_price - stop_dist * rr
 
     return RiskLevels(
-        entry_price = entry_price,
-        sl          = sl,
-        tp          = tp,
-        stop_dist   = stop_dist,
-        atr         = atr,
-        is_long     = is_long,
-        is_trend    = is_trend,
+        entry_price    = entry_price,
+        sl             = sl,
+        tp             = tp,
+        stop_dist      = stop_dist,
+        atr            = atr,
+        is_long        = is_long,
+        is_trend       = is_trend,
+        entry_bar_open = entry_bar_open,
     )
 
 
@@ -135,13 +138,14 @@ def recalc_levels_from_fill(risk: RiskLevels, fill_price: float) -> RiskLevels:
     """
     delta = fill_price - risk.entry_price
     return RiskLevels(
-        entry_price = fill_price,
-        sl          = risk.sl  + delta,
-        tp          = risk.tp  + delta,
-        stop_dist   = risk.stop_dist,
-        atr         = risk.atr,
-        is_long     = risk.is_long,
-        is_trend    = risk.is_trend,
+        entry_price    = fill_price,
+        sl             = risk.sl  + delta,
+        tp             = risk.tp  + delta,
+        stop_dist      = risk.stop_dist,
+        atr            = risk.atr,
+        is_long        = risk.is_long,
+        is_trend       = risk.is_trend,
+        entry_bar_open = risk.entry_bar_open,
     )
 
 
