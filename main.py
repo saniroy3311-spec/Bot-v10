@@ -50,6 +50,7 @@ from config import (
 )
 from feed.ws_feed            import CandleFeed
 from feed.binance_price_feed import BinancePriceFeed
+from feed.fills_feed         import FillsFeed
 from indicators.engine  import compute
 from strategy.signal    import evaluate, SignalType
 from risk.calculator    import (
@@ -107,6 +108,7 @@ class ShivaSniperBot:
         )
         self._feed: Optional[CandleFeed] = None
         self._binance_px_feed: Optional[BinancePriceFeed] = None
+        self._fills_feed: Optional[FillsFeed] = None
 
         # Position state — reset on each exit
         self._in_position : bool                  = False
@@ -170,6 +172,8 @@ class ShivaSniperBot:
         self._trail_mon.stop()
         if self._binance_px_feed is not None:
             self._binance_px_feed.stop()
+        if self._fills_feed is not None:
+            self._fills_feed.stop()
         try:
             await self._telegram.send("🔴 <b>Shiva Sniper Bot Stopped</b>")
         except Exception:
@@ -514,6 +518,16 @@ class ShivaSniperBot:
         self._binance_px_feed = BinancePriceFeed(self._trail_mon)
         self._binance_px_feed.start_task()
         logger.info("[MAIN] BinancePriceFeed started — exits now use Binance aggTrade prices")
+
+        # FIX-FILLS-WS: start Delta fills WebSocket listener for instant
+        # bracket exit detection. Replaces the bar-close drift check as
+        # the primary bracket-exit discovery path.
+        self._fills_feed = FillsFeed(
+            trail_monitor = self._trail_mon,
+            order_manager = self._order_mgr,
+        )
+        self._fills_feed.start_task()
+        logger.info("[MAIN] FillsFeed started — bracket exits now detected via Delta WS fills")
 
         _dashboard.start()
         try:
