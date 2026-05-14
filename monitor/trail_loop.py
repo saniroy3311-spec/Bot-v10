@@ -170,6 +170,7 @@ from config import (
     TRAIL_LOOP_SEC, BRACKET_SL_BUFFER, TRAIL_SL_PRE_FIRE_BUFFER,
     CANDLE_TIMEFRAME, SL_FIRE_VIA_BRACKET, PINE_MINTICK,
 )
+from collections import deque
 from risk.calculator import RiskLevels, TrailState
 
 logger = logging.getLogger("trail_loop")
@@ -313,6 +314,8 @@ class TrailMonitor:
         self._exit_fired      : bool = False
 
         self._current_atr     : float = 0.0   # FIX-PARITY-01: live ATR updated each bar
+        self._intrabar_tr_buf : deque  = deque(maxlen=14)  # FIX-LIVE-ATR: rolling true range buffer
+        self._prev_bar_close  : float  = 0.0               # FIX-LIVE-ATR: needed for true range calc
 
         # FIX-DUAL-SOURCE-B: Binance/Delta price-source offset compensation.
         # The bot fills entries on Delta India but watches Binance aggTrade
@@ -349,6 +352,8 @@ class TrailMonitor:
         self._exit_fired   = False
         self._running      = True
         self._current_atr  = risk_levels.atr   # seed with entry-bar ATR; updated each bar close
+        self._intrabar_tr_buf.clear()              # FIX-LIVE-ATR: reset on new trade
+        self._prev_bar_close = 0.0                 # FIX-LIVE-ATR: reset on new trade
 
         # FIX-DUAL-SOURCE-B: reset offset for new trade. It will be captured
         # on the first tick that arrives after the trail starts.
@@ -425,6 +430,7 @@ class TrailMonitor:
         # All trail distance calculations below use current_atr, not entry_atr.
         # entry_atr (risk.atr) is only used for initial SL/TP and Max SL.
         self._current_atr = current_atr
+        self._prev_bar_close = bar_close           # FIX-LIVE-ATR: track for next bar TR calc
 
         # ── 2. Upgrade trail stage from bar CLOSE profit (FIX-EXIT-01) ──────
         close_profit = (bar_close - entry_price) if is_long else (entry_price - bar_close)
@@ -972,6 +978,34 @@ class TrailMonitor:
 
     # ── Feed integration ───────────────────────────────────────────────────────
 
+    def _update_live_atr(self, high: float, low: float) -> None:
+        """
+        FIX-LIVE-ATR: Update self._current_atr using a rolling 14-bar true range
+        buffer fed by intrabar high/low ticks from push_ws_candle().
+
+        True range = max(high - low, abs(high - prev_close), abs(low - prev_close))
+        Uses last closed bar's close as prev_close (self._prev_bar_close).
+        Once the buffer has >= 5 samples, switches from bar-close ATR to
+        live RMA ATR — giving the trail a live volatility view intrabar.
+        Buffer is capped at 14 entries (ATR_LEN) via deque maxlen.
+        """
+        if self._prev_bar_close <= 0.0:
+            return  # not seeded yet — wait for first bar close
+        prev_close = self._prev_bar_close
+        tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+        if tr <= 0.0:
+            return
+        self._intrabar_tr_buf.append(tr)
+        if len(self._intrabar_tr_buf) < 5:
+            return  # not enough samples yet — keep using bar-close ATR
+        # Wilder RMA: alpha = 1 / len, iterate forward through buffer
+        alpha = 1.0 / len(self._intrabar_tr_buf)
+        rma = self._intrabar_tr_buf[0]
+        for tr_val in list(self._intrabar_tr_buf)[1:]:
+            rma = rma * (1.0 - alpha) + tr_val * alpha
+        if rma > 0.0:
+            self._current_atr = rma
+
     def push_ws_candle(self, high: float, low: float, source: str = "binance") -> None:
         """
         Called by ws_feed (Delta WS) and binance_price_feed (1m bucket flush).
@@ -1010,6 +1044,9 @@ class TrailMonitor:
         else:
             if self._state.peak_price == 0.0 or low < self._state.peak_price:
                 self._state.peak_price = low
+
+        # FIX-LIVE-ATR: update intrabar ATR from this high/low tick (Delta-space already)
+        self._update_live_atr(high, low)
 
         # FIX-PARITY-03: schedule exit evaluation for both extremes
         # TP-side first (high for long, low for short), then SL-side.
