@@ -753,12 +753,25 @@ class OrderManager:
         Cancel all open orders for the symbol (and the bracket).
         Never raises — failures are logged and swallowed (best-effort cleanup).
 
-        PHASE-2: also clears the bracket so we don't leave SL/TP orphaned
-        on Delta after a manual close.
+        FIX-CANCEL-01: replaced ccxt.cancel_all_orders() with a direct Delta
+        REST DELETE /v2/orders call. The ccxt async version internally called
+        Exchange.request() without awaiting it, producing a RuntimeWarning
+        every time this method ran. The signed REST path is already used
+        throughout this file for bracket operations and is reliable.
         """
         try:
-            await _retry(lambda: self.exchange.cancel_all_orders(SYMBOL))
-            logger.debug("[OM] cancel_all_orders: done")
+            if self._product_id is not None:
+                body = {
+                    "product_id":     self._product_id,
+                    "product_symbol": self._product_symbol,
+                    "cancel_limit_orders": True,
+                    "cancel_stop_orders":  True,
+                }
+                session = await self._http_session()
+                await _signed_request(session, "DELETE", "/v2/orders", body)
+                logger.debug("[OM] cancel_all_orders: done")
+            else:
+                logger.debug("[OM] cancel_all_orders: no product_id yet — skipping")
         except Exception as exc:
             logger.warning(f"[OM] cancel_all_orders failed (ignored): {exc}")
         # PHASE-2: also drop the bracket
