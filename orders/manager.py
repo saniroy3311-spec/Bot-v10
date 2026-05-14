@@ -116,6 +116,13 @@ _BRACKET_GONE_PHRASES = (
     "no_open_bracket_order_for_position",
 )
 
+# Phrases that mean the specific order ID is gone — bracket may have fired
+_ORDER_NOT_FOUND_PHRASES = (
+    "open_order_not_found",
+    "order_not_found",
+    "order not found",
+)
+
 
 # ─── Exchange factory ──────────────────────────────────────────────────────────
 
@@ -655,17 +662,54 @@ class OrderManager:
             return True
         except Exception as exc:
             msg = str(exc).lower()
+
+            # ── Bracket explicitly gone (cancelled / triggered) ───────────────
             if any(p in msg for p in _BRACKET_GONE_PHRASES):
-                # Bracket already triggered (price hit SL/TP). Mark inactive
-                # so we stop trying to update it. The fill will be detected
-                # via fetch_open_position() on the next bar close, and
-                # main.py will reset state.
                 logger.info(
-                    f"[OM] Bracket already triggered/gone on Delta — "
-                    f"position will be detected as closed shortly"
+                    "[OM] Bracket already triggered/gone on Delta — "
+                    "position will be detected as closed shortly"
                 )
                 self._bracket_active = False
                 return False
+
+            # ── FIX-BRACKET-FIRED: open_order_not_found means the specific
+            # SL order ID no longer exists — the bracket SL fired and Delta
+            # filled it. Check if the position is still open:
+            #   • position gone  → bracket exit confirmed; mark inactive and
+            #     return "BRACKET_FILLED" so TrailMonitor can fire the exit cb.
+            #   • position still open → genuine transient error (e.g. order
+            #     replaced internally by Delta); log once and fall through to
+            #     the Python tick path.
+            if any(p in msg for p in _ORDER_NOT_FOUND_PHRASES):
+                try:
+                    pos = await self.fetch_open_position()
+                    if pos is None:
+                        # Position is gone — bracket SL/TP already filled.
+                        logger.info(
+                            "[OM] open_order_not_found + no open position → "
+                            "bracket exit confirmed. Marking bracket inactive."
+                        )
+                        self._bracket_active   = False
+                        self._bracket_order_id = None
+                        return "BRACKET_FILLED"  # sentinel for TrailMonitor
+                    else:
+                        # Position still open — bracket order may have been
+                        # replaced by Delta internally. Try to rediscover the
+                        # SL order id so future updates work.
+                        logger.info(
+                            "[OM] open_order_not_found but position still open — "
+                            "attempting bracket SL id rediscovery."
+                        )
+                        self._bracket_order_id = None
+                        if self._is_long is not None:
+                            await self._discover_bracket_sl_id(is_long=self._is_long)
+                except Exception as pos_exc:
+                    logger.warning(
+                        f"[OM] position check after open_order_not_found failed: {pos_exc}"
+                    )
+                # Either way, don't spam — return False and let Python trail handle it.
+                return False
+
             logger.warning(
                 f"[OM] update_bracket_sl failed: {exc} | "
                 f"falling back to Python tick path"
