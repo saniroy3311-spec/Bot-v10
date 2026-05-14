@@ -348,7 +348,7 @@ class ShivaSniperBot:
             if self._in_position:
                 return  # race-condition guard
 
-            risk_pre = calc_levels(snap.close, snap.atr, sig.is_long, sig.is_trend)
+            risk_pre = calc_levels(snap.close, snap.atr, sig.is_long, sig.is_trend, entry_bar_open=snap.open)
 
             try:
                 order = await self._order_mgr.place_entry(
@@ -377,13 +377,14 @@ class ShivaSniperBot:
             #      the Binance↔Delta offset put price right at the shifted SL.
             # Keep risk_pre's SL/TP; only update entry_price for logging/journal.
             risk = RiskLevels(
-                entry_price = fill,
-                sl          = risk_pre.sl,
-                tp          = risk_pre.tp,
-                stop_dist   = risk_pre.stop_dist,
-                atr         = risk_pre.atr,
-                is_long     = risk_pre.is_long,
-                is_trend    = risk_pre.is_trend,
+                entry_price    = fill,
+                sl             = risk_pre.sl,
+                tp             = risk_pre.tp,
+                stop_dist      = risk_pre.stop_dist,
+                atr            = risk_pre.atr,
+                is_long        = risk_pre.is_long,
+                is_trend       = risk_pre.is_trend,
+                entry_bar_open = snap.open,   # FIX-LIVE-ATR: seed intrabar TR from entry bar open
             )
 
             self._in_position  = True
