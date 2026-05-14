@@ -1,20 +1,27 @@
 """
-orders/manager.py — Shiva Sniper Bot-v10  |  PHASE-2 BRACKET ORDERS
+orders/manager.py — Shiva Sniper Bot-v10  |  EMERGENCY-BRACKET ARCHITECTURE
 ══════════════════════════════════════════════════════════════════════════════
 
-PHASE-2 CHANGE (vs Phase-1):
+ARCHITECTURE (FIX-BRACKET-CHURN):
 ─────────────────────────────────────────────────────────────────────────────
-Pine Script's `strategy.exit(stop=..., limit=..., trail_points=...)` is
-evaluated by TradingView's broker emulator on every tick of the bar trace
-— effectively zero latency. Phase-1 imitated that with a Python tick loop
-listening to Binance aggTrade and calling `close_position` via REST when SL
-crossed. Round-trip latency: ~250-500 ms per exit. On BTC at 273 ATR, that
-slippage cost ~80-150 USD per stopped trade vs Pine's reported fill.
+Previous design pushed every trail SL tighten to Delta via PUT /v2/orders/bracket.
+Delta internally replaces the order on each amendment, issuing a new order ID.
+The bot's cached _bracket_order_id became stale on every update, triggering a
+continuous open_order_not_found → rediscovery loop (~3 API calls per tick for
+the entire duration of the trade).
 
-PHASE-2 moves SL + TP onto Delta India's matching engine using the
-`/v2/orders/bracket` endpoint. The exchange holds the bracket; when price
-crosses, Delta fills it in ~5 ms — matching Pine's broker-emulator latency
-within market microstructure noise.
+New design:
+  • Bracket is placed ONCE at entry with the INITIAL SL only (wide safety net).
+  • Bracket is NEVER amended after placement.
+  • Python (TrailMonitor) owns all trail/BE/tighten logic and fires exits via
+    market close_position() on tick.
+  • The bracket's only job is crash/disconnect protection — if the bot dies,
+    Delta's bracket catches the worst-case initial SL. No stale IDs, no
+    amendment API calls, no rediscovery loops.
+
+API surface used:
+  POST  /v2/orders/bracket   place emergency SL bracket after entry fill
+  DELETE /v2/orders/bracket  cancel bracket when Python fires a clean exit
 
 FIX-BRACKET-ID (2026-05-13):
 ─────────────────────────────────────────────────────────────────────────────
@@ -116,12 +123,7 @@ _BRACKET_GONE_PHRASES = (
     "no_open_bracket_order_for_position",
 )
 
-# Phrases that mean the specific order ID is gone — bracket may have fired
-_ORDER_NOT_FOUND_PHRASES = (
-    "open_order_not_found",
-    "order_not_found",
-    "order not found",
-)
+
 
 
 # ─── Exchange factory ──────────────────────────────────────────────────────────
@@ -426,17 +428,21 @@ class OrderManager:
         tp: float,
     ) -> dict:
         """
-        Place a market entry order, then attach a Delta-side bracket
-        (SL + TP) so the exchange itself enforces stops at matching-engine
-        latency.
+        Place a market entry order, then attach an EMERGENCY-ONLY bracket
+        SL at the initial SL level.
 
-        The public signature is unchanged from Phase-1. Callers in main.py
-        do not need to be modified.
+        The bracket is a crash/disconnect safety net placed ONCE and NEVER
+        amended. Python (TrailMonitor) owns all trail/BE/exit logic and
+        fires exits via close_position(). The bracket only fires if the bot
+        loses connectivity or crashes while the position is open.
+
+        tp is accepted for signature compatibility but is NOT sent to Delta
+        — Python handles TP detection. Sending TP to the bracket would race
+        against the Python exit path and cause double-close errors.
 
         Returns the ccxt order dict for the entry leg. Raises on entry
-        failure. If the entry succeeds but the bracket attach fails, the
-        method still returns successfully — the trade remains protected
-        by the Phase-1 Python-side trail loop as a safety net.
+        failure. If bracket attach fails the trade is still open and
+        TrailMonitor protects it — does not raise.
         """
         side = "buy" if is_long else "sell"
         logger.info(
@@ -444,7 +450,7 @@ class OrderManager:
             f"sl={sl:.2f}  tp={tp:.2f}"
         )
 
-        # ── 1. Market entry (unchanged) ──────────────────────────────────────
+        # ── 1. Market entry ──────────────────────────────────────────────────
         order = await _retry(lambda: self.exchange.create_order(
             symbol = SYMBOL,
             type   = "market",
@@ -456,74 +462,46 @@ class OrderManager:
             f"[OM] Entry filled | id={order.get('id')}  fill={fill:.2f}"
         )
 
-        # ── 2. Cache state for later bracket updates ─────────────────────────
+        # ── 2. Cache state ───────────────────────────────────────────────────
         self._is_long          = is_long
         self._current_sl       = float(sl)
         self._current_tp       = float(tp)
-        self._bracket_active   = False  # set True only on successful place
-        self._bracket_order_id = None   # reset; will be populated below
+        self._bracket_active   = False
+        self._bracket_order_id = None
 
-        # ── 3. PHASE-2: attach Delta-side bracket ────────────────────────────
+        # ── 3. Emergency bracket SL (placed once, never amended) ─────────────
         if self._product_id is None:
             logger.warning(
-                "[OM] Bracket disabled (no product_id). Trade will rely on "
-                "Python-side SL/TP via TrailMonitor only."
+                "[OM] Emergency bracket disabled (no product_id). "
+                "TrailMonitor is sole protection."
             )
             return order
 
         try:
-            bracket_resp = await self._place_bracket(sl=sl, tp=tp)
-
-            # FIX-BRACKET-ID: extract the SL order id robustly from the
-            # response. Multiple response shapes are supported.
-            sl_order_id = _extract_sl_order_id(bracket_resp)
-            if sl_order_id is not None:
-                self._bracket_order_id = sl_order_id
-
-            # Mark active regardless of whether we parsed the id — the bracket
-            # exists on Delta. If id parsing failed, we'll discover it via a
-            # follow-up open-orders query below.
+            bracket_resp = await self._place_bracket(sl=sl)
             self._bracket_active = True
-
-            if self._bracket_order_id is None:
-                logger.warning(
-                    f"[OM] Bracket attached on Delta but SL order id was not "
-                    f"in the response (shape={type(bracket_resp.get('result')).__name__}); "
-                    f"discovering via fetch_open_orders…"
-                )
-                await self._discover_bracket_sl_id(is_long=is_long)
-
             logger.info(
-                f"[OM] ✅ Bracket attached on Delta | id={self._bracket_order_id} | "
-                f"sl={sl:.2f}  tp={tp:.2f}"
+                f"[OM] ✅ Emergency bracket SL placed on Delta | "
+                f"sl={sl:.2f}  (never amended — Python trail owns exits)"
             )
         except Exception as exc:
-            # Entry succeeded but bracket attach failed. Log loudly and rely on
-            # the Python-side trail. Do not raise — the trade is open and the
-            # caller (main.py) needs the entry order back to set up state.
             logger.error(
-                f"[OM] ⚠️  Bracket attach FAILED — trade is open but Delta-side "
-                f"SL/TP is NOT in place. Falling back to Python tick loop. "
+                f"[OM] ⚠️  Emergency bracket FAILED — trade is open with no "
+                f"exchange-side safety net. TrailMonitor is sole protection. "
                 f"Error: {exc}"
             )
 
         return order
 
-    # ── Bracket management (PHASE-2) ──────────────────────────────────────────
+    # ── Bracket management ─────────────────────────────────────────────────────
 
-    async def _place_bracket(self, sl: float, tp: float) -> dict:
+    async def _place_bracket(self, sl: float) -> dict:
         """
-        Internal: POST /v2/orders/bracket to attach SL + TP to the open
-        position. Called immediately after place_entry's market fill.
+        POST /v2/orders/bracket — emergency SL only, no TP.
 
-        Both legs are submitted as MARKET stop orders (no limit price) —
-        this matches Pine's strategy.exit which fills at market when stop
-        is hit. Limit-priced bracket legs would risk not getting filled
-        on a fast move, which is the opposite of what we want.
-
-        Trigger uses last_traded_price, which corresponds most closely to
-        Pine's bar-close evaluation. (Mark price would lag the LTP a few
-        ms and could miss tight stops.)
+        Placed ONCE after entry and NEVER amended. Python (TrailMonitor)
+        fires all real exits. This bracket only fires if the bot crashes
+        or loses connectivity.
         """
         body = {
             "product_id":     self._product_id,
@@ -532,189 +510,16 @@ class OrderManager:
                 "order_type": "market_order",
                 "stop_price": str(round(sl, 2)),
             },
-            "take_profit_order": {
-                "order_type": "market_order",
-                "stop_price": str(round(tp, 2)),
-            },
             "bracket_stop_trigger_method": "last_traded_price",
         }
         session = await self._http_session()
         return await _signed_request(session, "POST", "/v2/orders/bracket", body)
 
-    async def _discover_bracket_sl_id(self, is_long: bool) -> None:
-        """
-        FIX-BRACKET-ID fallback: when the bracket POST response doesn't expose
-        the SL order id in a shape we recognise, query Delta's open orders to
-        find it. The SL leg is:
-          • opposite side of entry  (long entry → sell SL, short entry → buy SL)
-          • reduce-only
-          • stop-loss order type    (best-effort — names vary across API rev)
-        We pick the first match. Failure here is non-fatal — bracket is still
-        active on Delta; we just can't push updates to it (Python tick loop
-        becomes the trail mechanism).
-        """
-        sl_side = "sell" if is_long else "buy"
-        try:
-            orders = await _retry(
-                lambda: self.exchange.fetch_open_orders(SYMBOL)
-            )
-        except Exception as exc:
-            logger.warning(f"[OM] _discover_bracket_sl_id fetch failed: {exc}")
-            return
+    # NOTE: _discover_bracket_sl_id and update_bracket_sl are intentionally
+    # removed. The bracket is never amended so there is nothing to discover
+    # or update. TrailMonitor._push_sl_to_delta() is also removed.
+    # See FIX-BRACKET-CHURN in the module docstring.
 
-        candidates = []
-        for o in orders or []:
-            try:
-                info       = o.get("info") or {}
-                side       = (o.get("side") or info.get("side") or "").lower()
-                otype      = (o.get("type") or info.get("order_type") or "").lower()
-                stop_type  = (info.get("stop_order_type") or "").lower()
-                reduce_o   = bool(
-                    o.get("reduceOnly")
-                    or info.get("reduce_only")
-                    or info.get("reduceOnly")
-                )
-                if side != sl_side:
-                    continue
-                # We want stop orders, not the bracket TP. Stop loss types vary:
-                #   "stop_loss_order", "stop_loss", or generic stop + reduce_only.
-                is_sl_typed = "stop_loss" in stop_type
-                is_stop_red = ("stop" in otype) and reduce_o
-                if not (is_sl_typed or is_stop_red):
-                    continue
-                oid = o.get("id") or info.get("id")
-                if oid is None:
-                    continue
-                try:
-                    candidates.append(int(oid))
-                except (TypeError, ValueError):
-                    continue
-            except Exception:
-                continue
-
-        if not candidates:
-            logger.warning(
-                "[OM] _discover_bracket_sl_id: no SL-shaped open order found — "
-                "trail updates will be rejected; Python tick path will guard SL."
-            )
-            return
-
-        # If multiple candidates, prefer the one whose trigger price is closest
-        # to our cached SL — that's almost certainly the bracket SL.
-        self._bracket_order_id = candidates[0]
-        logger.info(
-            f"[OM] Recovered bracket SL order id via open-orders scan: "
-            f"{self._bracket_order_id}"
-        )
-
-    async def update_bracket_sl(self, new_sl: float) -> bool:
-        """
-        PUT /v2/orders/bracket — update the SL on the active bracket.
-
-        Called by TrailMonitor whenever the Python-side trail tightens
-        (stage upgrade, BE, or peak-driven trail update). Pushing the
-        new SL to Delta means the exchange itself will catch the cross
-        at matching-engine latency, instead of the bot's WS-tick loop
-        having to detect and round-trip a market close.
-
-        Returns True if the bracket was updated, False on failure (caller
-        should keep relying on the Python tick path as a fallback).
-
-        TP is preserved at its current value — we never change TP after
-        entry; only the SL trails.
-        """
-        if not self._bracket_active or self._product_id is None:
-            return False
-        if self._current_tp is None:
-            return False
-
-        # Don't push if the new SL equals the current SL (avoid Delta noise).
-        if self._current_sl is not None and abs(new_sl - self._current_sl) < 0.5:
-            return True
-
-        if self._bracket_order_id is None:
-            # Last-chance recovery: try to find the SL order id now. If it's
-            # still missing after this, log once and bail. (We don't want to
-            # spam this — TrailMonitor calls update_bracket_sl on every tick.)
-            if self._is_long is not None:
-                await self._discover_bracket_sl_id(is_long=self._is_long)
-            if self._bracket_order_id is None:
-                logger.warning("[OM] update_bracket_sl: no bracket_order_id, cannot update")
-                return False
-
-        body = {
-            "id":                          self._bracket_order_id,  # Required by Delta
-            "product_id":                  self._product_id,
-            "product_symbol":              self._product_symbol,
-            "bracket_stop_loss_price":     str(round(new_sl, 2)),
-            "bracket_take_profit_price":   str(round(self._current_tp, 2)),
-            "bracket_stop_trigger_method": "last_traded_price",
-        }
-        session = await self._http_session()
-        try:
-            await _signed_request(session, "PUT", "/v2/orders/bracket", body)
-            old_sl = self._current_sl
-            self._current_sl = float(new_sl)
-            logger.info(
-                f"[OM] 🎯 Bracket SL updated on Delta | "
-                f"{old_sl:.2f} → {new_sl:.2f}"
-            )
-            return True
-        except Exception as exc:
-            msg = str(exc).lower()
-
-            # ── Bracket explicitly gone (cancelled / triggered) ───────────────
-            if any(p in msg for p in _BRACKET_GONE_PHRASES):
-                logger.info(
-                    "[OM] Bracket already triggered/gone on Delta — "
-                    "position will be detected as closed shortly"
-                )
-                self._bracket_active = False
-                return False
-
-            # ── FIX-BRACKET-FIRED: open_order_not_found means the specific
-            # SL order ID no longer exists — the bracket SL fired and Delta
-            # filled it. Check if the position is still open:
-            #   • position gone  → bracket exit confirmed; mark inactive and
-            #     return "BRACKET_FILLED" so TrailMonitor can fire the exit cb.
-            #   • position still open → genuine transient error (e.g. order
-            #     replaced internally by Delta); log once and fall through to
-            #     the Python tick path.
-            if any(p in msg for p in _ORDER_NOT_FOUND_PHRASES):
-                try:
-                    pos = await self.fetch_open_position()
-                    if pos is None:
-                        # Position is gone — bracket SL/TP already filled.
-                        logger.info(
-                            "[OM] open_order_not_found + no open position → "
-                            "bracket exit confirmed. Marking bracket inactive."
-                        )
-                        self._bracket_active   = False
-                        self._bracket_order_id = None
-                        return "BRACKET_FILLED"  # sentinel for TrailMonitor
-                    else:
-                        # Position still open — bracket order may have been
-                        # replaced by Delta internally. Try to rediscover the
-                        # SL order id so future updates work.
-                        logger.info(
-                            "[OM] open_order_not_found but position still open — "
-                            "attempting bracket SL id rediscovery."
-                        )
-                        self._bracket_order_id = None
-                        if self._is_long is not None:
-                            await self._discover_bracket_sl_id(is_long=self._is_long)
-                except Exception as pos_exc:
-                    logger.warning(
-                        f"[OM] position check after open_order_not_found failed: {pos_exc}"
-                    )
-                # Either way, don't spam — return False and let Python trail handle it.
-                return False
-
-            logger.warning(
-                f"[OM] update_bracket_sl failed: {exc} | "
-                f"falling back to Python tick path"
-            )
-            return False
 
     async def cancel_bracket(self) -> None:
         """
