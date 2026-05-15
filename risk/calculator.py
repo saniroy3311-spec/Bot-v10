@@ -2,33 +2,24 @@
 risk/calculator.py — Shiva Sniper Bot-v10
 ══════════════════════════════════════════════════════════════════════════════
 
-Shared dataclasses and pure-math helpers imported by:
-  • indicators/engine.py   (calc_levels)
-  • monitor/trail_loop.py  (RiskLevels, TrailState)
-  • main.py                (everything)
+SL calculation matches Pine Script exactly:
+    stopDist = math.min(atr * atrMultActive, maxSLPoints)
+    Trend: atrMultActive = 0.9  → ~281 pts at ATR=312
+    Range: atrMultActive = 0.7  → ~219 pts at ATR=312
 
-All values mirror Pine Script v6 exactly — see shiva_sniper_report.pdf for
-the full derivation.
+    longSL  = entryPrice - stopDist
+    longTP  = entryPrice + stopDist * rrActive
+    shortSL = entryPrice + stopDist
+    shortTP = entryPrice - stopDist * rrActive
 
-Pine parity notes
-─────────────────
-• stop_dist = min(ATR × atr_mult, MAX_SL_POINTS)
-    → Trend  atr_mult = 0.9   (trendATRmul)
-    → Range  atr_mult = 0.7   (rangeATRmul)
-• TP = entry ± stop_dist × R:R
-    → Trend  R:R = 5.0   (trendRR)
-    → Range  R:R = 3.0   (rangeRR)
-• recalc_levels_from_fill(): used ONLY in startup recovery path.
-  For new entries, SL/TP are anchored to signal-bar close (Pine parity).
-  See PINE-PARITY-SL note in main.py.
-• calc_real_pl(): 0.059% taker on entry, 0% maker on exit — mirrors
-  Pine's commission_value = 0.059 setting.
+recalc_levels_from_fill(): used ONLY in startup recovery path.
+calc_real_pl(): 0.059% taker on entry, 0% maker on exit — mirrors Pine.
 ══════════════════════════════════════════════════════════════════════════════
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from config import (
     TREND_ATR_MULT, RANGE_ATR_MULT,
@@ -43,14 +34,13 @@ from config import (
 @dataclass
 class RiskLevels:
     """
-    Immutable (or near-immutable) snapshot of SL / TP levels for one trade.
+    Immutable snapshot of SL / TP levels for one trade.
 
-    entry_price — actual fill price (updated after fill; SL/TP stay pinned
-                  to signal-bar close for Pine parity)
-    sl          — initial stop loss price
-    tp          — take-profit price
-    stop_dist   — abs distance from entry to initial SL (points)
-    atr         — entry-bar ATR (used for initial SL/TP and Max SL only)
+    entry_price — actual fill price
+    sl          — initial stop loss  (entry ± ATR × atr_mult)
+    tp          — take-profit price  (entry ∓ stopDist × R:R)
+    stop_dist   — abs distance from entry to SL (pts)
+    atr         — entry-bar ATR (used for Max SL and trail math)
     is_long     — True = long, False = short
     is_trend    — True = trend regime, False = range regime
     """
@@ -61,7 +51,7 @@ class RiskLevels:
     atr:             float
     is_long:         bool
     is_trend:        bool
-    entry_bar_open:  float = 0.0   # FIX-LIVE-ATR: bar open at entry, seeds intrabar TR buffer
+    entry_bar_open:  float = 0.0
 
 
 @dataclass
@@ -69,12 +59,11 @@ class TrailState:
     """
     Mutable per-trade trailing stop state.
 
-    stage       — current trail stage (0 = no trail active yet, 1-5 active)
-    current_sl  — the live stop loss level (starts at initial SL, improves
-                  as trail/BE advance it)
-    peak_price  — highest high (long) or lowest low (short) seen since entry
-    be_done     — True once breakeven has been activated (fires once per trade)
-    max_sl_fired — True once the Max SL circuit breaker has fired
+    stage        — current trail stage (0 = no trail yet, 1–5 active)
+    current_sl   — live stop loss level
+    peak_price   — best price seen since entry (high for long, low for short)
+    be_done      — True once breakeven activated (once per trade)
+    max_sl_fired — True once Max SL circuit breaker fired
     """
     stage:         int   = 0
     current_sl:    float = 0.0
@@ -93,14 +82,15 @@ def calc_levels(
     entry_bar_open: float = 0.0,
 ) -> RiskLevels:
     """
-    Compute initial SL and TP from entry price + ATR.
+    Compute initial SL and TP — Pine-exact formula.
 
-    Mirrors Pine:
-        stopDist = math.min(atr * atrMultActive, maxSLPoints)
-        longSL   = entryPrice - stopDist
-        longTP   = entryPrice + stopDist * rrActive
-        shortSL  = entryPrice + stopDist
-        shortTP  = entryPrice - stopDist * rrActive
+    Pine Script:
+        atrMultActive = isTrend ? trendATRmul : rangeATRmul
+        stopDist      = math.min(atr * atrMultActive, maxSLPoints)
+        longSL        = entryPrice - stopDist
+        longTP        = entryPrice + stopDist * rrActive
+        shortSL       = entryPrice + stopDist
+        shortTP       = entryPrice - stopDist * rrActive
     """
     atr_mult  = TREND_ATR_MULT if is_trend else RANGE_ATR_MULT
     rr        = TREND_RR       if is_trend else RANGE_RR
@@ -127,14 +117,8 @@ def calc_levels(
 
 def recalc_levels_from_fill(risk: RiskLevels, fill_price: float) -> RiskLevels:
     """
-    Shift SL / TP by the difference between signal-bar close and actual fill.
-
-    Used ONLY in the startup recovery path (bot restart mid-trade) to
-    re-anchor levels to the fill price when the original signal-bar close
-    is no longer available.
-
-    NOTE: Do NOT call this for new live entries — main.py pins SL/TP to
-    the signal-bar close for Pine parity (PINE-PARITY-SL).
+    Shift SL / TP by the fill-vs-signal-close difference.
+    Used ONLY in the startup recovery path — NOT for new live entries.
     """
     delta = fill_price - risk.entry_price
     return RiskLevels(
@@ -156,15 +140,11 @@ def calc_real_pl(
     qty:         int,
 ) -> float:
     """
-    Commission-adjusted P&L.
+    Commission-adjusted P&L — mirrors Pine's calcRealPL().
 
-    Mirrors Pine's calcRealPL():
-        rawPL = (exitPx - entryPx) * qty            (long)
-              = (entryPx - exitPx) * qty            (short)
-        comm  = entryPx * qty * 0.00059             (0.059% taker entry only)
-        return rawPL - comm
-
-    Exit is assumed maker (0% fee) matching Pine's default.
+    rawPL = (exitPx - entryPx) * qty   (long)
+          = (entryPx - exitPx) * qty   (short)
+    comm  = entryPx * qty * 0.00059    (0.059% taker entry, 0% maker exit)
     """
     raw_pl = (
         (exit_price - entry_price) * qty if is_long
@@ -175,10 +155,7 @@ def calc_real_pl(
 
 
 def lots_to_btc(lots: int, price: float) -> float:
-    """
-    Convert inverse perpetual lots to BTC notional.
-    Delta BTCUSD inverse perp: 1 lot = 1 USD / price BTC.
-    """
+    """Delta BTCUSD inverse perp: 1 lot = 1 USD / price BTC."""
     if price <= 0:
         return 0.0
     return lots / price
@@ -190,10 +167,7 @@ def calc_pl_breakdown(
     qty:         int,
     is_long:     bool,
 ) -> dict:
-    """
-    Return a dict with raw_pl, commission, and net_pl.
-    Used by gsheet.py for logging.
-    """
+    """Return raw_pl, commission, net_pl. Used by gsheet.py."""
     raw_pl = (
         (exit_price - entry_price) * qty if is_long
         else (entry_price - exit_price) * qty
