@@ -1,20 +1,15 @@
 """
-config.py - Shiva Sniper v6.5 Python Bot
+config.py - Shiva Sniper v10
 
-CHANGE IN THIS VERSION:
-  CONFIG-FIX-001 | TRAIL_LOOP_SEC default changed from 0.5 → 0.1
-    Pine Script's broker emulator tracks price every tick (milliseconds).
-    At 0.5s the bot could miss the exact trail stop crossing by up to 0.5s,
-    causing a slightly different exit price than Pine shows.
-    At 0.1s the bot responds within 100ms of the trail stop being crossed —
-    close enough to match Pine's sub-second exit behavior.
-    Delta Exchange REST API easily handles 10 requests/second.
-    Override via .env: TRAIL_LOOP_SEC=0.1
+CHANGES IN THIS VERSION:
+  PINE-STAGE-EXACT | Stage upgrade triggers now match Pine exactly.
+    Previously: profit_dist >= live_atr × trigger × PINE_MINTICK  (10× too early)
+    Now:        profit_dist >= live_atr × trigger                  (raw ATR multiples)
+    PINE_MINTICK still applies to trail_points/trail_offset distances only.
 
-  FIX-TRAIL-FAST | Trail offsets tightened for faster profit capture.
-    Offsets reduced across all 5 stages so the trail SL follows price
-    more closely after activation. Triggers and points unchanged.
-    Old values preserved in comments for easy rollback.
+  SL matches Pine exactly:
+    Trend: stopDist = min(ATR × 0.9, 1500)  → ~281 pts at ATR=312
+    Range: stopDist = min(ATR × 0.7, 1500)  → ~219 pts at ATR=312
 """
 import os
 
@@ -62,60 +57,47 @@ ADX_RANGE_TH = int(os.environ.get("ADX_RANGE_TH", "18"))
 # ──────────────────────────────────────────────
 FILTER_ATR_MULT    = float(os.environ.get("FILTER_ATR_MULT",  "1.6"))
 FILTER_BODY_MULT   = float(os.environ.get("FILTER_BODY_MULT", "0.4"))
-# FIX-VOL-PARITY: Volume filter DISABLED by default for Pine parity.
-#
-# WHY: Pine Script runs on TradingView's own volume data. Delta Exchange
-# REST API returns a different (compressed) volume figure — roughly 3% of
-# what TradingView shows for the same bar. Because both bar_vol AND vol_sma
-# are computed from Delta's data, the *ratio* is stable, but the absolute
-# values are far below what Pine sees. Bars that pass Pine's "volume > volSMA"
-# can fail the bot's check, causing the bot to miss valid entry signals.
-#
-# Since Delta REST and TradingView volume are incomparable data sources,
-# the cleanest way to achieve Pine entry parity is to disable this filter
-# in the bot. The ATR and body filters still reject dead/choppy bars.
-#
-# To re-enable with tuning: set FILTER_VOL_ENABLED=true and start with
-# FILTER_VOL_MULT=0.05 in .env, then check logs for "VOL-FILTER" lines
-# and compare vs TradingView chart entries.
-FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "false").lower() == "true"
 
-# FILTER_VOL_MULT: Only relevant when FILTER_VOL_ENABLED=true.
-# Default 0.05 = conservative starting point for Delta REST volumes.
-# Adjust in .env (e.g. FILTER_VOL_MULT=0.1) while comparing log vol= to TV.
-FILTER_VOL_MULT = float(os.environ.get("FILTER_VOL_MULT", "0.05"))
+FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "false").lower() == "true"
+FILTER_VOL_MULT    = float(os.environ.get("FILTER_VOL_MULT", "0.05"))
 
 # ──────────────────────────────────────────────
-# RISK / REWARD
+# RISK / REWARD  (Pine-exact)
 # ──────────────────────────────────────────────
 TREND_RR       = float(os.environ.get("TREND_RR",       "5.0"))
 RANGE_RR       = float(os.environ.get("RANGE_RR",       "3.0"))
+
+# Pine Script:
+#   atrMultActive = isTrend ? trendATRmul : rangeATRmul
+#   stopDist      = math.min(atr * atrMultActive, maxSLPoints)
+# With ATR=312.18:
+#   Trend SL = min(312.18 × 0.9, 1500) = 280.96 pts ≈ 281 pts
+#   Range SL = min(312.18 × 0.7, 1500) = 218.53 pts
 TREND_ATR_MULT = float(os.environ.get("TREND_ATR_MULT", "0.9"))
 RANGE_ATR_MULT = float(os.environ.get("RANGE_ATR_MULT", "0.7"))
+
 MAX_SL_MULT    = float(os.environ.get("MAX_SL_MULT",    "2.0"))
 MAX_SL_POINTS  = float(os.environ.get("MAX_SL_POINTS",  "1500.0"))
 
 # ──────────────────────────────────────────────
 # PINE MINTICK (FIX-MINTICK-01)
 # ──────────────────────────────────────────────
-# Pine's strategy.exit(trail_points=P, trail_offset=O) interprets P and O
-# as syminfo.mintick units — NOT raw USD points. For BTCUSD.P on Delta India,
-# mintick = 0.1. So Pine's trail_points = pts_mult * ATR * 0.1 in USD terms.
-# Without this correction the bot needs 10× more profit to arm the trail
-# vs Pine (143 USD vs 14 USD on a 204 ATR trade).
-# Override via .env: PINE_MINTICK=0.1
+# Applied ONLY to trail_points and trail_offset distances.
+# NOT applied to stage upgrade triggers (Pine uses raw ATR multiples there).
+# For BTCUSD.P on Delta India: mintick = 0.1
 PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "0.1"))
 
 # ──────────────────────────────────────────────
-# 5-STAGE TRAIL ENGINE
+# 5-STAGE TRAIL ENGINE  (PINE-STAGE-EXACT)
 # ──────────────────────────────────────────────
 # Format: (trigger_ATR_mult, trail_points_mult, trail_offset_mult)
 #
-# FIX-MINTICK-01: Restored to original Pine parity values.
-# All three multipliers are scaled by PINE_MINTICK (0.1) inside trail_loop.py,
-# so effective USD distances = mult * ATR * 0.1
-# Example stage 1: activation = 0.70 * 204 * 0.1 = 14.3 USD (matches Pine)
-#                  offset     = 0.55 * 204 * 0.1 = 11.2 USD (matches Pine)
+# trigger: stage upgrades when profit_dist >= ATR × trigger  (raw, no mintick)
+# pts:     trail arms when peak_profit >= ATR × pts × PINE_MINTICK
+# off:     trail SL placed ATR × off × PINE_MINTICK behind peak
+#
+# With ATR=312.18:
+#   Stage 1 upgrades at 312 pts | arms at 21.9 pts | offset 17.2 pts
 TRAIL_STAGES = [
     (1.0,  0.70, 0.55),   # Stage 1
     (2.0,  0.55, 0.45),   # Stage 2
@@ -131,25 +113,15 @@ BE_MULT = float(os.environ.get("BE_MULT", "1.0"))
 RSI_OB  = int(os.environ.get("RSI_OB", "70"))
 RSI_OS  = int(os.environ.get("RSI_OS", "30"))
 
-# BREAKOUT-BUFFER: extra pts close must clear prev high/low before trend entry fires.
-# Default 0 = exact Pine parity.
-# WHY 0: BINANCE_SIGNAL_FEED=true means bot computes indicators on Binance OHLCV,
-# the same data source as TradingView/Pine. Feed divergence is eliminated at the
-# indicator level, so no buffer is needed to match Pine entries.
-# Set > 0 only if switching BINANCE_SIGNAL_FEED=false (Delta data mode).
 BREAKOUT_BUFFER_PTS = float(os.environ.get("BREAKOUT_BUFFER_PTS", "0"))
 
 # ──────────────────────────────────────────────
 # COMMISSION + BUFFERS
 # ──────────────────────────────────────────────
-COMMISSION_PCT           = 0.059 / 100   # FIX-COMM-001: actual Delta India taker rate (was 0.05)
+COMMISSION_PCT           = 0.059 / 100
 BRACKET_SL_BUFFER        = float(os.environ.get("BRACKET_SL_BUFFER",        "10.0"))
 TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "0.0"))
 
-# FIX-BRACKET-SL: When true, Python tick loop does NOT fire market closes for
-# SL crosses. Delta bracket SL is sole authority for stop exits. Eliminates
-# premature exits from Binance-Delta spread drift. TP and Max SL still fire
-# via Python. Default true (production-safe).
 SL_FIRE_VIA_BRACKET = os.environ.get("SL_FIRE_VIA_BRACKET", "false").lower() == "true"
 
 # ──────────────────────────────────────────────
@@ -157,23 +129,10 @@ SL_FIRE_VIA_BRACKET = os.environ.get("SL_FIRE_VIA_BRACKET", "false").lower() == 
 # ──────────────────────────────────────────────
 CANDLE_TIMEFRAME = os.environ.get("CANDLE_TIMEFRAME", "30m")
 
-# BINANCE-SIGNAL-FEED: Use Binance BTCUSDT candles for indicator calculation
-# instead of Delta India's BTCUSD.P. TradingView's Pine Script uses Binance
-# as its primary BTC data source, so computing indicators on Binance data
-# gives ~90-95% match vs Pine (vs ~70-85% on Delta data).
-# Set BINANCE_SIGNAL_FEED=true in .env to enable.
-# Orders still execute on Delta India — only the candle data source changes.
 BINANCE_SIGNAL_FEED = os.environ.get("BINANCE_SIGNAL_FEED", "true").lower() == "true"
 BINANCE_SYMBOL      = os.environ.get("BINANCE_SYMBOL", "BTC/USDT")
 
-# BINANCE-EXIT-FEED-v1: TRAIL_LOOP_SEC raised from 0.1 → 5.0.
-# BinancePriceFeed now handles all intrabar exit monitoring via Binance
-# aggTrade WS (~10ms). The _tick_loop in trail_loop.py is now a pure
-# safety net (catches exchange connectivity gaps only) — a 5s poll
-# interval is sufficient and avoids unnecessary Delta REST calls.
-# To override: set TRAIL_LOOP_SEC=10 in .env for extra conservatism.
 TRAIL_LOOP_SEC   = float(os.environ.get("TRAIL_LOOP_SEC", "5.0"))
-
 WS_RECONNECT_SEC = 5
 
 # ──────────────────────────────────────────────
