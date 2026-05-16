@@ -2,32 +2,29 @@
 monitor/trail_loop.py — Shiva Sniper v10 — PINE-STAGE-EXACT
 ════════════════════════════════════════════════════════════════════════════
 
-NEW IN THIS VERSION (PINE-STAGE-EXACT):
+NEW IN THIS VERSION (FIX-PINE-MINTICK v10.1):
 ──────────────────────────────────────────────────────────────────────────
-Stage upgrade triggers now match Pine exactly.
+PINE_MINTICK removed from _compute_trail_sl() activation and offset.
 
-  BEFORE (wrong):
-    profit_dist >= live_atr * trigger_mult * PINE_MINTICK
-    → Stage 1 triggered at 312 × 1.0 × 0.1 = 31.2 pts   (10× too early)
+  The Pine script passes RAW USD point values to strategy.exit():
+    activePts = atr * trail1Pts   (e.g. 310 * 0.70 = 217 pts)
+    activeOff = atr * trail1Off   (e.g. 310 * 0.55 = 170 pts)
+    strategy.exit(..., trail_points=activePts, trail_offset=activeOff)
 
-  AFTER (correct):
-    profit_dist >= live_atr * trigger_mult
-    → Stage 1 triggered at 312 × 1.0       = 312 pts
+  Previous bot code applied PINE_MINTICK (0.1) scaling — WRONG:
+    activation = atr * pts_mult * 0.1  → Stage 1 at  21.7 pts
+    offset     = atr * off_mult * 0.1  → SL only 17 pts from peak
 
-  Pine Script:
-    if trailStage < 1 and profitDist >= atr * trail1Trigger
-    (profitDist and atr are both raw USD points — no mintick scaling)
+  Corrected bot code (no PINE_MINTICK):
+    activation = atr * pts_mult        → Stage 1 at 217 pts
+    offset     = atr * off_mult        → SL 170 pts from peak
 
-PINE_MINTICK (0.1) still applies ONLY to trail_points and trail_offset
-USD distances inside _compute_trail_sl() and _check_be() — those map
-to Pine's strategy.exit(trail_points=, trail_offset=) which are in tick
-units. The stage TRIGGER comparison is a raw price comparison and must
-NOT be tick-scaled.
+  Effect: bot was exiting within seconds of every entry. Now holds like Pine.
 
-Practical effect of the fix:
-  ATR=312, old bot: stage 1 at 31 pts → trail fires on first noise tick
-  ATR=312, new bot: stage 1 at 312 pts → trail only fires after meaningful
-                    profit, eliminating premature exits seen in production.
+PINE-STAGE-EXACT (preserved):
+──────────────────────────────────────────────────────────────────────────
+Stage upgrade triggers use raw ATR multiples — no PINE_MINTICK scaling.
+  profit_dist >= live_atr * trigger_mult   ← correct (unchanged)
 
 ────────────────────────────────────────────────────────────────────────
 ALL PREVIOUS FIXES PRESERVED (unchanged):
@@ -56,7 +53,7 @@ from typing import Callable, Optional
 from config import (
     TRAIL_STAGES, BE_MULT, MAX_SL_MULT, MAX_SL_POINTS,
     TRAIL_LOOP_SEC, TRAIL_SL_PRE_FIRE_BUFFER,
-    CANDLE_TIMEFRAME, PINE_MINTICK,
+    CANDLE_TIMEFRAME,
 )
 from risk.calculator import RiskLevels, TrailState
 
@@ -121,24 +118,35 @@ def _compute_trail_sl(
 
     FIX-PARITY-01: uses live_atr (current bar's ATR), not frozen entry_atr.
 
-    Pine strategy.exit(trail_points=P, trail_offset=O):
-      • P and O are in syminfo.mintick units → multiply by PINE_MINTICK for USD.
-      • ACTIVATION: trail arms when peak_profit >= P ticks = P * PINE_MINTICK USD.
-      • TRAIL SL:   peak - O * PINE_MINTICK (long) / peak + O * PINE_MINTICK (short).
+    FIX-PINE-MINTICK (v10.1):
+    Pine's strategy.exit(trail_points=P, trail_offset=O) in this script passes
+    RAW USD point values (activePts = atr * trailXPts, activeOff = atr * trailXOff)
+    — NOT tick-unit values. The script never divides by syminfo.mintick before
+    passing to strategy.exit(), so PINE_MINTICK must NOT be applied here.
 
-    PINE_MINTICK (0.1) IS applied here — these are tick-unit quantities.
-    This is different from the stage trigger (raw ATR multiples, no mintick).
+    Confirmed from Pine script:
+        activePts = atr * trail1Pts   (e.g. 310 * 0.70 = 217 pts)
+        activeOff = atr * trail1Off   (e.g. 310 * 0.55 = 170 pts)
+        strategy.exit(..., trail_points=activePts, trail_offset=activeOff)
+
+    Previous code multiplied by PINE_MINTICK (0.1), making activation 10x too
+    early (21.7 pts instead of 217 pts) — causing exits within seconds of entry.
+
+    Correct behaviour:
+      • ACTIVATION: trail arms when peak_profit >= atr * pts_mult
+      • TRAIL SL:   peak - (atr * off_mult)  [long]
+                    peak + (atr * off_mult)  [short]
     """
     idx = max(stage - 1, 0)
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
-    # ACTIVATION: trail arms when peak profit reaches trail_points ticks.
-    activation_threshold = live_atr * pts_mult * PINE_MINTICK   # FIX-MINTICK-01
+    # ACTIVATION: trail arms when peak profit reaches the raw ATR-multiple threshold.
+    activation_threshold = live_atr * pts_mult   # FIX-PINE-MINTICK: no * PINE_MINTICK
     if peak_profit_dist < activation_threshold:
         return None
 
-    # Once activated, trail SL sits trail_offset ticks behind the peak.
-    offset = live_atr * off_mult * PINE_MINTICK                  # FIX-MINTICK-01
+    # Once activated, trail SL sits the raw ATR-multiple offset behind the peak.
+    offset = live_atr * off_mult                 # FIX-PINE-MINTICK: no * PINE_MINTICK
     return (peak_price - offset) if is_long else (peak_price + offset)
 
 
