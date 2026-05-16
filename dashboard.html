@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shiva Sniper v10 — Dashboard</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #080a0f;
+  --bg1:       #0d1117;
+  --bg2:       #111827;
+  --bg3:       #1a2235;
+  --border:    rgba(255,255,255,0.06);
+  --border2:   rgba(255,255,255,0.11);
+  --t1:        #e8ecf4;
+  --t2:        #7d8899;
+  --t3:        #3d4a5c;
+  --green:     #00e676;
+  --green2:    rgba(0,230,118,0.12);
+  --red:       #ff4060;
+  --red2:      rgba(255,64,96,0.12);
+  --blue:      #3d9eff;
+  --yellow:    #ffc940;
+  --purple:    #b87fff;
+  --mono:      'JetBrains Mono', monospace;
+  --sans:      'DM Sans', sans-serif;
+}
+[data-theme="light"] {
+  --bg:#f0f4fb; --bg1:#ffffff; --bg2:#f5f8ff; --bg3:#eaeff8;
+  --border:rgba(0,0,0,0.07); --border2:rgba(0,0,0,0.13);
+  --t1:#0f172a; --t2:#475569; --t3:#94a3b8;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--sans);font-size:14px}
+
+/* ── TOPBAR ── */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;height:52px;
+  background:var(--bg1);border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:200;
+}
+.tl{display:flex;align-items:center;gap:12px}
+.logo{font-family:var(--mono);font-size:14px;font-weight:700;letter-spacing:2px;color:var(--t1)}
+.logo em{color:var(--green);font-style:normal}
+.ver{font-family:var(--mono);font-size:9px;color:var(--t3);padding:2px 6px;border:1px solid var(--border2);border-radius:3px}
+.badge{
+  display:flex;align-items:center;gap:6px;
+  padding:4px 10px;border-radius:5px;border:1px solid;
+  font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:1.5px;
+  background:var(--green2);border-color:rgba(0,230,118,0.25);color:var(--green);
+}
+.badge.off{background:var(--red2);border-color:rgba(255,64,96,0.25);color:var(--red)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink 1.3s ease-in-out infinite}
+.badge.off .dot{animation:none}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+
+.tr{display:flex;align-items:center;gap:14px}
+.clock{font-family:var(--mono);font-size:11px;color:var(--t3)}
+.btn-theme{background:none;border:1px solid var(--border2);color:var(--t2);padding:4px 10px;border-radius:5px;cursor:pointer;font-size:12px}
+.btn-theme:hover{border-color:var(--border2);color:var(--t1)}
+
+/* ── LAYOUT ── */
+.wrap{padding:16px 20px;max-width:1600px;margin:0 auto}
+
+/* ── KPI ROW ── */
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
+@media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:600px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.kpi-lbl{font-size:9px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);margin-bottom:8px}
+.kpi-val{font-family:var(--mono);font-size:22px;font-weight:700;line-height:1}
+.kpi-val.g{color:var(--green)} .kpi-val.r{color:var(--red)} .kpi-val.n{color:var(--t1)}
+.kpi-sub{font-size:10px;color:var(--t3);margin-top:5px;font-family:var(--mono)}
+
+/* ── MAIN GRID ── */
+.grid-main{display:grid;grid-template-columns:1fr 340px;gap:12px;margin-bottom:12px}
+@media(max-width:1100px){.grid-main{grid-template-columns:1fr}}
+
+/* ── CARD ── */
+.card{background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:16px;position:relative;overflow:hidden}
+.card-hdr{font-size:9px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:var(--t3);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+.card-hdr span{color:var(--t2);font-size:10px;letter-spacing:0;text-transform:none;font-family:var(--mono)}
+
+/* ── CHART ── */
+#chart-container{height:360px;border-radius:6px;overflow:hidden}
+
+/* ── POSITION CARD ── */
+.pos-card{border-color:var(--border)}
+.pos-card.long{border-color:rgba(0,230,118,0.2)!important}
+.pos-card.short{border-color:rgba(255,64,96,0.2)!important}
+
+.dir-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 12px;border-radius:5px;border:1px solid;
+  font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:1px;
+  margin-bottom:14px;
+}
+.dir-badge.long{background:var(--green2);border-color:rgba(0,230,118,0.3);color:var(--green)}
+.dir-badge.short{background:var(--red2);border-color:rgba(255,64,96,0.3);color:var(--red)}
+.dir-badge.none{background:rgba(255,255,255,0.03);border-color:var(--border2);color:var(--t3)}
+
+.pos-rows{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.pr-lbl{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:3px}
+.pr-val{font-family:var(--mono);font-size:13px;color:var(--t1)}
+
+.pos-pl{font-family:var(--mono);font-size:20px;font-weight:700;padding:10px 0 12px;border-top:1px solid var(--border)}
+.pos-pl.g{color:var(--green)} .pos-pl.r{color:var(--red)} .pos-pl.n{color:var(--t2)}
+
+.trail-lbl{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:6px}
+.pips{display:flex;gap:4px}
+.pip{flex:1;height:4px;border-radius:2px;background:var(--bg3);border:1px solid var(--border)}
+.pip.done{background:rgba(0,230,118,0.25);border-color:rgba(0,230,118,0.35)}
+.pip.active{background:var(--green);border-color:var(--green);box-shadow:0 0 8px rgba(0,230,118,0.5)}
+
+/* ── MINI CHARTS ROW ── */
+.grid-charts{display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px}
+@media(max-width:900px){.grid-charts{grid-template-columns:1fr}}
+#pl-chart-canvas{width:100%;height:130px;display:block}
+#bar-chart-canvas{width:100%;height:130px;display:block}
+
+/* ── WIN RATE RING ── */
+.ring-wrap{display:flex;align-items:center;gap:16px;padding:4px 0}
+.ring-info{display:flex;flex-direction:column;gap:5px}
+.ring-pct{font-family:var(--mono);font-size:26px;font-weight:700}
+.ring-sub{font-size:11px;color:var(--t3)}
+.ring-wl{display:flex;gap:12px;margin-top:2px}
+.ring-wl span{font-family:var(--mono);font-size:11px}
+.ring-wl .w{color:var(--green)} .ring-wl .l{color:var(--red)}
+
+/* ── TABLE ── */
+.tbl-wrap{overflow-x:auto;margin-bottom:12px;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;min-width:1100px}
+@media(max-width:900px){
+  .tbl-wrap table th, .tbl-wrap table td{padding:6px 8px;font-size:11px}
+  .tbl-wrap::after{
+    content:'← swipe →';display:block;text-align:center;
+    color:var(--t2);font-size:10px;padding:4px;letter-spacing:2px;
+  }
+}
+th{font-size:9px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:1px;padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;color:var(--t1);white-space:nowrap;font-family:var(--mono)}
+td.sans{font-family:var(--sans);font-size:12px}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,0.015)}
+.win{color:var(--green)!important;font-weight:700}
+.loss{color:var(--red)!important;font-weight:700}
+.dir-l{color:var(--green)} .dir-s{color:var(--red)}
+.empty-row{text-align:center;padding:32px 0;color:var(--t3);font-family:var(--sans)}
+
+/* ── SIGNAL MIX ── */
+.sig-mix{display:flex;flex-direction:column;gap:8px;padding:4px 0}
+.sig-row{display:flex;align-items:center;gap:8px}
+.sig-name{font-size:11px;color:var(--t2);width:90px;flex-shrink:0}
+.sig-bar-wrap{flex:1;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.sig-bar{height:100%;border-radius:3px;transition:width 0.6s ease}
+.sig-cnt{font-family:var(--mono);font-size:10px;color:var(--t3);width:24px;text-align:right}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="tl">
+    <div class="logo">SHIVA<em>.</em>SNIPER</div>
+    <div class="ver">v10</div>
+    <div class="badge" id="bot-badge"><span class="dot"></span><span id="bot-status-txt">CONNECTING</span></div>
+  </div>
+  <div class="tr">
+    <div class="clock" id="clock">--:-- IST</div>
+    <button class="btn-theme" onclick="toggleTheme()">🌙</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- KPIs -->
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-lbl">Total Trades</div><div class="kpi-val n" id="k-total">—</div><div class="kpi-sub" id="k-wl">—W · —L</div></div>
+    <div class="kpi"><div class="kpi-lbl">Win Rate</div><div class="kpi-val n" id="k-wr">—%</div><div class="kpi-sub">vs 50% B/E</div></div>
+    <div class="kpi"><div class="kpi-lbl">Gross P/L (USD)</div><div class="kpi-val n" id="k-pl">—</div><div class="kpi-sub">pts × lots × 0.001</div></div>
+    <div class="kpi"><div class="kpi-lbl">Best Trade</div><div class="kpi-val g" id="k-best">—</div><div class="kpi-sub">single trade</div></div>
+    <div class="kpi"><div class="kpi-lbl">Worst Trade</div><div class="kpi-val r" id="k-worst">—</div><div class="kpi-sub">single trade</div></div>
+    <div class="kpi"><div class="kpi-lbl">Trail Stage</div><div class="kpi-val n" id="k-stage">—</div><div class="kpi-sub">active position</div></div>
+  </div>
+
+  <!-- Main Grid: Chart + Position -->
+  <div class="grid-main">
+
+    <!-- BTC Lightweight Chart -->
+    <div class="card">
+      <div class="card-hdr">BTC/USD.P — 30m<span id="last-price">—</span></div>
+      <div id="chart-container"></div>
+    </div>
+
+    <!-- Right Column -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+
+      <!-- Open Position -->
+      <div class="card pos-card none" id="pos-card">
+        <div class="card-hdr">Open Position</div>
+        <div class="dir-badge none" id="dir-badge">⬛ NO POSITION</div>
+        <div class="pos-rows">
+          <div><div class="pr-lbl">Entry</div><div class="pr-val" id="p-entry">—</div></div>
+          <div><div class="pr-lbl">Current SL</div><div class="pr-val" style="color:var(--red)" id="p-sl">—</div></div>
+          <div><div class="pr-lbl">TP</div><div class="pr-val" style="color:var(--green)" id="p-tp">—</div></div>
+          <div><div class="pr-lbl">ATR</div><div class="pr-val" id="p-atr">—</div></div>
+        </div>
+        <div class="pos-pl n" id="p-pl">—</div>
+        <div class="trail-lbl" style="margin-top:10px">Trail Stage: <span id="p-stage">—</span>/5</div>
+        <div class="pips" style="margin-top:6px">
+          <div class="pip" data-s="1"></div>
+          <div class="pip" data-s="2"></div>
+          <div class="pip" data-s="3"></div>
+          <div class="pip" data-s="4"></div>
+          <div class="pip" data-s="5"></div>
+        </div>
+      </div>
+
+      <!-- Win Rate Ring -->
+      <div class="card">
+        <div class="card-hdr">Win Rate</div>
+        <div class="ring-wrap">
+          <svg width="110" height="110" viewBox="0 0 110 110" style="flex-shrink:0">
+            <circle cx="55" cy="55" r="44" fill="none" stroke="var(--bg3)" stroke-width="10"/>
+            <circle id="ring-arc" cx="55" cy="55" r="44" fill="none"
+              stroke="var(--green)" stroke-width="10"
+              stroke-dasharray="276.5" stroke-dashoffset="276.5"
+              stroke-linecap="round" transform="rotate(-90 55 55)"/>
+            <text id="ring-txt" x="55" y="52" text-anchor="middle"
+              font-family="JetBrains Mono,monospace" font-size="16" font-weight="700" fill="var(--t1)">—%</text>
+            <text x="55" y="67" text-anchor="middle"
+              font-family="DM Sans,sans-serif" font-size="9" fill="var(--t3)">WIN RATE</text>
+          </svg>
+          <div class="ring-info">
+            <div class="ring-pct" id="ring-pct">—%</div>
+            <div class="ring-sub" id="ring-sub">— / — trades</div>
+            <div class="ring-wl">
+              <span class="w">✓ <span id="ring-w">0</span></span>
+              <span class="l">✗ <span id="ring-l">0</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Signal Mix -->
+      <div class="card">
+        <div class="card-hdr">Signal Mix</div>
+        <div class="sig-mix" id="sig-mix"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Mini Charts -->
+  <div class="grid-charts">
+    <div class="card">
+      <div class="card-hdr">Cumulative Gross P/L (USD)<span id="cum-val">—</span></div>
+      <canvas id="pl-chart-canvas"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-hdr">Last 20 Trades — P/L</div>
+      <canvas id="bar-chart-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Trade Table -->
+  <div class="card tbl-wrap">
+    <div class="card-hdr" style="margin-bottom:10px">Trade History</div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Entry Time</th><th>Exit Time</th>
+          <th>Signal</th><th>Dir</th><th>Qty</th>
+          <th>Entry</th><th>Exit</th><th>Points</th>
+          <th>SL</th><th>TP</th>
+          <th>Stage</th><th>Reason</th><th>P/L</th>
+        </tr>
+      </thead>
+      <tbody id="tbl-body">
+        <tr><td colspan="14"><div class="empty-row">No trades yet</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div><!-- /wrap -->
+
+<script>
+/* ════════════════════════════════════════════════════════
+   THEME
+════════════════════════════════════════════════════════ */
+const html = document.documentElement;
+function toggleTheme(){
+  const dark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', dark ? 'light' : 'dark');
+  document.querySelector('.btn-theme').textContent = dark ? '☀️' : '🌙';
+  localStorage.setItem('theme', dark ? 'light' : 'dark');
+  if (_lwcChart) updateLWCColors();
+}
+const savedTheme = localStorage.getItem('theme') || 'dark';
+html.setAttribute('data-theme', savedTheme);
+document.querySelector('.btn-theme').textContent = savedTheme === 'dark' ? '🌙' : '☀️';
+
+/* ── Clock ── */
+function tick(){
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour12:true})+' IST';
+}
+tick(); setInterval(tick, 1000);
+
+/* ════════════════════════════════════════════════════════
+   CSS VAR HELPER
+════════════════════════════════════════════════════════ */
+function cv(v){ return getComputedStyle(html).getPropertyValue(v).trim(); }
+
+/* ════════════════════════════════════════════════════════
+   LIGHTWEIGHT CHARTS — BTC PRICE CHART
+════════════════════════════════════════════════════════ */
+let _lwcChart = null;
+let _candleSeries = null;
+let _slLine = null;
+let _tpLine = null;
+let _entryLine = null;
+let _entryMarkers = [];
+
+function getLWCColors(){
+  const dark = html.getAttribute('data-theme') === 'dark';
+  return {
+    bg:        dark ? '#080a0f' : '#ffffff',
+    text:      dark ? '#7d8899' : '#475569',
+    grid:      dark ? '#111827' : '#f0f4fb',
+    border:    dark ? '#1a2235' : '#e2e8f0',
+    upColor:   '#00e676',
+    downColor: '#ff4060',
+    wickUp:    '#00e676',
+    wickDown:  '#ff4060',
+  };
+}
+
+function initLWC(){
+  const container = document.getElementById('chart-container');
+  const colors = getLWCColors();
+
+  _lwcChart = LightweightCharts.createChart(container, {
+    width:  container.clientWidth,
+    height: container.clientHeight,
+    layout: {
+      background: { type: 'solid', color: colors.bg },
+      textColor: colors.text,
+      fontFamily: "'JetBrains Mono', monospace",
+      fontSize: 11,
+    },
+    grid: {
+      vertLines: { color: colors.grid },
+      horzLines: { color: colors.grid },
+    },
+    crosshair: {
+      mode: LightweightCharts.CrosshairMode.Normal,
+      vertLine: { color: '#3d9eff', style: 1, labelBackgroundColor: '#3d9eff' },
+      horzLine: { color: '#3d9eff', style: 1, labelBackgroundColor: '#3d9eff' },
+    },
+    rightPriceScale: {
+      borderColor: colors.border,
+      scaleMargins: { top: 0.05, bottom: 0.05 },
+    },
+    timeScale: {
+      borderColor: colors.border,
+      timeVisible: true,
+      secondsVisible: false,
+    },
+  });
+
+  _candleSeries = _lwcChart.addCandlestickSeries({
+    upColor:          colors.upColor,
+    downColor:        colors.downColor,
+    borderUpColor:    colors.upColor,
+    borderDownColor:  colors.downColor,
+    wickUpColor:      colors.wickUp,
+    wickDownColor:    colors.wickDown,
+  });
+
+  // Resize observer
+  const ro = new ResizeObserver(entries => {
+    for (const e of entries){
+      _lwcChart.applyOptions({ width: e.contentRect.width });
+    }
+  });
+  ro.observe(container);
+
+  // Subscribe to crosshair for last price display
+  _lwcChart.subscribeCrosshairMove(param => {
+    if (!param.time || !param.seriesData) return;
+    const d = param.seriesData.get(_candleSeries);
+    if (d) {
+      document.getElementById('last-price').textContent =
+        '$' + d.close.toLocaleString('en-US', {minimumFractionDigits:1});
+    }
+  });
+}
+
+function updateLWCColors(){
+  if (!_lwcChart) return;
+  const c = getLWCColors();
+  _lwcChart.applyOptions({
+    layout: { background: { color: c.bg }, textColor: c.text },
+    grid:   { vertLines: { color: c.grid }, horzLines: { color: c.grid } },
+    rightPriceScale: { borderColor: c.border },
+    timeScale: { borderColor: c.border },
+  });
+}
+
+function setLWCCandles(candles){
+  // candles: [{time, open, high, low, close}]
+  if (!_candleSeries || !candles.length) return;
+  _candleSeries.setData(candles);
+  _lwcChart.timeScale().fitContent();
+  const last = candles[candles.length - 1];
+  document.getElementById('last-price').textContent =
+    '$' + last.close.toLocaleString('en-US', {minimumFractionDigits:1});
+}
+
+function setLWCLevels(entry, sl, tp, isLong){
+  // Remove old lines
+  if (_entryLine) { try { _lwcChart.removeSeries(_entryLine); } catch(e){} _entryLine = null; }
+  if (_slLine)    { try { _lwcChart.removeSeries(_slLine);    } catch(e){} _slLine    = null; }
+  if (_tpLine)    { try { _lwcChart.removeSeries(_tpLine);    } catch(e){} _tpLine    = null; }
+
+  if (!entry) return;
+
+  _entryLine = _lwcChart.addLineSeries({
+    color: '#ffc940', lineWidth: 1, lineStyle: 2,
+    priceLineVisible: false, lastValueVisible: true,
+    title: 'Entry',
+  });
+  _slLine = _lwcChart.addLineSeries({
+    color: '#ff4060', lineWidth: 1, lineStyle: 3,
+    priceLineVisible: false, lastValueVisible: true,
+    title: 'SL',
+  });
+  _tpLine = _lwcChart.addLineSeries({
+    color: '#00e676', lineWidth: 1, lineStyle: 3,
+    priceLineVisible: false, lastValueVisible: true,
+    title: 'TP',
+  });
+
+  // Use last candle time range to draw horizontal lines
+  const now = Math.floor(Date.now() / 1000);
+  const start = now - 30 * 3600; // 30h back
+  const pts = [{time: start, value: entry}, {time: now + 3600, value: entry}];
+  const psl = [{time: start, value: sl}, {time: now + 3600, value: sl}];
+  const ptp = [{time: start, value: tp}, {time: now + 3600, value: tp}];
+
+  _entryLine.setData(pts);
+  _slLine.setData(psl);
+  _tpLine.setData(ptp);
+}
+
+function addLWCTradeMarkers(trades){
+  if (!_candleSeries || !trades.length) return;
+  const markers = [];
+  trades.slice(-30).forEach(t => {
+    const entryTs = Math.floor(new Date(t.ts).getTime() / 1000);
+    markers.push({
+      time: entryTs,
+      position: t.is_long ? 'belowBar' : 'aboveBar',
+      color: t.is_long ? '#00e676' : '#ff4060',
+      shape: t.is_long ? 'arrowUp' : 'arrowDown',
+      text: t.is_long ? 'L' : 'S',
+      size: 1,
+    });
+  });
+  // Sort by time
+  markers.sort((a,b) => a.time - b.time);
+  _candleSeries.setMarkers(markers);
+}
+
+/* ════════════════════════════════════════════════════════
+   FETCH OHLCV FOR LWC — via bot API or demo
+════════════════════════════════════════════════════════ */
+async function fetchCandles(){
+  try {
+    const res = await fetch(`${API_BASE}/api/candles?limit=200`, {signal: AbortSignal.timeout(5000)});
+    if (!res.ok) throw new Error('no candles');
+    return await res.json(); // [{time, open, high, low, close}]
+  } catch {
+    return makeDemoCandles();
+  }
+}
+
+function makeDemoCandles(){
+  const candles = [];
+  let price = 81000;
+  const now = Math.floor(Date.now() / 1000);
+  const tf = 30 * 60;
+  for (let i = 199; i >= 0; i--){
+    const t = now - i * tf;
+    const o = price;
+    const body = (Math.random() - 0.48) * 300;
+    const c = o + body;
+    const h = Math.max(o, c) + Math.random() * 150;
+    const l = Math.min(o, c) - Math.random() * 150;
+    candles.push({ time: t, open: +o.toFixed(1), high: +h.toFixed(1), low: +l.toFixed(1), close: +c.toFixed(1) });
+    price = c;
+  }
+  return candles;
+}
+
+/* ════════════════════════════════════════════════════════
+   DEMO DATA
+════════════════════════════════════════════════════════ */
+function makeDemoData(){
+  const types   = ['Trend Long','Trend Short','Range Long','Range Short'];
+  const reasons = ['TP','Trail S3','Trail S4','Trail S5','SL','Max SL','BE'];
+  const trades  = [];
+  let e = 79500;
+  const now = Date.now();
+  for (let i = 0; i < 28; i++){
+    const isL  = Math.random() > 0.45;
+    const isT  = Math.random() > 0.4;
+    const atr  = 200 + Math.random() * 150;
+    const stop = atr * (isT ? 0.9 : 0.7);
+    const pl   = (Math.random() > 0.37 ? 1 : -1) * (Math.random() * 600 + 30);
+    trades.push({
+      ts: new Date(now - (28-i)*2.5*3600000).toISOString(),
+      signal_type: types[Math.floor(Math.random()*types.length)],
+      is_long: isL,
+      entry_price: +e.toFixed(1),
+      exit_price:  +(e + (isL?pl:-pl)/30).toFixed(1),
+      sl: +(e - stop*(isL?1:-1)).toFixed(1),
+      tp: +(e + stop*(isT?5:3)*(isL?1:-1)).toFixed(1),
+      atr: +atr.toFixed(1), qty:1,
+      real_pl: +pl.toFixed(2),
+      exit_reason: reasons[Math.floor(Math.random()*reasons.length)],
+      trail_stage: Math.floor(Math.random()*5),
+    });
+    e += (Math.random()-0.5)*400;
+  }
+  const wins = trades.filter(t=>t.real_pl>0).length;
+  return {
+    summary:{ total:trades.length, wins, losses:trades.length-wins,
+      total_pl:+trades.reduce((s,t)=>s+t.real_pl,0).toFixed(2),
+      best:Math.max(...trades.map(t=>t.real_pl)),
+      worst:Math.min(...trades.map(t=>t.real_pl)),
+      win_rate:+((wins/trades.length)*100).toFixed(1) },
+    trades,
+    open_trade: null,
+    bot_status: { status: 'offline' },
+  };
+}
+
+/* ════════════════════════════════════════════════════════
+   API
+════════════════════════════════════════════════════════ */
+const API_BASE = window.location.protocol === 'file:'
+  ? 'http://localhost:10000'
+  : window.location.origin;
+
+async function fetchData(){
+  try {
+    const [s, t, p, st] = await Promise.all([
+      fetch(`${API_BASE}/api/summary`,         {signal:AbortSignal.timeout(4000)}),
+      fetch(`${API_BASE}/api/trades?limit=50`, {signal:AbortSignal.timeout(4000)}),
+      fetch(`${API_BASE}/api/position`,        {signal:AbortSignal.timeout(4000)}),
+      fetch(`${API_BASE}/api/status`,          {signal:AbortSignal.timeout(4000)}),
+    ]);
+    if (!s.ok) throw new Error('offline');
+    return {
+      summary:    await s.json(),
+      trades:     await t.json(),
+      open_trade: p.ok ? await p.json() : null,
+      bot_status: st.ok ? await st.json() : {status:'offline'},
+    };
+  } catch {
+    return makeDemoData();
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   MINI CANVAS CHARTS
+════════════════════════════════════════════════════════ */
+function drawPLChart(trades){
+  const canvas = document.getElementById('pl-chart-canvas');
+  const dpr = devicePixelRatio || 1;
+  const W = canvas.parentElement.clientWidth - 32;
+  const H = 130;
+  canvas.width = W*dpr; canvas.height = H*dpr;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
+
+  let cum = 0;
+  const data = trades.map(t => {
+    const pts = (t.points_captured !== undefined && t.points_captured !== null)
+      ? parseFloat(t.points_captured)
+      : (t.is_long ? (+t.exit_price - +t.entry_price) : (+t.entry_price - +t.exit_price));
+    const q = t.qty != null ? parseFloat(t.qty) : 1;
+    cum += pts * q * 0.001;
+    return +cum.toFixed(6);
+  });
+  if (!data.length) return;
+
+  const pad = {t:10,r:10,b:20,l:50};
+  const iW = W-pad.l-pad.r, iH = H-pad.t-pad.b;
+  const minV = Math.min(0,...data), maxV = Math.max(0,...data);
+  const range = maxV - minV || 1;
+  const toX = i => pad.l + (i/(data.length-1||1))*iW;
+  const toY = v => pad.t + iH - ((v-minV)/range)*iH;
+
+  ctx.clearRect(0,0,W,H);
+
+  // Gridlines
+  [0,.25,.5,.75,1].forEach(f => {
+    const y = pad.t + f*iH;
+    const v = maxV - f*range;
+    ctx.strokeStyle = cv('--border'); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+iW,y); ctx.stroke();
+    ctx.fillStyle = cv('--t3'); ctx.font = '9px JetBrains Mono,monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText((v>=0?'+':'')+v.toFixed(0), pad.l-5, y+3);
+  });
+
+  // Zero line
+  const y0 = toY(0);
+  ctx.strokeStyle = cv('--border2'); ctx.lineWidth = 1;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(pad.l,y0); ctx.lineTo(pad.l+iW,y0); ctx.stroke();
+  ctx.setLineDash([]);
+
+  const last = data[data.length-1];
+  const col = last >= 0 ? cv('--green') : cv('--red');
+
+  // Fill
+  const grad = ctx.createLinearGradient(0,pad.t,0,pad.t+iH);
+  grad.addColorStop(0, col+'55'); grad.addColorStop(1, col+'00');
+  ctx.beginPath();
+  ctx.moveTo(toX(0), toY(data[0]));
+  data.forEach((v,i) => { if(i>0) ctx.lineTo(toX(i), toY(v)); });
+  ctx.lineTo(toX(data.length-1), pad.t+iH);
+  ctx.lineTo(pad.l, pad.t+iH); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+
+  // Line
+  ctx.beginPath(); ctx.strokeStyle = col; ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.moveTo(toX(0), toY(data[0]));
+  data.forEach((v,i) => { if(i>0) ctx.lineTo(toX(i), toY(v)); });
+  ctx.stroke();
+
+  document.getElementById('cum-val').textContent = (last>=0?'+':'')+last.toFixed(4)+' USD';
+  document.getElementById('cum-val').style.color = last>=0 ? cv('--green') : cv('--red');
+}
+
+function drawBarChart(trades){
+  const last20 = trades.slice(-20);
+  const canvas = document.getElementById('bar-chart-canvas');
+  const dpr = devicePixelRatio || 1;
+  const W = canvas.parentElement.clientWidth - 32;
+  const H = 130;
+  canvas.width = W*dpr; canvas.height = H*dpr;
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
+  if (!last20.length) return;
+
+  const values = last20.map(t => {
+    const pts = (t.points_captured !== undefined && t.points_captured !== null)
+      ? parseFloat(t.points_captured)
+      : (t.is_long ? (+t.exit_price - +t.entry_price) : (+t.entry_price - +t.exit_price));
+    const q = t.qty != null ? parseFloat(t.qty) : 1;
+    return pts * q * 0.001;
+  });
+  const minV = Math.min(0,...values), maxV = Math.max(0,...values);
+  const range = maxV - minV || 1;
+  const pad = {t:8,r:8,b:8,l:8};
+  const iW = W-pad.l-pad.r, iH = H-pad.t-pad.b;
+  const bW = Math.max(2, iW/last20.length - 3);
+  const y0 = pad.t + iH - ((0-minV)/range)*iH;
+
+  ctx.clearRect(0,0,W,H);
+  values.forEach((v,i) => {
+    const x = pad.l + (i/last20.length)*iW + 1;
+    const bH = Math.max(1, Math.abs((v/range)*iH));
+    const y = v >= 0 ? y0 - bH : y0;
+    ctx.fillStyle = v>=0 ? cv('--green')+'bb' : cv('--red')+'bb';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x,y,bW,bH,2);
+    else ctx.rect(x,y,bW,bH);
+    ctx.fill();
+  });
+  ctx.strokeStyle = cv('--border2'); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l,y0); ctx.lineTo(pad.l+iW,y0); ctx.stroke();
+}
+
+/* ════════════════════════════════════════════════════════
+   RENDER FUNCTIONS
+════════════════════════════════════════════════════════ */
+function renderStatus(st){
+  const badge = document.getElementById('bot-badge');
+  const txt   = document.getElementById('bot-status-txt');
+  if (st && st.status === 'live'){
+    badge.className = 'badge'; txt.textContent = 'LIVE';
+  } else {
+    badge.className = 'badge off'; txt.textContent = 'OFFLINE';
+  }
+}
+
+function renderKPIs(s){
+  const set = (id,v,cls) => {
+    const el = document.getElementById(id);
+    el.textContent = v;
+    if (cls) el.className = 'kpi-val '+cls;
+  };
+  set('k-total', s.total||0);
+  document.getElementById('k-wl').textContent = `${s.wins||0}W · ${s.losses||0}L`;
+  const wr = s.win_rate||0;
+  set('k-wr', wr.toFixed(1)+'%', wr>=50?'g':'r');
+  // Show gross P&L = points × lots × 0.001 (Telegram-matching value)
+  // s.total_gross_pl is computed below from trades array; fallback to total_pl
+  const pl = parseFloat(s.total_gross_pl != null ? s.total_gross_pl : s.total_pl || 0);
+  set('k-pl', (pl>=0?'+':'')+pl.toFixed(4), pl>=0?'g':'r');
+  const best  = parseFloat(s.best_gross  != null ? s.best_gross  : s.best  || 0);
+  const worst = parseFloat(s.worst_gross != null ? s.worst_gross : s.worst || 0);
+  set('k-best',  (best>=0?'+':'')+best.toFixed(4), 'g');
+  set('k-worst',             worst.toFixed(4), 'r');
+
+  // Ring
+  document.getElementById('ring-pct').textContent = wr.toFixed(1)+'%';
+  document.getElementById('ring-txt').textContent = wr.toFixed(0)+'%';
+  document.getElementById('ring-sub').textContent = `${s.wins||0} / ${s.total||0} trades`;
+  document.getElementById('ring-w').textContent = s.wins||0;
+  document.getElementById('ring-l').textContent = s.losses||0;
+  const arc = document.getElementById('ring-arc');
+  const circ = 276.5;
+  arc.setAttribute('stroke-dashoffset', circ*(1-wr/100));
+  arc.setAttribute('stroke', wr>=60?cv('--green'):wr>=40?cv('--yellow'):cv('--red'));
+}
+
+function renderPosition(p){
+  const card  = document.getElementById('pos-card');
+  const badge = document.getElementById('dir-badge');
+  const stageEl = document.getElementById('k-stage');
+  if (!p || !p.entry_price){
+    card.className = 'card pos-card none';
+    badge.className = 'dir-badge none'; badge.textContent = '⬛ NO POSITION';
+    document.getElementById('p-entry').textContent = '—';
+    document.getElementById('p-sl').textContent    = '—';
+    document.getElementById('p-tp').textContent    = '—';
+    document.getElementById('p-atr').textContent   = '—';
+    document.getElementById('p-pl').textContent    = '—';
+    document.getElementById('p-stage').textContent = '—';
+    stageEl.textContent = '—';
+    document.querySelectorAll('.pip').forEach(e=>e.className='pip');
+    setLWCLevels(null,null,null,null);
+    return;
+  }
+  const isL = p.is_long;
+  card.className = 'card pos-card '+(isL?'long':'short');
+  badge.className = 'dir-badge '+(isL?'long':'short');
+  badge.textContent = isL ? '▲ LONG' : '▼ SHORT';
+  document.getElementById('p-entry').textContent = (+p.entry_price).toFixed(1);
+  document.getElementById('p-sl').textContent    = (+(p.current_sl||p.sl)).toFixed(1);
+  document.getElementById('p-tp').textContent    = (+p.tp).toFixed(1);
+  document.getElementById('p-atr').textContent   = (+p.atr).toFixed(1);
+  const stage = p.trail_stage||0;
+  document.getElementById('p-stage').textContent = stage;
+  stageEl.textContent = stage;
+  document.querySelectorAll('.pip').forEach(el => {
+    const s = parseInt(el.getAttribute('data-s'));
+    el.className = 'pip '+(s<stage?'done':s===stage?'active':'');
+  });
+  const plEl = document.getElementById('p-pl');
+  plEl.textContent = 'Position Open';
+  plEl.className = 'pos-pl n';
+  setLWCLevels(+p.entry_price, +(p.current_sl||p.sl), +p.tp, isL);
+}
+
+function renderSigMix(trades){
+  const map = {};
+  trades.forEach(t => { map[t.signal_type] = (map[t.signal_type]||0)+1; });
+  const total = trades.length || 1;
+  const colors = [cv('--green'),cv('--red'),cv('--blue'),cv('--yellow'),cv('--purple')];
+  const entries = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  document.getElementById('sig-mix').innerHTML = entries.map(([k,v],i) =>
+    `<div class="sig-row">
+      <div class="sig-name">${k}</div>
+      <div class="sig-bar-wrap"><div class="sig-bar" style="width:${(v/total*100).toFixed(0)}%;background:${colors[i%colors.length]}"></div></div>
+      <div class="sig-cnt">${v}</div>
+    </div>`
+  ).join('');
+}
+
+function renderTable(trades){
+  const tbody = document.getElementById('tbl-body');
+  if (!trades||!trades.length){
+    tbody.innerHTML = `<tr><td colspan="14"><div class="empty-row">No trades yet</div></td></tr>`;
+    return;
+  }
+  const fmtTime = ts => ts
+    ? new Date(ts).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',dateStyle:'short',timeStyle:'short'})
+    : '—';
+  tbody.innerHTML = [...trades].reverse().slice(0,50).map((t,i)=>{
+    const points = (t.points_captured !== undefined && t.points_captured !== null)
+      ? parseFloat(t.points_captured)
+      : (t.is_long ? (+t.exit_price - +t.entry_price) : (+t.entry_price - +t.exit_price));
+    const qty    = t.qty != null ? parseFloat(t.qty) : 1;
+    const gross  = points * qty * 0.001;           // Delta inverse-perp: 1 lot = 0.001 BTC
+    const win    = gross >= 0;
+    const pl     = gross;
+    const ptsStr = (points>=0?'+':'') + points.toFixed(2);
+    // ts = exit time (logged at close). opened_at is included for open trades only,
+    // so we treat ts as exit_time and reuse it for entry_time when nothing better.
+    const exitT  = fmtTime(t.ts);
+    const entryT = fmtTime(t.opened_at || t.ts);
+    return `<tr>
+      <td>${trades.length-i}</td>
+      <td class="sans" style="color:var(--t2)">${entryT}</td>
+      <td class="sans" style="color:var(--t2)">${exitT}</td>
+      <td class="sans">${t.signal_type}</td>
+      <td class="${t.is_long?'dir-l':'dir-s'}">${t.is_long?'▲L':'▼S'}</td>
+      <td>${t.qty != null ? t.qty : '—'}</td>
+      <td>${(+t.entry_price).toFixed(1)}</td>
+      <td class="${win?'win':'loss'}">${(+t.exit_price).toFixed(1)}</td>
+      <td class="${points>=0?'win':'loss'}">${ptsStr}</td>
+      <td style="color:var(--red)">${(+t.sl).toFixed(1)}</td>
+      <td style="color:var(--green)">${(+t.tp).toFixed(1)}</td>
+      <td>${t.trail_stage||0}</td>
+      <td class="sans" style="color:var(--t2)">${t.exit_reason}</td>
+      <td class="${win?'win':'loss'}">${pl>=0?'+':''}${pl.toFixed(4)}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ════════════════════════════════════════════════════════
+   MAIN LOOP
+════════════════════════════════════════════════════════ */
+let _trades = [];
+let _candlesLoaded = false;
+
+async function refresh(){
+  const [data, candles] = await Promise.all([
+    fetchData(),
+    _candlesLoaded ? Promise.resolve(null) : fetchCandles(),
+  ]);
+
+  renderStatus(data.bot_status);
+  // Enrich summary with gross P&L computed from trade rows (matches Telegram display)
+  if (data.trades && data.trades.length) {
+    const grossVals = data.trades.map(t => {
+      const pts = (t.points_captured !== undefined && t.points_captured !== null)
+        ? parseFloat(t.points_captured)
+        : (t.is_long ? (+t.exit_price - +t.entry_price) : (+t.entry_price - +t.exit_price));
+      const q = t.qty != null ? parseFloat(t.qty) : 1;
+      return pts * q * 0.001;
+    });
+    data.summary.total_gross_pl = +grossVals.reduce((a,b)=>a+b,0).toFixed(6);
+    data.summary.best_gross  = grossVals.length ? +Math.max(...grossVals).toFixed(6) : 0;
+    data.summary.worst_gross = grossVals.length ? +Math.min(...grossVals).toFixed(6) : 0;
+  }
+  renderKPIs(data.summary);
+  renderPosition(data.open_trade);
+  renderSigMix(data.trades||[]);
+  renderTable(data.trades||[]);
+
+  _trades = data.trades || [];
+  drawPLChart(_trades);
+  drawBarChart(_trades);
+
+  if (candles) {
+    setLWCCandles(candles);
+    _candlesLoaded = true;
+  }
+  if (_trades.length) addLWCTradeMarkers(_trades);
+}
+
+// Init
+window.addEventListener('load', () => {
+  initLWC();
+  refresh();
+  setInterval(refresh, 5000);
+
+  // Candle refresh every 5 minutes
+  setInterval(async () => {
+    const c = await fetchCandles();
+    if (c) setLWCCandles(c);
+  }, 5 * 60 * 1000);
+});
+
+let _resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => {
+    drawPLChart(_trades);
+    drawBarChart(_trades);
+  }, 150);
+});
+</script>
+</body>
+</html>
