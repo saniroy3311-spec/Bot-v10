@@ -141,25 +141,26 @@ class Telegram:
         reason      : str,
         entry_price : float,
         exit_price  : float,
-        real_pl     : float,
+        real_pl     : float,        # kept for back-compat; ignored — gross shown
         is_long     : bool = True,
         qty         : int  = None,
     ) -> None:
-        emoji    = "💰" if real_pl >= 0 else "🔻"
-        pl_sign  = "+" if real_pl >= 0 else ""
         side     = "LONG" if is_long else "SHORT"
         points   = compute_points(entry_price, exit_price, is_long)
+        gross    = points * (qty or 1) * 0.001   # Delta inverse-perp formula
+        emoji    = "💰" if gross  >= 0 else "🔻"
         pts_sign = "+" if points >= 0 else ""
+        grs_sign = "+" if gross  >= 0 else ""
         qty_str  = f"  |  <code>{qty}</code> lot{'s' if qty != 1 else ''}" if qty else ""
 
         await self._send(
             f"{emoji} <b>EXIT — {side}</b>{qty_str}\n"
             f"<code>{Telegram._now_ist()}</code>\n\n"
-            f"Entry  : <code>${entry_price:,.2f}</code>\n"
-            f"Exit   : <b>${exit_price:,.2f}</b>\n"
-            f"<b>Points Captured</b> : <code>{pts_sign}{points:.2f}</code>\n"
-            f"P&amp;L    : <b>{pl_sign}{real_pl:.4f} USD</b>\n"
-            f"Reason : <code>{reason}</code>"
+            f"Entry         : <code>${entry_price:,.2f}</code>\n"
+            f"Exit          : <b>${exit_price:,.2f}</b>\n"
+            f"Points        : <code>{pts_sign}{points:.2f}</code>\n"
+            f"<b>Gross P&amp;L : {grs_sign}${gross:.4f} USD</b>\n"
+            f"Reason        : <code>{reason}</code>"
         )
 
     # ── Daily Summary ─────────────────────────────────────────────────────────
@@ -187,7 +188,7 @@ class Telegram:
             f"❌ Losses : <b>{summary['losses']}</b>\n"
             f"Win Rate : <code>{summary['win_rate']:.1f}%</code>\n"
             f"─────────────────────\n"
-            f"{pl_emoji} Net P&amp;L : <b>{pl_sign}{pl:.4f} USD</b>\n"
+            f"{pl_emoji} Gross P&amp;L : <b>{pl_sign}{pl:.4f} USD</b>\n"
             f"Best      : <code>+{summary['best']:.4f} USD</code>\n"
             f"Worst     : <code>{summary['worst']:.4f} USD</code>"
         )
