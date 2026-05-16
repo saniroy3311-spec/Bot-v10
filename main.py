@@ -84,6 +84,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
+# ── Slippage guard ─────────────────────────────────────────────────────────────
+# If the actual fill price differs from the signal bar close by more than
+# MAX_ENTRY_SLIP_ATR_FRAC × ATR, the SL anchored to signal-bar close would
+# leave almost no room between fill and SL — causing instant stop-outs.
+# In that case we recalculate SL/TP from the actual fill price instead.
+#
+# Example (Trade 2 from logs):
+#   Signal close = 77,773  ATR = 238  Limit = 238 × 0.3 = 71 pts
+#   Actual fill  = 77,957  Slip = 184 pts  → recalc from fill
+#   New SL       = 77,957 + 238×0.9 = 78,171  (room = 214 pts, not 31)
+#
+# Set via env var MAX_ENTRY_SLIP_ATR_FRAC (default 0.3 = 30% of ATR).
+MAX_ENTRY_SLIP_ATR_FRAC = float(os.environ.get("MAX_ENTRY_SLIP_ATR_FRAC", "0.3"))
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ShivaSniperBot
@@ -158,6 +172,7 @@ class ShivaSniperBot:
         logger.info(f"  Symbol={SYMBOL}  TF={CANDLE_TIMEFRAME}")
         logger.info(f"  Position size: {POSITION_BTC_SIZE} BTC → {self._qty_lots} lots")
         logger.info(f"  FILTER_VOL_ENABLED={FILTER_VOL_ENABLED}  (false = full Pine parity)")
+        logger.info(f"  MAX_ENTRY_SLIP_ATR_FRAC={MAX_ENTRY_SLIP_ATR_FRAC}  (SL recalc threshold)")
         logger.info("═" * 70)
 
         await self._order_mgr.initialize()
@@ -420,6 +435,7 @@ class ShivaSniperBot:
             if self._in_position:
                 return  # race-condition guard
 
+            # Pre-calculate SL/TP anchored to signal bar close (Pine parity).
             risk_pre = calc_levels(snap.close, snap.atr, sig.is_long, sig.is_trend, entry_bar_open=snap.open)
 
             try:
@@ -442,17 +458,45 @@ class ShivaSniperBot:
                 )
                 return
 
-            fill  = float(order.get("average") or order.get("price") or snap.close)
+            fill = float(order.get("average") or order.get("price") or snap.close)
 
-            # PINE-PARITY-SL: SL/TP stay anchored to signal-bar close (risk_pre),
-            # NOT shifted to the actual fill price. Pine's strategy.entry()
-            # simulates fill at bar close and computes SL/TP from that close.
-            # Calling recalc_levels_from_fill() here caused two production bugs:
-            #   1) Bracket attach failures with "bracket_order_immediate_execution"
-            #      because the shifted SL was within Delta's price drift.
-            #   2) Instant Trail-SL exits within 1-2 seconds of entry, because
-            #      the Binance↔Delta offset put price right at the shifted SL.
-            # Keep risk_pre's SL/TP; only update entry_price for logging/journal.
+            # ── SLIPPAGE GUARD ────────────────────────────────────────────────
+            # If the fill slipped more than MAX_ENTRY_SLIP_ATR_FRAC × ATR away
+            # from the signal bar close, the SL anchored to signal-bar close
+            # leaves dangerously little room between fill and SL.
+            #
+            # In that case: recalculate SL/TP from the actual fill price so
+            # the stop distance is always the full ATR × mult from where we
+            # actually entered — not from a bar close that was 100–200 pts away.
+            #
+            # We do NOT use recalc_levels_from_fill() here (that just shifts
+            # the old levels by delta). We call calc_levels() fresh from fill,
+            # which gives a clean ATR-based stop from the real entry price.
+            #
+            # Why not always do this?
+            #   - Small slippage: Pine parity is preferred (SL anchored to
+            #     signal close matches backtest behaviour exactly).
+            #   - Large slippage: safety overrides parity — an instant stop-out
+            #     is far worse than a small parity deviation.
+            slip = abs(fill - snap.close)
+            slip_limit = snap.atr * MAX_ENTRY_SLIP_ATR_FRAC
+
+            if slip > slip_limit:
+                logger.warning(
+                    f"[ENTRY] Slippage guard triggered: fill={fill:.2f} "
+                    f"close={snap.close:.2f} slip={slip:.1f} pts "
+                    f"limit={slip_limit:.1f} pts ({MAX_ENTRY_SLIP_ATR_FRAC}×ATR) — "
+                    f"recalculating SL/TP from actual fill price"
+                )
+                risk_pre = calc_levels(
+                    fill, snap.atr, sig.is_long, sig.is_trend,
+                    entry_bar_open=snap.open,
+                )
+
+            # Build final RiskLevels.
+            # entry_price  = actual fill (for P&L, journal, Telegram)
+            # sl / tp      = from risk_pre (signal-close anchored normally,
+            #                or fill-anchored when slippage guard fired)
             risk = RiskLevels(
                 entry_price    = fill,
                 sl             = risk_pre.sl,
