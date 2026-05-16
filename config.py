@@ -2,10 +2,14 @@
 config.py - Shiva Sniper v10
 
 CHANGES IN THIS VERSION:
-  PINE-STAGE-EXACT | Stage upgrade triggers now match Pine exactly.
+  FIX-PINE-MINTICK v10.1 | PINE_MINTICK removed from trail activation and offset.
+    Pine passes raw USD points to strategy.exit() — no mintick scaling needed.
+    activation = atr × pts_mult   (e.g. 310 × 0.70 = 217 pts)
+    offset     = atr × off_mult   (e.g. 310 × 0.55 = 170 pts)
+
+  PINE-STAGE-EXACT | Stage upgrade triggers use raw ATR multiples (no PINE_MINTICK).
     Previously: profit_dist >= live_atr × trigger × PINE_MINTICK  (10× too early)
-    Now:        profit_dist >= live_atr × trigger                  (raw ATR multiples)
-    PINE_MINTICK still applies to trail_points/trail_offset distances only.
+    Now:        profit_dist >= live_atr × trigger                  (correct)
 
   SL matches Pine exactly:
     Trend: stopDist = min(ATR × 0.9, 1500)  → ~281 pts at ATR=312
@@ -93,8 +97,8 @@ PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "0.1"))
 # Format: (trigger_ATR_mult, trail_points_mult, trail_offset_mult)
 #
 # trigger: stage upgrades when profit_dist >= ATR × trigger  (raw, no mintick)
-# pts:     trail arms when peak_profit >= ATR × pts × PINE_MINTICK
-# off:     trail SL placed ATR × off × PINE_MINTICK behind peak
+# pts:     trail arms when peak_profit >= ATR × pts  (raw USD points, no PINE_MINTICK)
+# off:     trail SL placed ATR × off behind peak     (raw USD points, no PINE_MINTICK)
 #
 # With ATR=312.18:
 #   Stage 1 upgrades at 312 pts | arms at 21.9 pts | offset 17.2 pts
