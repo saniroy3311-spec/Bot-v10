@@ -56,7 +56,7 @@ from indicators.engine  import compute
 from strategy.signal    import evaluate, SignalType
 from risk.calculator    import (
     RiskLevels, TrailState,
-    calc_levels, recalc_levels_from_fill, calc_real_pl,
+    calc_levels, recalc_levels_from_fill, calc_real_pl, calc_gross_pl,
     # NOTE: recalc_levels_from_fill is used ONLY in the startup recovery path
     # (mid-trade bot restart). It is intentionally NOT called for new entries.
     # PINE-PARITY-SL: new entry SL/TP anchored to snap.close, not fill price.
@@ -482,14 +482,14 @@ class ShivaSniperBot:
 
         risk = self._risk
         pl   = (
-            calc_real_pl(risk.entry_price, exit_price, risk.is_long, self._qty_lots)
+            calc_gross_pl(risk.entry_price, exit_price, risk.is_long, self._qty_lots)
             if risk else 0.0
         )
 
         logger.info(
             f"[EXIT] reason={reason}  source={source}  "
             f"entry={risk.entry_price if risk else '?'}  "
-            f"exit={exit_price:.2f}  pl={pl:+.4f} USDT"
+            f"exit={exit_price:.2f}  gross_pl={pl:+.6f} USD"
         )
 
         # Journal
