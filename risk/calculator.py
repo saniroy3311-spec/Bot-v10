@@ -13,7 +13,20 @@ SL calculation matches Pine Script exactly:
     shortTP = entryPrice - stopDist * rrActive
 
 recalc_levels_from_fill(): used ONLY in startup recovery path.
-calc_real_pl(): 0.059% taker on entry, 0% maker on exit — mirrors Pine.
+
+calc_real_pl(): Delta Exchange inverse-perp formula (verified vs CSV):
+    Gross P&L (USD) = Points × qty × 0.001
+    Points = (exit - entry) for LONG, (entry - exit) for SHORT
+    Commission = entry_price × qty × 0.001 × COMMISSION_PCT
+    Net P&L = Gross - Commission
+
+    Example (your 2026-05-16 trade):
+        Entry 78788, Exit 78685.50, SHORT, 1 lot
+        Points  = 78788 - 78685.50 = 102.50
+        Gross   = 102.50 × 1 × 0.001 = $0.1025 USD
+        Comm    = 78788 × 1 × 0.001 × 0.00059 = $0.04649 USD  (but shown as gross only)
+        Net     = $0.0560 USD
+
 ══════════════════════════════════════════════════════════════════════════════
 """
 
@@ -27,6 +40,9 @@ from config import (
     MAX_SL_POINTS,
     COMMISSION_PCT,
 )
+
+# Delta inverse-perp multiplier: 1 lot = $1 face = 0.001 BTC at $1000 effective
+_LOT_MULTIPLIER = 0.001
 
 
 # ─── Dataclasses ───────────────────────────────────────────────────────────────
@@ -140,25 +156,52 @@ def calc_real_pl(
     qty:         int,
 ) -> float:
     """
-    Commission-adjusted P&L — mirrors Pine's calcRealPL().
+    Delta Exchange inverse-perp P&L — verified against Delta CSV.
 
-    rawPL = (exitPx - entryPx) * qty   (long)
-          = (entryPx - exitPx) * qty   (short)
-    comm  = entryPx * qty * 0.00059    (0.059% taker entry, 0% maker exit)
+    Formula:
+        points  = (exit - entry) if LONG else (entry - exit)
+        gross   = points × qty × 0.001          (1 lot = $1 face = 0.001 BTC)
+        comm    = entry × qty × 0.001 × COMMISSION_PCT
+        net_pl  = gross - comm
+
+    Verified example from Delta-TransactionLog-OrderHistory.csv:
+        Entry=78788, Exit=78685.50, SHORT, qty=1
+        points = 78788 - 78685.50 = 102.50
+        gross  = 102.50 × 1 × 0.001 = 0.1025 USD  ✓
     """
-    raw_pl = (
-        (exit_price - entry_price) * qty if is_long
-        else (entry_price - exit_price) * qty
+    points = (
+        (exit_price - entry_price) if is_long
+        else (entry_price - exit_price)
     )
-    comm = entry_price * qty * COMMISSION_PCT
-    return raw_pl - comm
+    gross = points * qty * _LOT_MULTIPLIER
+    comm  = entry_price * qty * _LOT_MULTIPLIER * COMMISSION_PCT
+    return round(gross - comm, 6)
 
 
-def lots_to_btc(lots: int, price: float) -> float:
-    """Delta BTCUSD inverse perp: 1 lot = 1 USD / price BTC."""
-    if price <= 0:
-        return 0.0
-    return lots / price
+def calc_gross_pl(
+    entry_price: float,
+    exit_price:  float,
+    is_long:     bool,
+    qty:         int,
+) -> float:
+    """
+    Gross P&L without commission.  Used by Telegram / dashboard display.
+    gross = points × qty × 0.001
+    """
+    points = (
+        (exit_price - entry_price) if is_long
+        else (entry_price - exit_price)
+    )
+    return round(points * qty * _LOT_MULTIPLIER, 6)
+
+
+def lots_to_btc(lots: int, price: float = 0.0) -> float:
+    """
+    Legacy back-compat signature (price arg unused in v10).
+    v10 code should prefer risk.lot_sizing.lots_to_btc(lots).
+    1 lot = 0.001 BTC face value on Delta inverse perp.
+    """
+    return lots * _LOT_MULTIPLIER
 
 
 def calc_pl_breakdown(
@@ -167,11 +210,41 @@ def calc_pl_breakdown(
     qty:         int,
     is_long:     bool,
 ) -> dict:
-    """Return raw_pl, commission, net_pl. Used by gsheet.py."""
-    raw_pl = (
-        (exit_price - entry_price) * qty if is_long
-        else (entry_price - exit_price) * qty
-    )
-    comm   = entry_price * qty * COMMISSION_PCT
-    net_pl = raw_pl - comm
-    return {"raw_pl": raw_pl, "commission": comm, "net_pl": net_pl}
+    """
+    Full breakdown used by gsheet.py and any legacy callers.
+
+    Returns keys (both new and legacy):
+        points_captured  — raw price move (direction-adjusted)
+        qty_btc          — position size in BTC face value
+        gross_pl_usdt    — points × qty × 0.001 (before commission)
+        commission_usdt  — taker commission on entry leg
+        net_pl_usdt      — gross - commission
+        net_pl_pct       — net / (entry × qty_btc) × 100
+        # legacy short-key aliases:
+        raw_pl           — same as gross_pl_usdt
+        commission       — same as commission_usdt
+        net_pl           — same as net_pl_usdt
+        price_move       — same as points_captured
+    """
+    points   = (exit_price - entry_price) if is_long else (entry_price - exit_price)
+    qty_btc  = qty * _LOT_MULTIPLIER
+    gross    = points * qty * _LOT_MULTIPLIER
+    comm     = entry_price * qty_btc * COMMISSION_PCT
+    net      = gross - comm
+    pct      = (net / (entry_price * qty_btc) * 100) if qty_btc > 0 else 0.0
+
+    return {
+        # Primary keys
+        "points_captured" : round(points,  4),
+        "qty_btc"         : round(qty_btc, 6),
+        "gross_pl_usdt"   : round(gross,   6),
+        "commission_usdt" : round(comm,    6),
+        "net_pl_usdt"     : round(net,     6),
+        "net_pl_pct"      : round(pct,     4),
+        # Legacy aliases (gsheet used these names)
+        "raw_pl"          : round(gross,   6),
+        "commission"      : round(comm,    6),
+        "net_pl"          : round(net,     6),
+        "price_move"      : round(points,  4),
+        "raw_pl_usdt"     : round(gross,   6),
+    }
