@@ -309,6 +309,17 @@ class TrailMonitor:
                 state.peak_price = bar_low
 
         # ── 5. Recompute trail SL from bar extreme using live ATR ─────────────
+        # FIX-SAME-BAR-SL: snapshot current_sl BEFORE the trail updates it.
+        # Step 6 must check whether this bar's price crossed the SL that was
+        # already active at bar-open — NOT the one just derived from this bar's
+        # extreme. Without this a SHORT false-exits because:
+        #   • trail_sl is computed from bar_low  (price dipped here first)
+        #   • state.current_sl is lowered to that new value
+        #   • step 6 then checks bar_high >= state.current_sl → TRUE
+        #     even though bar_high occurred BEFORE bar_low in the same bar
+        # Pine evaluates tick-by-tick so it never has this intrabar race.
+        pre_trail_sl = state.current_sl
+
         if is_long:
             bar_peak_profit = bar_high - entry_price
             _bar_trail_sl = _compute_trail_sl(
@@ -333,23 +344,25 @@ class TrailMonitor:
                 )
 
         # ── 6. Same-bar exit check ────────────────────────────────────────────
-        tp_hit = (bar_high >= risk.tp)          if is_long else (bar_low  <= risk.tp)
-        sl_hit = (bar_low  <= state.current_sl) if is_long else (bar_high >= state.current_sl)
+        # Use pre_trail_sl (the SL active at bar-open) for the sl_hit test.
+        # The updated state.current_sl is only valid from the NEXT bar onward.
+        tp_hit = (bar_high >= risk.tp)       if is_long else (bar_low  <= risk.tp)
+        sl_hit = (bar_low  <= pre_trail_sl)  if is_long else (bar_high >= pre_trail_sl)
 
         if tp_hit or sl_hit:
             if tp_hit and sl_hit:
                 # FIX-EXIT-04: resolve by which was closer to bar_open
                 ref      = bar_open if bar_open > 0.0 else bar_close
                 dist_tp  = abs(ref - risk.tp)
-                dist_sl  = abs(ref - state.current_sl)
+                dist_sl  = abs(ref - pre_trail_sl)
                 use_tp   = dist_tp <= dist_sl
-                exit_px  = risk.tp           if use_tp else state.current_sl
+                exit_px  = risk.tp           if use_tp else pre_trail_sl
                 reason   = "TP (bar close)" if use_tp else "SL (bar close)"
             elif tp_hit:
                 exit_px = risk.tp
                 reason  = "TP (bar close)"
             else:
-                exit_px = state.current_sl
+                exit_px = pre_trail_sl
                 reason  = "SL (bar close)"
 
             logger.info(f"[TRAIL] Same-bar exit: {reason} @ {exit_px:.2f}")
