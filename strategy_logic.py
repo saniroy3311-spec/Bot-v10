@@ -15,7 +15,7 @@ from config import (
     FILTER_ATR_MULT, FILTER_BODY_MULT, FILTER_VOL_ENABLED, FILTER_VOL_MULT,
     RSI_OB, RSI_OS,
     TREND_RR, RANGE_RR, TREND_ATR_MULT, RANGE_ATR_MULT,
-    MAX_SL_MULT, MAX_SL_POINTS, TRAIL_STAGES, BE_MULT,
+    MAX_SL_MULT, MAX_SL_POINTS, TRAIL_STAGES, BE_MULT, PINE_MINTICK,
     COMMISSION_PCT,
     BREAKOUT_BUFFER_PTS,   # FIX-BREAKOUT-BUFFER: wire config into entry filter
 )
@@ -350,24 +350,26 @@ def upgrade_trail_stage(current_stage: int, peak_profit_dist: float, atr: float)
 
 def compute_trail_sl(stage: int, peak_price: float, peak_profit_dist: float, is_long: bool, atr: float) -> Optional[float]:
     # Pine Script exact parity (matches monitor/trail_loop.py _compute_trail_sl):
-    #   trail_points (pts_mult) = ACTIVATION threshold — profit must reach this first.
-    #   trail_offset (off_mult) = DISTANCE stop is placed from the peak price.
     #
-    # If peak profit has not yet reached the activation threshold for this stage,
-    # return None (trail not yet active). Once activated, stop = peak ± offset.
+    # FIX-PINE-MINTICK-CORRECT (v10.3):
+    # Pine passes atr*trailXPts in TICK units to strategy.exit(trail_points=...).
+    # TradingView multiplies by syminfo.mintick internally to get price points.
+    # For BTCUSD.P mintick=0.1 — bot must apply same scaling.
     #
-    # FIX-STAGE0-PINE-PARITY: Pine has no stage 0 trail — fixed SL only.
-    if stage == 0:
-        return None
-
-    _, pts_mult, off_mult = TRAIL_STAGES[max(stage - 1, 0)]
-    activation = atr * pts_mult   # profit must be >= this to trail
-    offset     = atr * off_mult   # stop placed this far from peak
+    # FIX-STAGE0-REVERTED: Pine always trails even at stage 0.
+    # trailStage in Pine only upgrades multipliers — never blocks trail.
+    # Stage 0 uses trail1Pts/trail1Off (TRAIL_STAGES[0]) same as stage 1.
+    #
+    # Proof: trade 382, ATR=254.58, mintick=0.1
+    #   activation = 254.58 * 0.70 * 0.1 = 17.82 pts
+    #   offset     = 254.58 * 0.55 * 0.1 = 14.00 pts
+    #   peak=57pts → exit at 43pts → price=76742 ✓ matches Pine exactly
+    idx = max(stage - 1, 0)   # stage 0 and 1 both use index 0 (trail1)
+    _, pts_mult, off_mult = TRAIL_STAGES[idx]
+    activation = atr * pts_mult * PINE_MINTICK
+    offset     = atr * off_mult * PINE_MINTICK
     if peak_profit_dist < activation:
-        return None  # trail not yet activated for this stage
-
-    # FIX-MISSING-RETURN: was missing — function always returned None before this fix.
-    # trail SL = peak minus offset (long) or peak plus offset (short)
+        return None
     return (peak_price - offset) if is_long else (peak_price + offset)
 
 
