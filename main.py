@@ -499,7 +499,12 @@ class ShivaSniperBot:
             #     signal close matches backtest behaviour exactly).
             #   - Large slippage: safety overrides parity — an instant stop-out
             #     is far worse than a small parity deviation.
-            slip = abs(fill - snap.close)
+            # Directional slip: only fire when fill is WORSE than close.
+            # For a long: worse = fill above close (paid more than signal price).
+            # For a short: worse = fill below close (sold lower than signal price).
+            # A fill in the favourable direction means price moved for us before
+            # the order landed — SL calculated from close still has full room.
+            slip = (fill - snap.close) if sig.is_long else (snap.close - fill)
             slip_limit = snap.atr * MAX_ENTRY_SLIP_ATR_FRAC
 
             if slip > slip_limit:
