@@ -386,11 +386,32 @@ class ShivaSniperBot:
                         current_sl = rebuilt.sl,
                         peak_price = self._risk.entry_price,
                     )
+
+                    # FIX-TIME-EXIT-RECOVERY: use the original entry wall time from
+                    # the journal so the 28-min clock counts from actual entry, not restart.
+                    original_wall_ms: Optional[int] = None
+                    try:
+                        open_row = self._journal.get_open_trade()
+                        if open_row and open_row.get("opened_at"):
+                            from datetime import datetime, timezone as _tz
+                            dt = datetime.fromisoformat(str(open_row["opened_at"]))
+                            if dt.tzinfo is None:
+                                dt = dt.replace(tzinfo=_tz.utc)
+                            original_wall_ms = int(dt.timestamp() * 1000)
+                            logger.info(
+                                f"[RECOVERY] Original entry time restored: "
+                                f"{open_row['opened_at']} "
+                                f"(elapsed={(int(time.time()*1000)-original_wall_ms)//1000}s)"
+                            )
+                    except Exception as _te:
+                        logger.warning(f"[RECOVERY] Could not restore entry time: {_te}")
+
                     self._trail_mon.start(
                         risk_levels       = rebuilt,
                         trail_state       = self._trail_state,
                         entry_bar_time_ms = int(time.time() * 1000),
                         on_trail_exit     = self._on_trail_exit,
+                        entry_wall_ms     = original_wall_ms,
                     )
                     await self._telegram.send(
                         f"♻️ <b>Trail Resumed (Recovery)</b>\n"
