@@ -75,7 +75,7 @@ from typing import Callable, Optional
 from config import (
     TRAIL_STAGES, BE_MULT, MAX_SL_MULT, MAX_SL_POINTS,
     TRAIL_LOOP_SEC, TRAIL_SL_PRE_FIRE_BUFFER,
-    CANDLE_TIMEFRAME, TIME_EXIT_MINUTES,
+    CANDLE_TIMEFRAME, TIME_EXIT_MINUTES, PINE_MINTICK,
 )
 from risk.calculator import RiskLevels, TrailState
 
@@ -138,49 +138,39 @@ def _compute_trail_sl(
     """
     Returns the trailing stop level, or None if not yet activated.
 
-    FIX-PARITY-01: uses live_atr (current bar's ATR), not frozen entry_atr.
+    FIX-PARITY-01: uses live_atr (current bar ATR), not frozen entry_atr.
 
-    FIX-PINE-MINTICK (v10.1):
-    Pine's strategy.exit(trail_points=P, trail_offset=O) in this script passes
-    RAW USD point values (activePts = atr * trailXPts, activeOff = atr * trailXOff)
-    — NOT tick-unit values. The script never divides by syminfo.mintick before
-    passing to strategy.exit(), so PINE_MINTICK must NOT be applied here.
+    FIX-PINE-MINTICK-CORRECT (v10.3):
+    Pine passes atr*trailXPts to strategy.exit(trail_points=...) in TICK units.
+    TradingView internally multiplies by syminfo.mintick to get price points.
+    For BTCUSD.P: mintick = 0.1
 
-    Confirmed from Pine script:
-        activePts = atr * trail1Pts   (e.g. 310 * 0.70 = 217 pts)
-        activeOff = atr * trail1Off   (e.g. 310 * 0.55 = 170 pts)
-        strategy.exit(..., trail_points=activePts, trail_offset=activeOff)
+    Pine internally computes:
+        activation_price_pts = activePts * mintick = atr * trail1Pts * 0.1
+        offset_price_pts     = activeOff * mintick = atr * trail1Off * 0.1
 
-    Previous code multiplied by PINE_MINTICK (0.1), making activation 10x too
-    early (21.7 pts instead of 217 pts) — causing exits within seconds of entry.
+    Proof from trade 382 (2026-05-18 16:00):
+        ATR=254.58, entry=76785, exit=76742.1, profit=+43pts
+        activation = 254.58 * 0.70 * 0.1 = 17.82 pts  → trail armed at ~18pts
+        offset     = 254.58 * 0.55 * 0.1 = 14.00 pts  → SL 14pts behind peak
+        peak profit ~57pts → exit at 57-14 = 43pts → price 76785-43 = 76742 ✓
 
-    FIX-STAGE0-PINE-PARITY (v10.2):
-    Pine has NO stage 0 trailing. Trail only activates after stage 1 trigger
-    (profit_dist >= ATR × trail1Trigger = 1.0 × ATR).
-    When stage == 0, return None — use fixed SL only, no trailing yet.
-    This prevents the bot from trailing immediately at entry (killing trades
-    on the very first bar close with zero profit).
-
-    Correct behaviour:
-      • stage == 0  → return None (fixed SL active, no trail yet)
-      • stage >= 1  → trail activates when peak_profit >= atr * pts_mult
-      • TRAIL SL:   peak - (atr * off_mult)  [long]
-                    peak + (atr * off_mult)  [short]
+    Stage 0 behaviour (FIX-STAGE0-PINE-PARITY REVERTED):
+    Pine ALWAYS trails — even at stage 0. The fallback in Pine is trail1Pts/Off.
+    The trailStage variable only upgrades the multiplier, never blocks trailing.
+    So stage 0 uses TRAIL_STAGES[0] (trail1Pts, trail1Off) with mintick applied.
     """
-    # FIX-STAGE0-PINE-PARITY: Pine has no stage 0 trail — use fixed SL only
-    if stage == 0:
-        return None
-
-    idx = stage - 1   # stage 1 → index 0, stage 2 → index 1, etc.
+    # Stage 0: use TRAIL_STAGES[0] — Pine always trails, stage only upgrades multiplier
+    idx = max(stage - 1, 0)   # stage 0 → index 0 (trail1), stage 1 → index 0, etc.
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
-    # ACTIVATION: trail arms when peak profit reaches the raw ATR-multiple threshold.
-    activation_threshold = live_atr * pts_mult   # FIX-PINE-MINTICK: no * PINE_MINTICK
+    # ACTIVATION: trail arms when peak profit >= atr * pts_mult * mintick (price pts)
+    activation_threshold = live_atr * pts_mult * PINE_MINTICK
     if peak_profit_dist < activation_threshold:
         return None
 
-    # Once activated, trail SL sits the raw ATR-multiple offset behind the peak.
-    offset = live_atr * off_mult                 # FIX-PINE-MINTICK: no * PINE_MINTICK
+    # OFFSET: trail SL sits atr * off_mult * mintick price points behind the peak
+    offset = live_atr * off_mult * PINE_MINTICK
     return (peak_price - offset) if is_long else (peak_price + offset)
 
 
@@ -404,7 +394,7 @@ class TrailMonitor:
         # Only the original fixed SL (risk.sl) should be used for the check.
         # This prevents a false same-bar exit where the newly computed trail SL
         # (derived from bar_low) is immediately crossed by bar_high in the same bar.
-        effective_sl = risk.sl if state.stage == 0 else pre_trail_sl
+        effective_sl = pre_trail_sl  # trail always active (Pine has no stage-0 block)
         tp_hit = (bar_high >= risk.tp)      if is_long else (bar_low  <= risk.tp)
         sl_hit = (bar_low  <= effective_sl) if is_long else (bar_high >= effective_sl)
 
