@@ -164,13 +164,16 @@ def _compute_trail_sl(
     idx = max(stage - 1, 0)   # stage 0 → index 0 (trail1), stage 1 → index 0, etc.
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
-    # ACTIVATION: trail arms when peak profit >= atr * pts_mult * mintick (price pts)
-    activation_threshold = live_atr * pts_mult * PINE_MINTICK
+    # ACTIVATION: trail arms when peak profit >= atr * pts_mult (raw USD points)
+    # PINE_MINTICK removed — config TRAIL_STAGES values are already in price-point
+    # units, not tick units. Applying *0.1 shrank activation to 22pts, causing the
+    # trail to arm almost instantly and fire on Binance micro-spikes.
+    activation_threshold = live_atr * pts_mult
     if peak_profit_dist < activation_threshold:
         return None
 
-    # OFFSET: trail SL sits atr * off_mult * mintick price points behind the peak
-    offset = live_atr * off_mult * PINE_MINTICK
+    # OFFSET: trail SL sits atr * off_mult raw USD points behind the peak
+    offset = live_atr * off_mult
     return (peak_price - offset) if is_long else (peak_price + offset)
 
 
