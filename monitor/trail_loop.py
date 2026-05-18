@@ -75,7 +75,7 @@ from typing import Callable, Optional
 from config import (
     TRAIL_STAGES, BE_MULT, MAX_SL_MULT, MAX_SL_POINTS,
     TRAIL_LOOP_SEC, TRAIL_SL_PRE_FIRE_BUFFER,
-    CANDLE_TIMEFRAME,
+    CANDLE_TIMEFRAME, TIME_EXIT_MINUTES,
 )
 from risk.calculator import RiskLevels, TrailState
 
@@ -223,6 +223,9 @@ class TrailMonitor:
 
         self._current_atr     : float = 0.0   # FIX-PARITY-01: updated in on_bar_close() only
 
+        # TIME EXIT: wall-clock ms when entry was confirmed.
+        self._entry_wall_ms   : int  = 0
+
         # FIX-DUAL-SOURCE-B: Binance/Delta price-source offset compensation.
         self._source_offset   : Optional[float] = None
         self._first_tick_ts_ms: int  = 0
@@ -244,6 +247,9 @@ class TrailMonitor:
         self._exit_fired   = False
         self._running      = True
         self._current_atr  = risk_levels.atr   # seed with entry-bar ATR
+
+        # TIME EXIT: record wall-clock entry time.
+        self._entry_wall_ms = int(time.time() * 1000)
 
         # FIX-DUAL-SOURCE-B: reset offset for new trade.
         self._source_offset    = None
@@ -592,7 +598,14 @@ class TrailMonitor:
                     await self._fire_exit(price, "Max SL", source="tick")
                     return
 
-        # ── 4. Update trailing SL from peak using live ATR (FIX-PARITY-01) ───
+        # ── 4. Time-based exit (TIME_EXIT_MINUTES) ───────────────────────────
+        if TIME_EXIT_MINUTES > 0 and self._entry_wall_ms > 0:
+            elapsed_ms = int(time.time() * 1000) - self._entry_wall_ms
+            if elapsed_ms >= TIME_EXIT_MINUTES * 60_000:
+                await self._fire_exit(price, f"Time exit ({TIME_EXIT_MINUTES}m)", source="tick")
+                return
+
+        # ── 5. Update trailing SL from peak using live ATR (FIX-PARITY-01) ───
         trail_sl = _compute_trail_sl(
             stage            = state.stage,
             live_atr         = self._current_atr,
