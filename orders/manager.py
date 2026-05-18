@@ -578,7 +578,14 @@ class OrderManager:
             else:
                 logger.debug("[OM] cancel_all_orders: no product_id yet — skipping")
         except Exception as exc:
-            logger.warning(f"[OM] cancel_all_orders failed (ignored): {exc}")
+            exc_str = str(exc)
+            # FIX-CANCEL-RECOVERY: Delta returns 400 bad_schema "id required" when
+            # there are no open orders to cancel (common on recovery restart where
+            # the previous session's bracket is already gone). Downgrade to DEBUG.
+            if "bad_schema" in exc_str and "id" in exc_str:
+                logger.debug(f"[OM] cancel_all_orders: no open orders on exchange (skipped)")
+            else:
+                logger.warning(f"[OM] cancel_all_orders failed (ignored): {exc}")
         # PHASE-2: also drop the bracket
         await self.cancel_bracket()
 
