@@ -2,7 +2,29 @@
 monitor/trail_loop.py — Shiva Sniper v10 — PINE-STAGE-EXACT
 ════════════════════════════════════════════════════════════════════════════
 
-NEW IN THIS VERSION (FIX-PINE-MINTICK v10.1):
+NEW IN THIS VERSION (FIX-STAGE0-PINE-PARITY v10.2):
+──────────────────────────────────────────────────────────────────────────
+Pine Script has NO stage 0 trailing. Trail only starts after stage 1
+trigger is hit (profit_dist >= ATR × 1.0). Before that, only the fixed
+original SL is active.
+
+Previous bot code used `max(stage - 1, 0)` in _compute_trail_sl(), which
+meant stage 0 used TRAIL_STAGES[0] — i.e., trail was active from the very
+first tick. This caused:
+  • Immediate trail SL computed from bar_low (barely moved for a short)
+  • Same-bar exit fired because bar_high crossed the newly computed trail SL
+  • Trade killed on first bar close with near-zero profit
+
+Fix applied in two places:
+  1. _compute_trail_sl(): return None when stage == 0
+     → fixed SL remains active, no trail computed yet
+  2. on_bar_close() same-bar exit check: use risk.sl (fixed) when stage == 0
+     → prevents false same-bar exit from trail SL computed this same bar
+
+Result: bot now holds trades like Pine — fixed SL active until 1× ATR
+profit is captured, then trail takes over.
+
+NEW IN PREVIOUS VERSION (FIX-PINE-MINTICK v10.1):
 ──────────────────────────────────────────────────────────────────────────
 PINE_MINTICK removed from _compute_trail_sl() activation and offset.
 
@@ -132,12 +154,24 @@ def _compute_trail_sl(
     Previous code multiplied by PINE_MINTICK (0.1), making activation 10x too
     early (21.7 pts instead of 217 pts) — causing exits within seconds of entry.
 
+    FIX-STAGE0-PINE-PARITY (v10.2):
+    Pine has NO stage 0 trailing. Trail only activates after stage 1 trigger
+    (profit_dist >= ATR × trail1Trigger = 1.0 × ATR).
+    When stage == 0, return None — use fixed SL only, no trailing yet.
+    This prevents the bot from trailing immediately at entry (killing trades
+    on the very first bar close with zero profit).
+
     Correct behaviour:
-      • ACTIVATION: trail arms when peak_profit >= atr * pts_mult
+      • stage == 0  → return None (fixed SL active, no trail yet)
+      • stage >= 1  → trail activates when peak_profit >= atr * pts_mult
       • TRAIL SL:   peak - (atr * off_mult)  [long]
                     peak + (atr * off_mult)  [short]
     """
-    idx = max(stage - 1, 0)
+    # FIX-STAGE0-PINE-PARITY: Pine has no stage 0 trail — use fixed SL only
+    if stage == 0:
+        return None
+
+    idx = stage - 1   # stage 1 → index 0, stage 2 → index 1, etc.
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
     # ACTIVATION: trail arms when peak profit reaches the raw ATR-multiple threshold.
@@ -346,23 +380,29 @@ class TrailMonitor:
         # ── 6. Same-bar exit check ────────────────────────────────────────────
         # Use pre_trail_sl (the SL active at bar-open) for the sl_hit test.
         # The updated state.current_sl is only valid from the NEXT bar onward.
-        tp_hit = (bar_high >= risk.tp)       if is_long else (bar_low  <= risk.tp)
-        sl_hit = (bar_low  <= pre_trail_sl)  if is_long else (bar_high >= pre_trail_sl)
+        #
+        # FIX-STAGE0-PINE-PARITY: When stage == 0, no trail has fired yet.
+        # Only the original fixed SL (risk.sl) should be used for the check.
+        # This prevents a false same-bar exit where the newly computed trail SL
+        # (derived from bar_low) is immediately crossed by bar_high in the same bar.
+        effective_sl = risk.sl if state.stage == 0 else pre_trail_sl
+        tp_hit = (bar_high >= risk.tp)      if is_long else (bar_low  <= risk.tp)
+        sl_hit = (bar_low  <= effective_sl) if is_long else (bar_high >= effective_sl)
 
         if tp_hit or sl_hit:
             if tp_hit and sl_hit:
                 # FIX-EXIT-04: resolve by which was closer to bar_open
                 ref      = bar_open if bar_open > 0.0 else bar_close
                 dist_tp  = abs(ref - risk.tp)
-                dist_sl  = abs(ref - pre_trail_sl)
+                dist_sl  = abs(ref - effective_sl)
                 use_tp   = dist_tp <= dist_sl
-                exit_px  = risk.tp           if use_tp else pre_trail_sl
+                exit_px  = risk.tp           if use_tp else effective_sl
                 reason   = "TP (bar close)" if use_tp else "SL (bar close)"
             elif tp_hit:
                 exit_px = risk.tp
                 reason  = "TP (bar close)"
             else:
-                exit_px = pre_trail_sl
+                exit_px = effective_sl
                 reason  = "SL (bar close)"
 
             logger.info(f"[TRAIL] Same-bar exit: {reason} @ {exit_px:.2f}")
