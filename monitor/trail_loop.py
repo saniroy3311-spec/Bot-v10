@@ -164,16 +164,13 @@ def _compute_trail_sl(
     idx = max(stage - 1, 0)   # stage 0 → index 0 (trail1), stage 1 → index 0, etc.
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
-    # ACTIVATION: trail arms when peak profit >= atr * pts_mult (raw USD points)
-    # PINE_MINTICK removed — config TRAIL_STAGES values are already in price-point
-    # units, not tick units. Applying *0.1 shrank activation to 22pts, causing the
-    # trail to arm almost instantly and fire on Binance micro-spikes.
-    activation_threshold = live_atr * pts_mult
+    # ACTIVATION: trail arms when peak profit >= atr * pts_mult * mintick (price pts)
+    activation_threshold = live_atr * pts_mult * PINE_MINTICK
     if peak_profit_dist < activation_threshold:
         return None
 
-    # OFFSET: trail SL sits atr * off_mult raw USD points behind the peak
-    offset = live_atr * off_mult
+    # OFFSET: trail SL sits atr * off_mult * mintick price points behind the peak
+    offset = live_atr * off_mult * PINE_MINTICK
     return (peak_price - offset) if is_long else (peak_price + offset)
 
 
@@ -222,6 +219,13 @@ class TrailMonitor:
         # FIX-DUAL-SOURCE-B: Binance/Delta price-source offset compensation.
         self._source_offset   : Optional[float] = None
         self._first_tick_ts_ms: int  = 0
+
+        # OFFSET-RECAL: recalibrate Binance→Delta offset every 30s via Delta REST.
+        # The spread drifts during a trade. A frozen offset lets Binance micro-spikes
+        # look like real Delta moves, triggering false trail exits.
+        self._last_recal_ms     : int  = 0
+        self._recal_interval_ms : int  = 30_000   # 30 seconds
+        self._recal_in_progress : bool = False
 
     # ── Start / Stop ──────────────────────────────────────────────────────────
 
@@ -459,7 +463,49 @@ class TrailMonitor:
                 )
             price = price - self._source_offset
 
+            # OFFSET-RECAL: drift-correct offset every 30s via Delta REST.
+            now_ms = int(time.time() * 1000)
+            if (
+                not self._recal_in_progress
+                and now_ms - self._last_recal_ms >= self._recal_interval_ms
+            ):
+                self._recal_in_progress = True
+                asyncio.get_running_loop().create_task(
+                    self._recalibrate_offset(price + self._source_offset)
+                )
+
         await self._evaluate_tick(price)
+
+    async def _recalibrate_offset(self, binance_price_raw: float) -> None:
+        """
+        OFFSET-RECAL: fetch Delta mark price via REST and recompute offset.
+        Called every 30s to correct for Binance-Delta spread drift.
+        A frozen offset causes false exits: Binance micro-spikes subtract a
+        stale offset and appear as real Delta price moves.
+        """
+        try:
+            delta_mark = await self._get_mark_price()
+            if delta_mark and delta_mark > 0 and self._source_offset is not None:
+                new_offset = binance_price_raw - delta_mark
+                # Sanity check: reject if recal swings offset by more than 50pts
+                if abs(new_offset - self._source_offset) <= 50.0:
+                    old_offset = self._source_offset
+                    self._source_offset = new_offset
+                    logger.info(
+                        f"[TRAIL] Offset recalibrated: {old_offset:+.2f} → {new_offset:+.2f} "
+                        f"(binance={binance_price_raw:.2f} delta_mark={delta_mark:.2f})"
+                    )
+                else:
+                    logger.warning(
+                        f"[TRAIL] Offset recal rejected (swing too large): "
+                        f"old={self._source_offset:+.2f} new={new_offset:+.2f} "
+                        f"diff={new_offset - self._source_offset:+.2f}"
+                    )
+        except Exception as e:
+            logger.warning(f"[TRAIL] Offset recal failed: {e}")
+        finally:
+            self._last_recal_ms     = int(time.time() * 1000)
+            self._recal_in_progress = False
 
     async def _evaluate_tick_pair(self, tp_side: float, sl_side: float) -> None:
         """
