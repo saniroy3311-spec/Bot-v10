@@ -97,7 +97,7 @@ TREND_ATR_MULT = float(os.environ.get("TREND_ATR_MULT", "0.9"))
 RANGE_ATR_MULT = float(os.environ.get("RANGE_ATR_MULT", "0.7"))
 
 MAX_SL_MULT    = float(os.environ.get("MAX_SL_MULT",    "2.0"))
-MAX_SL_POINTS  = float(os.environ.get("MAX_SL_POINTS",  "1500.0"))
+MAX_SL_POINTS  = float(os.environ.get("MAX_SL_POINTS",  "433.0"))
 
 # ──────────────────────────────────────────────
 # PINE MINTICK (FIX-MINTICK-01)
