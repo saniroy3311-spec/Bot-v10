@@ -238,8 +238,15 @@ class TrailMonitor:
         trail_state      : TrailState,
         entry_bar_time_ms: int,
         on_trail_exit    : Callable,
+        entry_wall_ms    : Optional[int] = None,
     ) -> None:
-        """Begin monitoring. Called once after entry fill is confirmed."""
+        """Begin monitoring. Called once after entry fill is confirmed.
+
+        entry_wall_ms: wall-clock epoch ms of the original entry fill.
+          Pass this explicitly on recovery so the 28-min time exit counts
+          from the real entry time, not from the recovery restart time.
+          Defaults to now() when not provided (normal entry path).
+        """
         self._risk         = risk_levels
         self._state        = trail_state
         self._on_exit_cb   = on_trail_exit
@@ -248,8 +255,14 @@ class TrailMonitor:
         self._running      = True
         self._current_atr  = risk_levels.atr   # seed with entry-bar ATR
 
-        # TIME EXIT: record wall-clock entry time.
-        self._entry_wall_ms = int(time.time() * 1000)
+        # TIME EXIT: use provided wall-clock time (recovery) or now (normal entry).
+        self._entry_wall_ms = entry_wall_ms if entry_wall_ms is not None else int(time.time() * 1000)
+        elapsed_already = (int(time.time() * 1000) - self._entry_wall_ms) // 1000
+        if TIME_EXIT_MINUTES > 0 and elapsed_already > 0:
+            logger.info(
+                f"[TRAIL] Time exit: trade already {elapsed_already}s old at start "
+                f"(limit={TIME_EXIT_MINUTES * 60}s)"
+            )
 
         # FIX-DUAL-SOURCE-B: reset offset for new trade.
         self._source_offset    = None
