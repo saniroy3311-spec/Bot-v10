@@ -106,6 +106,13 @@ MAX_SL_POINTS  = float(os.environ.get("MAX_SL_POINTS",  "433.0"))
 # NOT applied to stage upgrade triggers (Pine uses raw ATR multiples there).
 # For BTCUSD.P on Delta India: mintick = 0.1
 PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "0.1"))
+# ^^^ CONFIRMED CORRECT: mintick=0.1 for BTCUSD.P on Delta/TradingView.
+# Pine passes atr*trailXPts to strategy.exit(trail_points=...) in TICK units.
+# Bot must multiply activation and offset by PINE_MINTICK to get price points.
+# Math proof from trade 382: ATR=254.58, peak=57pts, mintick=0.1
+#   activation = 254.58 * 0.70 * 0.1 = 17.82 pts  (trail arms at ~18 pts profit)
+#   offset     = 254.58 * 0.55 * 0.1 = 14.00 pts  (SL 14 pts behind peak)
+#   exit profit = 57 - 14 = 43 pts → exit price = 76785 - 43 = 76742.0 ✓
 
 # ──────────────────────────────────────────────
 # 5-STAGE TRAIL ENGINE  (PINE-STAGE-EXACT)
