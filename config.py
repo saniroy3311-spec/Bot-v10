@@ -119,12 +119,19 @@ PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "0.1"))
 # With ATR=312.18:
 #   Stage 1 upgrades at 312 pts | arms at 21.9 pts | offset 17.2 pts
 TRAIL_STAGES = [
-    (1.0,  0.70, 0.55),   # Stage 1
-    (2.0,  0.55, 0.45),   # Stage 2
-    (3.0,  0.45, 0.35),   # Stage 3
-    (5.0,  0.30, 0.25),   # Stage 4
-    (8.0,  0.20, 0.15),   # Stage 5
+    (1.0,  0.411, 0.411),   # Stage 1 — offset 120 pts at ATR 291.91
+    (2.0,  0.343, 0.343),   # Stage 2 — offset 100 pts at ATR 291.91
+    (3.0,  0.281, 0.281),   # Stage 3 — offset  82 pts at ATR 291.91
+    (5.0,  0.212, 0.212),   # Stage 4 — offset  62 pts at ATR 291.91
+    (8.0,  0.147, 0.147),   # Stage 5 — offset  43 pts at ATR 291.91
 ]
+
+# ──────────────────────────────────────────────
+# TIME-BASED EXIT
+# ──────────────────────────────────────────────
+# Close any open trade after this many minutes regardless of SL/TP/trail.
+# Set to 0 to disable.
+TIME_EXIT_MINUTES = int(os.environ.get("TIME_EXIT_MINUTES", "28"))
 
 # ──────────────────────────────────────────────
 # BREAKEVEN + RSI
