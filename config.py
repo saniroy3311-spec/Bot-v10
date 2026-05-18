@@ -12,8 +12,8 @@ CHANGES IN THIS VERSION:
     Now:        profit_dist >= live_atr × trigger                  (correct)
 
   SL matches Pine exactly:
-    Trend: stopDist = min(ATR × 0.9, 1500)  → ~281 pts at ATR=312
-    Range: stopDist = min(ATR × 0.7, 1500)  → ~219 pts at ATR=312
+    Trend: stopDist = min(ATR × 0.9, 433)  → ~281 pts at ATR=312
+    Range: stopDist = min(ATR × 0.7, 433)  → ~219 pts at ATR=312
 """
 import os
 
