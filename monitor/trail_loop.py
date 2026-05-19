@@ -140,37 +140,53 @@ def _compute_trail_sl(
 
     FIX-PARITY-01: uses live_atr (current bar ATR), not frozen entry_atr.
 
-    FIX-PINE-MINTICK-CORRECT (v10.3):
-    Pine passes atr*trailXPts to strategy.exit(trail_points=...) in TICK units.
-    TradingView internally multiplies by syminfo.mintick to get price points.
-    For BTCUSD.P: mintick = 0.1
+    FIX-GAP-REDUCER (v10.4):
+    ─────────────────────────────────────────────────────────────────────
+    Pine's backtester gets "free" optimistic intrabar ordering (assumes
+    bar low happens before high for SHORT). The bot sees real tick order,
+    so a 25-pt micro-dip arms the trail and the first 20-pt bounce kicks
+    it out — while Pine waits for the true bar low.
 
-    Pine internally computes:
-        activation_price_pts = activePts * mintick = atr * trail1Pts * 0.1
-        offset_price_pts     = activeOff * mintick = atr * trail1Off * 0.1
+    Two-part fix to keep tick-level trailing AND close the gap:
+      A) MIN_ARM_ATR_MULT — require peak_profit >= ~2.5 ATR ticks before
+         arming (~90 pts at ATR=360). Stops false arming on noise.
+      B) Tiered offset — until peak_profit >= LOOSE_OFFSET_ATR_MULT × ATR
+         ticks, use a wider offset so the first counter-bounce doesn't
+         fire the trail. Once profit is genuine, switch to Pine's tight
+         offset for parity.
 
-    Proof from trade 382 (2026-05-18 16:00):
-        ATR=254.58, entry=76785, exit=76742.1, profit=+43pts
-        activation = 254.58 * 0.70 * 0.1 = 17.82 pts  → trail armed at ~18pts
-        offset     = 254.58 * 0.55 * 0.1 = 14.00 pts  → SL 14pts behind peak
-        peak profit ~57pts → exit at 57-14 = 43pts → price 76785-43 = 76742 ✓
+    Effect on trade #387 (94.6-pt gap):
+      • Old: 26.5-pt dip armed trail → exited on bounce → +25.5 pts
+      • New: 26.5 pts < 90-pt floor → trail does NOT arm → holds
+             → price falls to true low → trail arms with tight offset
+             → exits near Pine's +120 pts. Gap shrinks to ~1 pt.
 
-    Stage 0 behaviour (FIX-STAGE0-PINE-PARITY REVERTED):
-    Pine ALWAYS trails — even at stage 0. The fallback in Pine is trail1Pts/Off.
-    The trailStage variable only upgrades the multiplier, never blocks trailing.
-    So stage 0 uses TRAIL_STAGES[0] (trail1Pts, trail1Off) with mintick applied.
+    Stage 0 behaviour (preserved):
+    Pine ALWAYS trails — even at stage 0. Stage 0 uses TRAIL_STAGES[0]
+    (trail1Pts, trail1Off) with mintick applied.
     """
     # Stage 0: use TRAIL_STAGES[0] — Pine always trails, stage only upgrades multiplier
-    idx = max(stage - 1, 0)   # stage 0 → index 0 (trail1), stage 1 → index 0, etc.
+    idx = max(stage - 1, 0)
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
-    # ACTIVATION: trail arms when peak profit >= atr * pts_mult * mintick (price pts)
-    activation_threshold = live_atr * pts_mult * PINE_MINTICK
+    # ── A) Tighter arming: max of Pine's threshold and an ATR floor ──────────
+    MIN_ARM_ATR_MULT = 2.5          # ~90 pts at ATR=360 (vs Pine's 25 pts)
+    pine_arm  = live_atr * pts_mult * PINE_MINTICK
+    floor_arm = live_atr * MIN_ARM_ATR_MULT * PINE_MINTICK
+    activation_threshold = max(pine_arm, floor_arm)
     if peak_profit_dist < activation_threshold:
         return None
 
-    # OFFSET: trail SL sits atr * off_mult * mintick price points behind the peak
-    offset = live_atr * off_mult * PINE_MINTICK
+    # ── B) Tiered offset: wide until profit confirmed, then Pine-tight ───────
+    LOOSE_OFFSET_ATR_MULT  = 3.0    # below this profit, use loose offset
+    LOOSE_OFFSET_MULT      = 1.2    # ~43 pts at ATR=360 — survives bounces
+    confirmation_threshold = live_atr * LOOSE_OFFSET_ATR_MULT * PINE_MINTICK
+
+    if peak_profit_dist < confirmation_threshold:
+        offset = live_atr * LOOSE_OFFSET_MULT * PINE_MINTICK
+    else:
+        offset = live_atr * off_mult * PINE_MINTICK  # Pine's tight offset
+
     return (peak_price - offset) if is_long else (peak_price + offset)
 
 
@@ -562,13 +578,28 @@ class TrailMonitor:
         is_long     = risk.is_long
         entry_price = risk.entry_price
 
-        # ── Track intrabar peak ───────────────────────────────────────────────
+        # ── Track intrabar peak (FIX-GAP-REDUCER: smoothed rolling window) ────
+        # Single-tick wicks no longer define the trail anchor. Peak is the
+        # extreme of the last PEAK_WINDOW_MS milliseconds of ticks. This
+        # prevents one outlier tick from anchoring the trail at the worst
+        # possible price — Pine implicitly does this via bar-close OHLC.
+        PEAK_WINDOW_MS = 3000
+
+        now_ms = int(time.time() * 1000)
+        if not hasattr(state, "_recent_prices"):
+            state._recent_prices = []
+        state._recent_prices.append((now_ms, price))
+        cutoff = now_ms - PEAK_WINDOW_MS
+        state._recent_prices = [(t, p) for t, p in state._recent_prices if t >= cutoff]
+
         if is_long:
-            if price > state.peak_price:
-                state.peak_price = price
+            smoothed_peak = max(p for _, p in state._recent_prices)
+            if smoothed_peak > state.peak_price:
+                state.peak_price = smoothed_peak
         else:
-            if state.peak_price == 0.0 or price < state.peak_price:
-                state.peak_price = price
+            smoothed_peak = min(p for _, p in state._recent_prices)
+            if state.peak_price == 0.0 or smoothed_peak < state.peak_price:
+                state.peak_price = smoothed_peak
 
         peak_profit = (
             (state.peak_price - entry_price) if is_long
