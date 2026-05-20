@@ -12,7 +12,7 @@ from peak_price and an offset. This never matched because:
 
   1. MIN_ARM_ATR_MULT (4.0×) — artificial floor not in Pine
   2. LOOSE_OFFSET_ATR_MULT (6.0×) — artificial wide offset not in Pine
-  3. Peak tracking from WS ticks ≠ Pine's internal best_price tracking
+  3. Peak tracking from WS ticks ≠ Pine's internal best_price tracking
   4. Trail SL computation intrabar drifted with every tick
 
 HOW PINE'S trail_points / trail_offset ACTUALLY WORKS
@@ -400,6 +400,10 @@ class TrailMonitor:
 
     async def on_price_tick(self, price: float, source: str = "binance") -> None:
         """Primary intrabar exit path — called from WS feed on every tick."""
+        # SAFETY GUARD: Ignore raw Binance calculations to prevent mathematical drift
+        if source == "binance":
+            return
+
         if not self._running or self._exit_fired or price <= 0:
             return
 
@@ -556,8 +560,8 @@ class TrailMonitor:
             else:
                 # Trail not armed yet — check initial / BE SL only
                 sl_hit = (
-                    (price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER) if is_long
-                    else (price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
+                    (price <= self.current_sl + TRAIL_SL_PRE_FIRE_BUFFER) if is_long
+                    else (price >= self.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
                 )
                 if sl_hit:
                     reason = "Breakeven SL" if state.be_done else "Initial SL"
@@ -802,6 +806,10 @@ class TrailMonitor:
         Called by ws_feed on every intrabar WS candle update.
         Evaluates both TP-side and SL-side prices immediately.
         """
+        # SAFETY GUARD: Ignore raw Binance calculations to prevent mathematical drift
+        if source == "binance":
+            return
+
         if not self._running or self._exit_fired or self._state is None or self._risk is None:
             return
 
