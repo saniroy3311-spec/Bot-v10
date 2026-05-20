@@ -240,12 +240,15 @@ class ShivaSniperBot:
             self._binance_px_feed.stop()
         if self._fills_feed is not None:
             self._fills_feed.stop()
+        # Use asyncio.shield() so these sends survive task cancellation.
+        # Without shield, the signal handler's task.cancel() kills the
+        # aiohttp request mid-flight and the WhatsApp stop message is lost.
         try:
-            await self._telegram.send("🔴 <b>Shiva Sniper Bot Stopped</b>")
+            await asyncio.shield(self._telegram.send("🔴 <b>Shiva Sniper Bot Stopped</b>"))
         except Exception:
             pass
         try:
-            await self._whatsapp.send("🔴 *Shiva Sniper Bot Stopped*")
+            await asyncio.shield(self._whatsapp.send("🔴 *Shiva Sniper Bot Stopped*"))
         except Exception:
             pass
         try:
@@ -737,7 +740,11 @@ async def _main() -> None:
     def _handle_signal(sig_num: int) -> None:
         logger.info(f"Signal {sig_num} — graceful shutdown initiated...")
         for task in asyncio.all_tasks(loop):
-            task.cancel()
+            # Skip the main bot_run task — it handles shutdown itself via
+            # CancelledError/finally, and cancelling it here races with the
+            # shutdown() coroutine, dropping the WhatsApp stop notification.
+            if task.get_name() != "bot_run":
+                task.cancel()
 
     for s in (signal.SIGINT, signal.SIGTERM):
         try:
@@ -745,7 +752,8 @@ async def _main() -> None:
         except NotImplementedError:
             pass  # Windows
 
-    await bot.run()
+    run_task = asyncio.create_task(bot.run(), name="bot_run")
+    await run_task
 
 
 if __name__ == "__main__":
