@@ -2,7 +2,31 @@
 monitor/trail_loop.py — Shiva Sniper v10 — PINE-STAGE-EXACT
 ════════════════════════════════════════════════════════════════════════════
 
-NEW IN THIS VERSION (FIX-STAGE0-PINE-PARITY v10.2):
+NEW IN THIS VERSION (FIX-GAP-REDUCER-v2 v10.5):
+──────────────────────────────────────────────────────────────────────────
+Trade #388 post-mortem (May 20 2026):
+  ATR=224.08, entry short @ 77187.
+  Early intrabar dip = 57 pts → just above old MIN_ARM_ATR_MULT floor of
+  56.02 pts (224.08 × 2.5 × 0.1). Trail armed. Price bounced to 77240.50.
+  Bot exited @ 77127.50 (+59.5 pts).
+  Pine (bar-close eval): bar_low=76855.5, exit @ 76867.8 (+309.7 pts).
+  Gap = 250 pts.
+
+Root cause:
+  MIN_ARM_ATR_MULT=2.5 gives a floor of ~56 pts at ATR=224. The noise dip
+  was 57 pts — 1 pt above the floor. Trail armed prematurely on a dip that
+  did not represent the true bar low.
+
+Fix (two constants in _compute_trail_sl):
+  MIN_ARM_ATR_MULT      : 2.5 → 4.0   floor = ~90 pts at ATR=224
+  LOOSE_OFFSET_ATR_MULT : 3.0 → 6.0   confirmation threshold = ~134 pts at ATR=224
+
+Effect:
+  57 pts < 89.6 pt floor → trail does NOT arm on noise dip → bot holds
+  → price falls to true bar low → trail arms with correct offset
+  → exits near Pine's result.
+
+NEW IN PREVIOUS VERSION (FIX-STAGE0-PINE-PARITY v10.2):
 ──────────────────────────────────────────────────────────────────────────
 Pine Script has NO stage 0 trailing. Trail only starts after stage 1
 trigger is hit (profit_dist >= ATR × 1.0). Before that, only the fixed
@@ -170,7 +194,10 @@ def _compute_trail_sl(
     _, pts_mult, off_mult = TRAIL_STAGES[idx]
 
     # ── A) Tighter arming: max of Pine's threshold and an ATR floor ──────────
-    MIN_ARM_ATR_MULT = 2.5          # ~90 pts at ATR=360 (vs Pine's 25 pts)
+    # FIX-GAP-REDUCER-v2 (v10.5): raised from 2.5 → 4.0
+    #   Old floor at ATR=224: 224 × 2.5 × 0.1 = 56 pts  ← trade #388 dip=57 just slipped through
+    #   New floor at ATR=224: 224 × 4.0 × 0.1 = 90 pts  ← 57 pt dip blocked, bot holds to true low
+    MIN_ARM_ATR_MULT = 4.0
     pine_arm  = live_atr * pts_mult * PINE_MINTICK
     floor_arm = live_atr * MIN_ARM_ATR_MULT * PINE_MINTICK
     activation_threshold = max(pine_arm, floor_arm)
@@ -178,8 +205,11 @@ def _compute_trail_sl(
         return None
 
     # ── B) Tiered offset: wide until profit confirmed, then Pine-tight ───────
-    LOOSE_OFFSET_ATR_MULT  = 3.0    # below this profit, use loose offset
-    LOOSE_OFFSET_MULT      = 1.2    # ~43 pts at ATR=360 — survives bounces
+    # FIX-GAP-REDUCER-v2 (v10.5): raised from 3.0 → 6.0
+    #   Confirmation threshold now matches the wider arm floor so the loose
+    #   offset stays active until profit is well beyond the arm point.
+    LOOSE_OFFSET_ATR_MULT  = 6.0    # below this profit, use loose offset
+    LOOSE_OFFSET_MULT      = 1.2    # ~27 pts at ATR=224 — survives bounces
     confirmation_threshold = live_atr * LOOSE_OFFSET_ATR_MULT * PINE_MINTICK
 
     if peak_profit_dist < confirmation_threshold:
