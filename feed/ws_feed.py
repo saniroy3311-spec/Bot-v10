@@ -545,9 +545,10 @@ class CandleFeed:
                 f"bars={len(self._df)} — evaluating signals..."
             )
 
+            self._last_candle_boundary = current_boundary  # FIX-MULTI-BAR: update before any path
+
             if self._processing:
                 logger.warning("⚠️ on_bar_close still processing — skipping this bar")
-                self._last_candle_boundary = current_boundary
                 return
 
             if len(self._df) >= MIN_BARS:
