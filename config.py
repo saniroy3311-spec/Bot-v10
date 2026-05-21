@@ -72,11 +72,35 @@ RSI_LEN       = 14
 ADX_TREND_TH = int(os.environ.get("ADX_TREND_TH", "20"))
 ADX_RANGE_TH = int(os.environ.get("ADX_RANGE_TH", "18"))
 
+# FIX-FEED-DIVERGENCE: ADX_TOLERANCE absorbs the systematic ADX gap between
+# Delta REST OHLCV (bot) and TradingView OHLCV (Pine).  Even a 0.5-point
+# difference in one historical bar ripples through the 14-period RMA chain
+# and can shift the final EMA(5)-smoothed ADX by 0.1–0.5 pts, causing the
+# bot to see adx=19.8 while Pine crosses 20.0 and fires.
+#
+# With ADX_TOLERANCE=0.5:
+#   trend_regime fires when adx_smoothed > 19.5  (instead of 20.0)
+#   range_regime fires when adx_smoothed < 18.5  (instead of 18.0)
+#
+# Keep this ≤ 1.0 so regime classification stays meaningful.
+# Set ADX_TOLERANCE=0 in .env to restore strict Pine-exact behaviour.
+ADX_TOLERANCE = float(os.environ.get("ADX_TOLERANCE", "0.5"))
+
 # ──────────────────────────────────────────────
 # ENTRY FILTERS
 # ──────────────────────────────────────────────
 FILTER_ATR_MULT    = float(os.environ.get("FILTER_ATR_MULT",  "1.6"))
 FILTER_BODY_MULT   = float(os.environ.get("FILTER_BODY_MULT", "0.4"))
+
+# FIX-FEED-DIVERGENCE: FILTER_BODY_TOLERANCE relaxes the body filter to absorb
+# Delta vs TradingView OHLC differences.  Pine computes body size from TV OHLC;
+# the bot uses Delta REST OHLC.  A bar where TV sees body > ATR*0.4 may appear
+# as body ≈ ATR*0.38 on Delta data — causing filters=FAIL when Pine fires.
+#
+# The effective threshold becomes:  body > ATR * (FILTER_BODY_MULT - FILTER_BODY_TOLERANCE)
+# Default 0.05 means body only needs to be > ATR*0.35 instead of ATR*0.40.
+# Set FILTER_BODY_TOLERANCE=0 in .env to restore strict Pine-exact behaviour.
+FILTER_BODY_TOLERANCE = float(os.environ.get("FILTER_BODY_TOLERANCE", "0.05"))
 
 FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "false").lower() == "true"
 FILTER_VOL_MULT    = float(os.environ.get("FILTER_VOL_MULT", "0.05"))
