@@ -62,7 +62,9 @@ from config import (
     EMA_TREND_LEN, EMA_FAST_LEN, ATR_LEN,
     DI_LEN, ADX_SMOOTH, ADX_EMA, RSI_LEN,
     ADX_TREND_TH, ADX_RANGE_TH,
-    FILTER_ATR_MULT, FILTER_BODY_MULT, FILTER_VOL_ENABLED, FILTER_VOL_MULT,
+    ADX_TOLERANCE,           # FIX-FEED-DIVERGENCE: absorbs Delta vs TV ADX gap
+    FILTER_ATR_MULT, FILTER_BODY_MULT, FILTER_BODY_TOLERANCE,  # FIX-FEED-DIVERGENCE
+    FILTER_VOL_ENABLED, FILTER_VOL_MULT,
     RSI_OB, RSI_OS,
     TREND_RR, RANGE_RR, TREND_ATR_MULT, RANGE_ATR_MULT,
     MAX_SL_MULT, MAX_SL_POINTS, TRAIL_STAGES, BE_MULT,
@@ -337,11 +339,11 @@ def compute(df: pd.DataFrame) -> IndicatorSnapshot:
 
     vol_sma = float(df["volume"].rolling(20).mean().iloc[-1])
 
-    trend_regime = adx_smoothed > ADX_TREND_TH
-    range_regime = adx_smoothed < ADX_RANGE_TH
+    trend_regime = adx_smoothed > (ADX_TREND_TH - ADX_TOLERANCE)
+    range_regime = adx_smoothed < (ADX_RANGE_TH + ADX_TOLERANCE)
 
     atr_ok  = atr < atr_sma * FILTER_ATR_MULT
-    body_ok = abs(float(last["close"]) - float(last["open"])) > atr * FILTER_BODY_MULT
+    body_ok = abs(float(last["close"]) - float(last["open"])) > atr * (FILTER_BODY_MULT - FILTER_BODY_TOLERANCE)
 
     if FILTER_VOL_ENABLED:
         bar_vol = float(last["volume"])
