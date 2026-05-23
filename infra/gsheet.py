@@ -223,6 +223,9 @@ class GSheet:
 
         try:
             self._connect()
+            if self._sh is None:  # FIX-BUG5: guard against failed _connect()
+                logger.warning("GSheet not connected — skipping log_trade")
+                return False
 
             plb       = self._pl_breakdown(entry_price, exit_price, qty, is_long)
             points    = points_captured if points_captured is not None else plb["points"]
