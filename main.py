@@ -177,6 +177,23 @@ class ShivaSniperBot:
 
         await self._order_mgr.initialize()
 
+        # ── FIX-BRACKET-CLEANUP: Cancel orphaned bracket orders on startup ─────
+        # If bot crashed after placing a bracket but before logging the exit,
+        # stale bracket orders remain on Delta. On the next trade attempt this
+        # causes bracket_order_exists (400) errors. Clean them up if we are flat.
+        try:
+            existing_check = await self._order_mgr.fetch_open_position()
+            if existing_check is None:
+                await self._order_mgr.cancel_all_orders()
+                logger.info("[STARTUP] Flat on Delta — cancelled all stale bracket orders (clean slate)")
+            else:
+                logger.info(
+                    f"[STARTUP] Open position found — skipping bracket cancel. "
+                    f"entry={existing_check.get('entry_price', '?')}"
+                )
+        except Exception as e:
+            logger.warning(f"[STARTUP] Bracket cleanup failed (non-fatal): {e}")
+
         # ── Startup recovery: adopt any pre-existing open position ─────────────
         existing = await self._order_mgr.fetch_open_position()
         if existing:
@@ -329,6 +346,7 @@ class ShivaSniperBot:
                             exit_price = exit_price,
                             reason     = "Bracket SL/TP (recovered)",
                             source     = "drift-check",
+                            position_already_closed = True,  # Delta confirmed flat above
                         )
                     except Exception as exit_err:
                         logger.error(
@@ -593,76 +611,31 @@ class ShivaSniperBot:
             )
 
             # ──────────────────────────────────────────────────────────────────────
-            # PINE PARITY: Same-bar exit check
-            # ──────────────────────────────────────────────────────────────────────
-            # Pine's strategy.exit() evaluates against the entry bar's OHLC immediately.
-            # If the bar's range already touched SL or TP before we entered, Pine exits
-            # on that same bar at the touched level. This replicates that behavior.
+            # FIX-SAME-BAR-REMOVED (2026-05-23):
+            # The previous same-bar exit block was INCORRECT and caused real losses.
             #
-            # Why: Pine has perfect hindsight into the bar's OHLC. When it enters at
-            # bar close and immediately sees the bar's low hit SL, it exits at that low,
-            # timestamped at the same bar close. Live bot would normally wait for the
-            # next tick to detect the SL, but that creates a parity gap.
+            # Root cause: Bot enters at bar CLOSE (market order after barstate.isconfirmed).
+            # The signal bar's high/low is historical — it occurred BEFORE the entry existed.
+            # Checking df["high"].iloc[-1] against SL on a SHORT immediately after entry
+            # always fires a false SL because the bar's wick (above entry) is in the past.
             #
-            # Fix: Check bar's high/low against SL/TP immediately after entry. If hit,
-            # exit at that level before trail monitor even starts.
+            # Pine Script behaviour for bar-close entries:
+            #   strategy.entry fires at bar close → strategy.exit evaluates from the
+            #   NEXT bar onward. Pine never checks the entry bar's OHLC for exits when
+            #   the entry was placed at barstate.isconfirmed. Confirmed by live backtester
+            #   trades 397/398 on 2026-05-23 (both profitable trailing-stop exits in Pine,
+            #   but bot killed them as same-bar SL losses).
+            #
+            # Second bug (masked by first): the same-bar path called _on_trail_exit()
+            # directly — which only does bookkeeping (journal / Telegram / state reset).
+            # It sends ZERO orders to Delta Exchange, leaving real open positions and
+            # bracket orders orphaned on the exchange. This caused bracket_order_exists
+            # errors on the next trade.
+            #
+            # Fix: remove the block entirely. TrailMonitor tick loop handles all exits
+            # from the next price tick onward, which is correct Pine parity for
+            # bar-close entries.
             # ──────────────────────────────────────────────────────────────────────
-            entry_bar_high = float(df["high"].iloc[-1])
-            entry_bar_low  = float(df["low"].iloc[-1])
-
-            same_bar_exit = False
-            exit_px = 0.0
-            exit_reason = ""
-
-            if sig.is_long:
-                # Long: check if bar's low hit SL or bar's high hit TP
-                if entry_bar_low <= risk.sl:
-                    same_bar_exit = True
-                    exit_px = risk.sl
-                    exit_reason = "Initial SL (same-bar)"
-                    logger.info(
-                        f"[ENTRY] Same-bar SL hit: bar_low={entry_bar_low:.2f} "
-                        f"<= sl={risk.sl:.2f} — exiting immediately"
-                    )
-                elif entry_bar_high >= risk.tp:
-                    same_bar_exit = True
-                    exit_px = risk.tp
-                    exit_reason = "TP (same-bar)"
-                    logger.info(
-                        f"[ENTRY] Same-bar TP hit: bar_high={entry_bar_high:.2f} "
-                        f">= tp={risk.tp:.2f} — exiting immediately"
-                    )
-            else:
-                # Short: check if bar's high hit SL or bar's low hit TP
-                if entry_bar_high >= risk.sl:
-                    same_bar_exit = True
-                    exit_px = risk.sl
-                    exit_reason = "Initial SL (same-bar)"
-                    logger.info(
-                        f"[ENTRY] Same-bar SL hit: bar_high={entry_bar_high:.2f} "
-                        f">= sl={risk.sl:.2f} — exiting immediately"
-                    )
-                elif entry_bar_low <= risk.tp:
-                    same_bar_exit = True
-                    exit_px = risk.tp
-                    exit_reason = "TP (same-bar)"
-                    logger.info(
-                        f"[ENTRY] Same-bar TP hit: bar_low={entry_bar_low:.2f} "
-                        f"<= tp={risk.tp:.2f} — exiting immediately"
-                    )
-
-            if same_bar_exit:
-                # Stop trail monitor before firing exit (prevent double-fire on next tick)
-                if self._trail_mon._running:
-                    self._trail_mon.stop()
-                
-                # Fire the exit through normal path (handles Telegram, journal, P&L)
-                await self._on_trail_exit(
-                    exit_price = exit_px,
-                    reason     = exit_reason,
-                    source     = "bar-close",
-                )
-                return  # Exit early — trade is done
 
     # ── Exit callback ─────────────────────────────────────────────────────────
 
@@ -671,10 +644,27 @@ class ShivaSniperBot:
         exit_price: float,
         reason    : str,
         source    : str = "tick",
+        position_already_closed: bool = False,
     ) -> None:
-        """Called by TrailMonitor after position is closed on the exchange."""
+        """Called by TrailMonitor._fire_exit() after position is closed on the exchange.
+
+        position_already_closed=True  → Delta position is confirmed closed before
+                                         this call (normal TrailMonitor path + drift check).
+        position_already_closed=False → caller is NOT sure the exchange position is closed.
+                                         Log a warning so the bug is visible immediately.
+        """
         if not self._in_position:
             return
+
+        # Safety guard: if this is called without a confirmed Delta close, warn loudly.
+        # This catches any future code that tries to shortcut through bookkeeping only
+        # (the old same-bar bug pattern — exits Python state but not the exchange).
+        if not position_already_closed:
+            logger.warning(
+                f"[EXIT] ⚠️  _on_trail_exit called with position_already_closed=False "
+                f"— reason={reason} source={source}. "
+                f"Verify Delta position is actually flat before relying on this exit."
+            )
 
         risk = self._risk
         pl   = (
