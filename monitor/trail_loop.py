@@ -781,7 +781,14 @@ class TrailMonitor:
         self._running = False
         if self._on_exit_cb is not None:
             try:
-                await self._on_exit_cb(reported_price, reason, source)
+                # position_already_closed=True: cancel_all_orders() + close_position()
+                # ran above, so Delta is confirmed flat before the callback fires.
+                await self._on_exit_cb(
+                    reported_price,
+                    reason,
+                    source,
+                    True,   # position_already_closed
+                )
             except Exception as e:
                 logger.error(f"[TRAIL] exit callback error: {e}", exc_info=True)
 
