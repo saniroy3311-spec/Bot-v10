@@ -592,6 +592,78 @@ class ShivaSniperBot:
                 qty         = self._qty_lots,
             )
 
+            # ──────────────────────────────────────────────────────────────────────
+            # PINE PARITY: Same-bar exit check
+            # ──────────────────────────────────────────────────────────────────────
+            # Pine's strategy.exit() evaluates against the entry bar's OHLC immediately.
+            # If the bar's range already touched SL or TP before we entered, Pine exits
+            # on that same bar at the touched level. This replicates that behavior.
+            #
+            # Why: Pine has perfect hindsight into the bar's OHLC. When it enters at
+            # bar close and immediately sees the bar's low hit SL, it exits at that low,
+            # timestamped at the same bar close. Live bot would normally wait for the
+            # next tick to detect the SL, but that creates a parity gap.
+            #
+            # Fix: Check bar's high/low against SL/TP immediately after entry. If hit,
+            # exit at that level before trail monitor even starts.
+            # ──────────────────────────────────────────────────────────────────────
+            entry_bar_high = float(df["high"].iloc[-1])
+            entry_bar_low  = float(df["low"].iloc[-1])
+
+            same_bar_exit = False
+            exit_px = 0.0
+            exit_reason = ""
+
+            if sig.is_long:
+                # Long: check if bar's low hit SL or bar's high hit TP
+                if entry_bar_low <= risk.sl:
+                    same_bar_exit = True
+                    exit_px = risk.sl
+                    exit_reason = "Initial SL (same-bar)"
+                    logger.info(
+                        f"[ENTRY] Same-bar SL hit: bar_low={entry_bar_low:.2f} "
+                        f"<= sl={risk.sl:.2f} — exiting immediately"
+                    )
+                elif entry_bar_high >= risk.tp:
+                    same_bar_exit = True
+                    exit_px = risk.tp
+                    exit_reason = "TP (same-bar)"
+                    logger.info(
+                        f"[ENTRY] Same-bar TP hit: bar_high={entry_bar_high:.2f} "
+                        f">= tp={risk.tp:.2f} — exiting immediately"
+                    )
+            else:
+                # Short: check if bar's high hit SL or bar's low hit TP
+                if entry_bar_high >= risk.sl:
+                    same_bar_exit = True
+                    exit_px = risk.sl
+                    exit_reason = "Initial SL (same-bar)"
+                    logger.info(
+                        f"[ENTRY] Same-bar SL hit: bar_high={entry_bar_high:.2f} "
+                        f">= sl={risk.sl:.2f} — exiting immediately"
+                    )
+                elif entry_bar_low <= risk.tp:
+                    same_bar_exit = True
+                    exit_px = risk.tp
+                    exit_reason = "TP (same-bar)"
+                    logger.info(
+                        f"[ENTRY] Same-bar TP hit: bar_low={entry_bar_low:.2f} "
+                        f"<= tp={risk.tp:.2f} — exiting immediately"
+                    )
+
+            if same_bar_exit:
+                # Stop trail monitor before firing exit (prevent double-fire on next tick)
+                if self._trail_mon._running:
+                    self._trail_mon.stop()
+                
+                # Fire the exit through normal path (handles Telegram, journal, P&L)
+                await self._on_trail_exit(
+                    exit_price = exit_px,
+                    reason     = exit_reason,
+                    source     = "bar-close",
+                )
+                return  # Exit early — trade is done
+
     # ── Exit callback ─────────────────────────────────────────────────────────
 
     async def _on_trail_exit(
