@@ -52,6 +52,7 @@ class RiskLevels:
     is_long:         bool
     is_trend:        bool
     entry_bar_open:  float = 0.0
+    signal_close:    float = 0.0  # FIX-BUG3: bar close that generated the signal
 
 
 @dataclass
@@ -80,6 +81,7 @@ def calc_levels(
     is_long:        bool,
     is_trend:       bool,
     entry_bar_open: float = 0.0,
+    signal_close:   float = 0.0,  # FIX-BUG3: pass signal bar close for SL anchor
 ) -> RiskLevels:
     """
     Compute initial SL and TP — Pine-exact formula.
@@ -112,6 +114,7 @@ def calc_levels(
         is_long        = is_long,
         is_trend       = is_trend,
         entry_bar_open = entry_bar_open,
+        signal_close   = signal_close if signal_close > 0 else entry_price,
     )
 
 
