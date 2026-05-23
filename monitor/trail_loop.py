@@ -320,7 +320,11 @@ class TrailMonitor:
         if not getattr(state, 'trail_armed', False) and not state.be_done:
             _atr_mult  = TREND_ATR_MULT if risk.is_trend else RANGE_ATR_MULT
             _stop_dist = min(current_atr * _atr_mult, MAX_SL_POINTS)
-            _new_sl    = (entry_price - _stop_dist) if is_long else (entry_price + _stop_dist)
+            # FIX-BUG3: anchor to signal_close (Pine parity), not fill price.
+            # Fill != close whenever there's any slippage, causing SL to drift
+            # by the slippage amount on every bar-close update.
+            _anchor    = risk.signal_close if risk.signal_close > 0 else entry_price
+            _new_sl    = (_anchor - _stop_dist) if is_long else (_anchor + _stop_dist)
             if abs(_new_sl - state.current_sl) > 0.01:
                 logger.info(
                     f"[TRAIL] Initial SL update: {state.current_sl:.2f} → {_new_sl:.2f} "
