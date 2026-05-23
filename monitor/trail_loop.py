@@ -514,17 +514,26 @@ class TrailMonitor:
         profit_dist = (price - entry_price) if is_long else (entry_price - price)
 
         # ── 1. Stage upgrade ──────────────────────────────────────────────────
-        new_stage = _upgrade_stage(state.stage, profit_dist, atr)
-        if new_stage > state.stage:
-            logger.info(
-                f"[TRAIL] Stage {state.stage} → {new_stage} (intrabar tick) | "
-                f"profit={profit_dist:.2f} atr={atr:.2f}"
-            )
-            state.stage = new_stage
-            # Recompute trail SL immediately with new stage offset
-            if getattr(state, 'trail_armed', False):
-                new_trail_sl = _trail_sl_from_best(state.best_price, state.stage, atr, is_long)
-                self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="stage_upgrade_tick")
+        # PINE PARITY FIX: Stage upgrades happen ONLY on bar close (not on ticks).
+        # Pine updates trailStage only when the script re-evaluates at bar close.
+        # Tick-level upgrades cause the bot to tighten the trail mid-bar before
+        # Pine would, creating premature exits on volatile bars.
+        #
+        # The bar-close stage upgrade is handled in on_bar_close() (line 333).
+        # This tick-level upgrade block is now disabled for Pine parity.
+        #
+        # ORIGINAL CODE (now commented out):
+        # new_stage = _upgrade_stage(state.stage, profit_dist, atr)
+        # if new_stage > state.stage:
+        #     logger.info(
+        #         f"[TRAIL] Stage {state.stage} → {new_stage} (intrabar tick) | "
+        #         f"profit={profit_dist:.2f} atr={atr:.2f}"
+        #     )
+        #     state.stage = new_stage
+        #     # Recompute trail SL immediately with new stage offset
+        #     if getattr(state, 'trail_armed', False):
+        #         new_trail_sl = _trail_sl_from_best(state.best_price, state.stage, atr, is_long)
+        #         self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="stage_upgrade_tick")
 
         # ── 2. Breakeven check ────────────────────────────────────────────────
         if not state.be_done and profit_dist > atr * BE_MULT:
@@ -560,8 +569,8 @@ class TrailMonitor:
             else:
                 # Trail not armed yet — check initial / BE SL only
                 sl_hit = (
-                    (price <= self.current_sl + TRAIL_SL_PRE_FIRE_BUFFER) if is_long
-                    else (price >= self.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
+                    (price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER) if is_long
+                    else (price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
                 )
                 if sl_hit:
                     reason = "Breakeven SL" if state.be_done else "Initial SL"
