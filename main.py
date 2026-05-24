@@ -571,6 +571,10 @@ class ShivaSniperBot:
                 trail_state       = self._trail_state,
                 entry_bar_time_ms = int(time.time() * 1000),
                 on_trail_exit     = self._on_trail_exit,
+                signal_bar_high   = snap.high,
+                signal_bar_low    = snap.low,
+                signal_bar_open   = snap.open,
+                signal_bar_close  = snap.close,
             )
 
             logger.info(
