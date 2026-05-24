@@ -47,7 +47,7 @@ from typing import Optional
 # ── Canonical module imports ───────────────────────────────────────────────────
 from config import (
     SYMBOL, ALERT_QTY, CANDLE_TIMEFRAME, FILTER_VOL_ENABLED,
-    POSITION_BTC_SIZE,
+    POSITION_BTC_SIZE, TREND_ATR_MULT, RANGE_ATR_MULT,
 )
 from feed.ws_feed            import CandleFeed
 from feed.binance_price_feed import BinancePriceFeed
@@ -390,21 +390,65 @@ class ShivaSniperBot:
             else:
                 # Recovery: bot was restarted mid-trade — reconstruct and start trail
                 if self._risk is not None and self._risk.stop_dist == 0.0:
-                    logger.warning(
-                        f"[RECOVERY] Rebuilding RiskLevels from live ATR. "
-                        f"entry={self._risk.entry_price:.2f}  live_atr={snap.atr:.2f}"
-                    )
-                    rebuilt = calc_levels(
-                        entry_price = self._risk.entry_price,
-                        atr         = snap.atr,
-                        is_long     = self._risk.is_long,
-                        is_trend    = self._risk.is_trend,
-                    )
-                    rebuilt = recalc_levels_from_fill(rebuilt, self._risk.entry_price)
+                    # FIX-RECOVERY: use the original SL/TP/ATR stored in the journal.
+                    # Previous code recomputed from live ATR — this destroys Pine parity
+                    # because ATR drifts after entry. A trade entered with ATR=246 but
+                    # recovered with ATR=233 gets an SL 28pts tighter than Pine expects,
+                    # causing premature stop-outs on normal retracements.
+                    open_row = None
+                    try:
+                        open_row = self._journal.get_open_trade()
+                    except Exception as _je:
+                        logger.warning(f"[RECOVERY] Journal read failed: {_je}")
+
+                    if open_row and open_row.get("sl", 0) > 0 and open_row.get("atr", 0) > 0:
+                        # Journal has the original SL/TP/ATR — restore exactly
+                        logger.warning(
+                            f"[RECOVERY] Restoring original SL/TP/ATR from journal. "
+                            f"entry={self._risk.entry_price:.2f}  "
+                            f"sl={open_row['sl']:.2f}  tp={open_row['tp']:.2f}  "
+                            f"atr={open_row['atr']:.2f}  current_sl={open_row['current_sl']:.2f}"
+                        )
+                        _orig_sl  = float(open_row["sl"])
+                        _orig_tp  = float(open_row["tp"])
+                        _orig_atr = float(open_row["atr"])
+                        _atr_mult = TREND_ATR_MULT if self._risk.is_trend else RANGE_ATR_MULT
+                        # Reconstruct signal_close: anchor = sl - atr*mult (short)
+                        # or sl + atr*mult (long). This restores Pine-parity SL anchor.
+                        if self._risk.is_long:
+                            _signal_close = _orig_sl + _atr_mult * _orig_atr
+                        else:
+                            _signal_close = _orig_sl - _atr_mult * _orig_atr
+                        rebuilt = RiskLevels(
+                            entry_price    = self._risk.entry_price,
+                            sl             = _orig_sl,
+                            tp             = _orig_tp,
+                            stop_dist      = abs(_orig_sl - self._risk.entry_price),
+                            atr            = _orig_atr,
+                            is_long        = self._risk.is_long,
+                            is_trend       = self._risk.is_trend,
+                            signal_close   = _signal_close,
+                        )
+                        current_sl = float(open_row.get("current_sl", open_row["sl"]))
+                    else:
+                        # Journal missing — fall back to live ATR (last resort)
+                        logger.warning(
+                            f"[RECOVERY] Journal empty — falling back to live ATR. "
+                            f"entry={self._risk.entry_price:.2f}  live_atr={snap.atr:.2f}"
+                        )
+                        rebuilt = calc_levels(
+                            entry_price = self._risk.entry_price,
+                            atr         = snap.atr,
+                            is_long     = self._risk.is_long,
+                            is_trend    = self._risk.is_trend,
+                        )
+                        rebuilt = recalc_levels_from_fill(rebuilt, self._risk.entry_price)
+                        current_sl = rebuilt.sl
+
                     self._risk        = rebuilt
                     self._trail_state = TrailState(
-                        stage      = 0,
-                        current_sl = rebuilt.sl,
+                        stage      = int(open_row.get("trail_stage", 0)) if open_row else 0,
+                        current_sl = current_sl,
                         peak_price = self._risk.entry_price,
                     )
 
@@ -412,7 +456,7 @@ class ShivaSniperBot:
                     # the journal so the 28-min clock counts from actual entry, not restart.
                     original_wall_ms: Optional[int] = None
                     try:
-                        open_row = self._journal.get_open_trade()
+                        # open_row already fetched above in FIX-RECOVERY block
                         if open_row and open_row.get("opened_at"):
                             from datetime import datetime, timezone as _tz
                             dt = datetime.fromisoformat(str(open_row["opened_at"]))
