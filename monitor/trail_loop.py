@@ -230,6 +230,10 @@ class TrailMonitor:
         entry_bar_time_ms: int,
         on_trail_exit    : Callable,
         entry_wall_ms    : Optional[int] = None,
+        signal_bar_high  : Optional[float] = None,
+        signal_bar_low   : Optional[float] = None,
+        signal_bar_open  : Optional[float] = None,
+        signal_bar_close : Optional[float] = None,
     ) -> None:
         self._risk         = risk_levels
         self._state        = trail_state
@@ -239,7 +243,7 @@ class TrailMonitor:
         self._running      = True
         self._current_atr  = risk_levels.atr
 
-        # Pine trail runtime state — attached dynamically to avoid changing dataclass
+        # Pine trail runtime state
         trail_state.trail_armed = False
         trail_state.best_price  = 0.0
 
@@ -266,6 +270,26 @@ class TrailMonitor:
             f"trail_pts={_trail_pts(1, risk_levels.atr):.2f} "
             f"trail_off={_trail_off(1, risk_levels.atr):.2f}"
         )
+
+        # ── Retroactive entry-bar evaluation ─────────────────────────────────
+        # Pine sees the full entry bar from bar open. The bot fills at bar close,
+        # so on_bar_close() never fires for the entry bar. If the bar extreme
+        # already crossed trail activation, Pine arms + exits same bar but the bot
+        # misses it. Feed the signal bar OHLC in now so the trail engine sees it.
+        if signal_bar_high is not None and signal_bar_low is not None and signal_bar_close is not None:
+            _open = signal_bar_open if signal_bar_open is not None else signal_bar_close
+            logger.info(
+                f"[TRAIL] Entry-bar retroactive eval | "
+                f"high={signal_bar_high:.2f} low={signal_bar_low:.2f} "
+                f"close={signal_bar_close:.2f} atr={risk_levels.atr:.2f}"
+            )
+            self.on_bar_close(
+                bar_close   = signal_bar_close,
+                bar_high    = signal_bar_high,
+                bar_low     = signal_bar_low,
+                bar_open    = _open,
+                current_atr = risk_levels.atr,
+            )
 
     def stop(self) -> None:
         self._running = False
@@ -404,10 +428,6 @@ class TrailMonitor:
 
     async def on_price_tick(self, price: float, source: str = "binance") -> None:
         """Primary intrabar exit path — called from WS feed on every tick."""
-        # SAFETY GUARD: Ignore raw Binance calculations to prevent mathematical drift
-        if source == "binance":
-            return
-
         if not self._running or self._exit_fired or price <= 0:
             return
 
@@ -826,10 +846,6 @@ class TrailMonitor:
         Called by ws_feed on every intrabar WS candle update.
         Evaluates both TP-side and SL-side prices immediately.
         """
-        # SAFETY GUARD: Ignore raw Binance calculations to prevent mathematical drift
-        if source == "binance":
-            return
-
         if not self._running or self._exit_fired or self._state is None or self._risk is None:
             return
 
