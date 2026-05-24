@@ -61,7 +61,7 @@ logger        = logging.getLogger(__name__)
 IST           = timezone(timedelta(hours=5, minutes=30))
 _PLACEHOLDERS = {"YOUR_ACCESS_TOKEN", "YOUR_PHONE_NUMBER_ID", "YOUR_TO_NUMBER", "", None}
 
-_GRAPH_URL = "https://graph.facebook.com/v19.0/{phone_number_id}/messages"
+_GRAPH_URL = "https://graph.facebook.com/v20.0/{phone_number_id}/messages"
 
 
 class WhatsApp:
@@ -113,10 +113,12 @@ class WhatsApp:
                     timeout=aiohttp.ClientTimeout(total=10),
                 )
                 data = await resp.json()
+                # Always log the full API response so delivery failures are visible
                 if resp.status != 200 or "messages" not in data:
                     logger.error(f"WhatsApp API error {resp.status}: {data}")
                 else:
-                    logger.info(f"WhatsApp sent: {text!r}")
+                    msg_id = data.get("messages", [{}])[0].get("id", "no-id")
+                    logger.info(f"WhatsApp sent OK | msg_id={msg_id} | body={text!r}")
         except Exception as e:
             logger.error(f"WhatsApp send failed: {e}")
 
