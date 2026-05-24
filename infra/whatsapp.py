@@ -25,10 +25,22 @@ SETUP (free tier — WhatsApp Business Cloud API):
        WHATSAPP_PHONE_NUMBER_ID=<phone-number-id>
        WHATSAPP_TO_NUMBER=<recipient-number>
 
+TEMPLATE SETUP (bypasses 24-hour session window — REQUIRED for reliability):
+  Create a template named "bot_alert" in Meta Business Manager:
+    • Category : Utility
+    • Language : English (en)
+    • Body     : {{1}}          ← single variable, the full alert text
+  Once approved, add to .env:
+       WHATSAPP_TEMPLATE_NAME=bot_alert   (or your chosen name)
+  The bot will always use the template for proactive alerts so messages
+  are delivered even when the recipient has not written in the last 24h.
+
 NOTE ON FORMATTING:
   WhatsApp text messages do NOT support HTML.  Bold uses *text*, italic
   uses _text_, monospace uses ```text```.  This file converts the same
   logical content to WhatsApp-safe markup so alerts look clean.
+  Template body text strips markdown symbols because Meta rejects them
+  inside template variables on some accounts — plain text is used there.
 
 RUNS ALONGSIDE TELEGRAM:
   Both notifiers are instantiated independently in main.py.  They do not
@@ -37,13 +49,12 @@ RUNS ALONGSIDE TELEGRAM:
 """
 
 import logging
+import re
 from datetime import datetime, timezone, timedelta
 
 import aiohttp
 
 # ── Config keys ────────────────────────────────────────────────────────────
-# Add these three variables to config.py (and your .env file).
-# If the keys are missing the notifier silently disables itself.
 try:
     from config import (
         WHATSAPP_ACCESS_TOKEN,
@@ -54,6 +65,18 @@ except ImportError:
     WHATSAPP_ACCESS_TOKEN    = None
     WHATSAPP_PHONE_NUMBER_ID = None
     WHATSAPP_TO_NUMBER       = None
+
+# Optional: template name in .env / config.py
+# If not set, falls back to plain-text only (subject to 24-h window).
+try:
+    from config import WHATSAPP_TEMPLATE_NAME          # e.g. "bot_alert"
+except ImportError:
+    WHATSAPP_TEMPLATE_NAME = None
+
+try:
+    from config import WHATSAPP_TEMPLATE_LANG          # e.g. "en" or "en_US"
+except ImportError:
+    WHATSAPP_TEMPLATE_LANG = "en"
 
 from risk.lot_sizing import compute_points, lots_to_btc
 
@@ -68,6 +91,13 @@ class WhatsApp:
     """
     Async WhatsApp Business Cloud API notifier.
 
+    Sending strategy (per call):
+      1. If WHATSAPP_TEMPLATE_NAME is configured → send via approved template.
+         Template messages bypass the 24-hour session window, so alerts
+         arrive even when the recipient hasn't messaged the bot recently.
+      2. If no template is configured → fall back to plain free-form text
+         (works only within 24 h of the last incoming user message).
+
     Drop-in companion to infra/telegram.py — exposes the same public
     async methods (notify_start, notify_stop, notify_entry, …) so
     main.py can call both with identical code.
@@ -79,6 +109,11 @@ class WhatsApp:
             and WHATSAPP_PHONE_NUMBER_ID not in _PLACEHOLDERS
             and WHATSAPP_TO_NUMBER       not in _PLACEHOLDERS
         )
+        self._use_template = (
+            self._enabled
+            and WHATSAPP_TEMPLATE_NAME not in _PLACEHOLDERS
+        )
+
         if not self._enabled:
             logger.warning(
                 "WhatsApp disabled — set WHATSAPP_ACCESS_TOKEN, "
@@ -91,19 +126,65 @@ class WhatsApp:
                 "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
                 "Content-Type":  "application/json",
             }
+            if self._use_template:
+                logger.info(
+                    f"WhatsApp template mode ON — using template "
+                    f"'{WHATSAPP_TEMPLATE_NAME}' (lang={WHATSAPP_TEMPLATE_LANG}). "
+                    f"24-hour session window bypassed."
+                )
+            else:
+                logger.warning(
+                    "WhatsApp template NOT configured — alerts subject to "
+                    "24-hour session window. Add WHATSAPP_TEMPLATE_NAME to "
+                    ".env to fix missed messages."
+                )
 
     # ── Transport ─────────────────────────────────────────────────────────────
 
-    async def _send(self, text: str) -> None:
-        """Send a plain-text WhatsApp message (fresh session per call)."""
-        if not self._enabled:
-            return
+    async def _send_template(self, text: str) -> None:
+        """
+        Send via an approved Meta message template.
+        The entire alert text is passed as parameter {{1}} of the template.
+        Template messages bypass the 24-hour user-session window.
+        """
+        # Strip WhatsApp markdown (*bold*, `mono`) — some Meta accounts
+        # reject markdown inside template variables. Plain text is fine.
+        plain = _strip_wa_markdown(text)
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "to":                WHATSAPP_TO_NUMBER,
+            "type":              "template",
+            "template": {
+                "name":     WHATSAPP_TEMPLATE_NAME,
+                "language": {"code": WHATSAPP_TEMPLATE_LANG},
+                "components": [
+                    {
+                        "type":       "body",
+                        "parameters": [
+                            {"type": "text", "text": plain[:1024]},
+                        ],
+                    }
+                ],
+            },
+        }
+        await self.__post(payload, text)
+
+    async def _send_freeform(self, text: str) -> None:
+        """
+        Send a plain free-form text message.
+        Only delivered if recipient messaged within the last 24 hours.
+        """
         payload = {
             "messaging_product": "whatsapp",
             "to":                WHATSAPP_TO_NUMBER,
             "type":              "text",
             "text":              {"preview_url": False, "body": text},
         }
+        await self.__post(payload, text)
+
+    async def __post(self, payload: dict, log_body: str) -> None:
+        """Shared HTTP POST + logging for both send paths."""
         try:
             async with aiohttp.ClientSession() as session:
                 resp = await session.post(
@@ -113,14 +194,27 @@ class WhatsApp:
                     timeout=aiohttp.ClientTimeout(total=10),
                 )
                 data = await resp.json()
-                # Always log the full API response so delivery failures are visible
                 if resp.status != 200 or "messages" not in data:
                     logger.error(f"WhatsApp API error {resp.status}: {data}")
                 else:
                     msg_id = data.get("messages", [{}])[0].get("id", "no-id")
-                    logger.info(f"WhatsApp sent OK | msg_id={msg_id} | body={text!r}")
+                    logger.info(
+                        f"WhatsApp sent OK | msg_id={msg_id} | body={log_body!r}"
+                    )
         except Exception as e:
             logger.error(f"WhatsApp send failed: {e}")
+
+    async def _send(self, text: str) -> None:
+        """
+        Main internal send: uses template if configured, else free-form.
+        All notify_* methods call this.
+        """
+        if not self._enabled:
+            return
+        if self._use_template:
+            await self._send_template(text)
+        else:
+            await self._send_freeform(text)
 
     async def send(self, text: str) -> None:
         """Public send — converts basic HTML tags to WhatsApp markup then sends."""
@@ -270,19 +364,30 @@ class WhatsApp:
         pass
 
 
-# ── Utility: lightweight HTML → WhatsApp markup converter ────────────────────
+# ── Utilities ────────────────────────────────────────────────────────────────
 
 def _html_to_wa(text: str) -> str:
     """
     Convert the subset of HTML tags used in telegram.py to WhatsApp-safe markup.
     Handles: <b>, <code>, <i>, <pre>, &amp;  (the only tags the bot produces).
     """
-    import re
     text = text.replace("&amp;", "&")
     text = re.sub(r"<b>(.*?)</b>",       r"*\1*",   text, flags=re.DOTALL)
     text = re.sub(r"<i>(.*?)</i>",       r"_\1_",   text, flags=re.DOTALL)
     text = re.sub(r"<code>(.*?)</code>", r"`\1`",   text, flags=re.DOTALL)
     text = re.sub(r"<pre>(.*?)</pre>",   r"```\1```", text, flags=re.DOTALL)
-    # Strip any remaining tags
     text = re.sub(r"<[^>]+>", "", text)
+    return text
+
+
+def _strip_wa_markdown(text: str) -> str:
+    """
+    Remove WhatsApp markdown symbols (*bold*, `mono`, _italic_, ```block```)
+    so the plain text is safe to pass as a Meta template variable.
+    Emojis and newlines are preserved — Meta handles those fine.
+    """
+    text = re.sub(r"```(.*?)```", r"\1", text, flags=re.DOTALL)
+    text = re.sub(r"`([^`]+)`",   r"\1", text)
+    text = re.sub(r"\*([^*]+)\*", r"\1", text)
+    text = re.sub(r"_([^_]+)_",   r"\1", text)
     return text
