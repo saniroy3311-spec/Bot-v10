@@ -55,6 +55,13 @@ WHATSAPP_PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "YOUR_PHON
 WHATSAPP_TO_NUMBER       = os.environ.get("WHATSAPP_TO_NUMBER",       "YOUR_TO_NUMBER")
 WHATSAPP_VERIFY_TOKEN    = os.environ.get("WHATSAPP_VERIFY_TOKEN",    "YOUR_VERIFY_TOKEN")
 
+# Template name approved in Meta WhatsApp Manager.
+# Using a template bypasses the 24-hour session window so alerts always arrive.
+# Set WHATSAPP_TEMPLATE_NAME=bot_alert in your .env once the template is approved.
+# Leave blank ("") to fall back to free-form text (subject to 24-h window).
+WHATSAPP_TEMPLATE_NAME = os.environ.get("WHATSAPP_TEMPLATE_NAME", "")
+WHATSAPP_TEMPLATE_LANG = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
+
 # ──────────────────────────────────────────────
 # INDICATOR LENGTHS
 # ──────────────────────────────────────────────
