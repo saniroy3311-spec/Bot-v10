@@ -284,11 +284,12 @@ class TrailMonitor:
                 f"close={signal_bar_close:.2f} atr={risk_levels.atr:.2f}"
             )
             self.on_bar_close(
-                bar_close   = signal_bar_close,
-                bar_high    = signal_bar_high,
-                bar_low     = signal_bar_low,
-                bar_open    = _open,
-                current_atr = risk_levels.atr,
+                bar_close    = signal_bar_close,
+                bar_high     = signal_bar_high,
+                bar_low      = signal_bar_low,
+                bar_open     = _open,
+                current_atr  = risk_levels.atr,
+                is_entry_bar = True,
             )
 
     def stop(self) -> None:
@@ -302,11 +303,12 @@ class TrailMonitor:
 
     def on_bar_close(
         self,
-        bar_close  : float,
-        bar_high   : float,
-        bar_low    : float,
-        bar_open   : float,
-        current_atr: float,
+        bar_close   : float,
+        bar_high    : float,
+        bar_low     : float,
+        bar_open    : float,
+        current_atr : float,
+        is_entry_bar: bool = False,
     ) -> None:
         """
         Called at every confirmed bar close.
@@ -319,6 +321,10 @@ class TrailMonitor:
         6. Check trail arm from bar extreme (if not yet armed)
         7. Recompute trail_sl from best_price
         8. Same-bar exit check (TP / SL)
+
+        is_entry_bar=True: retroactive entry-bar eval. The bar high/low pre-date
+        the entry signal so only the close price is used for SL/TP checks.
+        Trail arm is still evaluated (Pine-exact) but range-based exit is suppressed.
         """
         if not self._running or self._exit_fired or self._risk is None:
             return
@@ -402,9 +408,16 @@ class TrailMonitor:
                 )
 
         # ── 7. Same-bar exit check ────────────────────────────────────────────
-        # Use pre_trail_sl — the SL that was active at bar open
-        tp_hit = (bar_high >= risk.tp)      if is_long else (bar_low  <= risk.tp)
-        sl_hit = (bar_low  <= pre_trail_sl) if is_long else (bar_high >= pre_trail_sl)
+        # Use pre_trail_sl — the SL that was active at bar open.
+        # For the retroactive entry-bar, bar high/low occurred BEFORE the entry
+        # signal (at bar close), so only the close price is valid for exit checks.
+        if is_entry_bar:
+            # Only check close vs SL/TP — the bar range is pre-entry noise
+            tp_hit = (bar_close >= risk.tp)      if is_long else (bar_close <= risk.tp)
+            sl_hit = (bar_close >= pre_trail_sl) if is_long else (bar_close <= pre_trail_sl)
+        else:
+            tp_hit = (bar_high >= risk.tp)      if is_long else (bar_low  <= risk.tp)
+            sl_hit = (bar_low  <= pre_trail_sl) if is_long else (bar_high >= pre_trail_sl)
 
         if tp_hit or sl_hit:
             if tp_hit and sl_hit:
