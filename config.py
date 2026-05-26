@@ -1,19 +1,27 @@
 """
 config.py - Shiva Sniper v10
 
-CHANGES IN THIS VERSION:
-  FIX-PINE-MINTICK v10.1 | PINE_MINTICK removed from trail activation and offset.
-    Pine passes raw USD points to strategy.exit() — no mintick scaling needed.
-    activation = atr × pts_mult   (e.g. 310 × 0.70 = 217 pts)
-    offset     = atr × off_mult   (e.g. 310 × 0.55 = 170 pts)
+CHANGES IN THIS VERSION (FIX-2026-05-26):
+  FIX-PINE-MINTICK-RESTORE | PINE_MINTICK default reverted from 1.0 → 0.1.
+    The 1.0 default caused trail activation to be 10× too late on every trade.
+    Math proof (preserved from trade 382): ATR=254.58, peak=57 pts, mintick=0.1
+      activation = 254.58 × 0.70 × 0.1 = 17.82 pts   (trail arms ≈ 18 pts profit)
+      offset     = 254.58 × 0.55 × 0.1 = 14.00 pts   (SL 14 pts behind peak)
+    With mintick=1.0 the activation would be 178 pts — far beyond a typical
+    BTC 30m bar move, so the trail almost never armed.
 
-  PINE-STAGE-EXACT | Stage upgrade triggers use raw ATR multiples (no PINE_MINTICK).
-    Previously: profit_dist >= live_atr × trigger × PINE_MINTICK  (10× too early)
-    Now:        profit_dist >= live_atr × trigger                  (correct)
+  FIX-ADX-DIVERGENCE | ADX_TREND_TH lowered 20 → 17, ADX_TOLERANCE 0.5 → 1.0.
+    Delta REST OHLCV runs ~2–4 ADX points below TradingView's ADX on the same
+    bar. Strict 20-threshold caused Trend Long signals to fire 1–2 bars late
+    or be missed entirely (e.g. the missed 22:30 IST entry on 2026-05-25 where
+    bot adx=16.7, TV adx≥20). Effective bot threshold is now adx > 16.0.
+
+  PINE_MINTICK is applied ONLY in trail_points and trail_offset calculations
+  (see monitor/trail_loop.py). Stage upgrade triggers use raw ATR multiples.
 
   SL matches Pine exactly:
-    Trend: stopDist = min(ATR × 0.9, 433)  → ~281 pts at ATR=312
-    Range: stopDist = min(ATR × 0.7, 433)  → ~219 pts at ATR=312
+    Trend: stopDist = min(ATR × 0.9, 1500)  → ~281 pts at ATR=312
+    Range: stopDist = min(ATR × 0.7, 1500)  → ~219 pts at ATR=312
 """
 import os
 
@@ -76,22 +84,26 @@ RSI_LEN       = 14
 # ──────────────────────────────────────────────
 # REGIME THRESHOLDS
 # ──────────────────────────────────────────────
-ADX_TREND_TH = int(os.environ.get("ADX_TREND_TH", "20"))
+# FIX-ADX-DIVERGENCE: ADX_TREND_TH lowered from 20 → 17 to absorb the
+# systematic ~3-point gap between Delta REST OHLCV ADX and TradingView ADX.
+# Combined with ADX_TOLERANCE=1.0, the effective trigger becomes adx > 16.0.
+# Restore Pine-exact behaviour by setting ADX_TREND_TH=20 in .env.
+ADX_TREND_TH = int(os.environ.get("ADX_TREND_TH", "17"))
 ADX_RANGE_TH = int(os.environ.get("ADX_RANGE_TH", "18"))
 
 # FIX-FEED-DIVERGENCE: ADX_TOLERANCE absorbs the systematic ADX gap between
 # Delta REST OHLCV (bot) and TradingView OHLCV (Pine).  Even a 0.5-point
 # difference in one historical bar ripples through the 14-period RMA chain
-# and can shift the final EMA(5)-smoothed ADX by 0.1–0.5 pts, causing the
-# bot to see adx=19.8 while Pine crosses 20.0 and fires.
+# and can shift the final EMA(5)-smoothed ADX by 0.1–0.5 pts.  In live use
+# we observed gaps of 2–4 pts on volatile bars (e.g. 22:30 IST 2026-05-25
+# where bot adx=16.7, TV adx≥20.0).
 #
-# With ADX_TOLERANCE=0.5:
-#   trend_regime fires when adx_smoothed > 19.5  (instead of 20.0)
-#   range_regime fires when adx_smoothed < 18.5  (instead of 18.0)
+# With ADX_TREND_TH=17 and ADX_TOLERANCE=1.0:
+#   trend_regime fires when adx_smoothed > 16.0
+#   range_regime fires when adx_smoothed < 19.0
 #
-# Keep this ≤ 1.0 so regime classification stays meaningful.
 # Set ADX_TOLERANCE=0 in .env to restore strict Pine-exact behaviour.
-ADX_TOLERANCE = float(os.environ.get("ADX_TOLERANCE", "0.5"))
+ADX_TOLERANCE = float(os.environ.get("ADX_TOLERANCE", "1.0"))
 
 # ──────────────────────────────────────────────
 # ENTRY FILTERS
@@ -131,19 +143,23 @@ MAX_SL_MULT    = float(os.environ.get("MAX_SL_MULT",    "2.0"))
 MAX_SL_POINTS  = float(os.environ.get("MAX_SL_POINTS",  "1500.0"))
 
 # ──────────────────────────────────────────────
-# PINE MINTICK (FIX-MINTICK-01)
+# PINE MINTICK
 # ──────────────────────────────────────────────
-# Applied ONLY to trail_points and trail_offset distances.
+# Applied ONLY to trail_points and trail_offset distances in monitor/trail_loop.py.
 # NOT applied to stage upgrade triggers (Pine uses raw ATR multiples there).
+#
 # For BTCUSD.P on Delta India: mintick = 0.1
-PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "1.0"))  # FIX-BUG4: was 0.1 — fresh deploy would set trail activation to 13pts instead of 131pts
-# ^^^ CONFIRMED CORRECT: mintick=0.1 for BTCUSD.P on Delta/TradingView.
-# Pine passes atr*trailXPts to strategy.exit(trail_points=...) in TICK units.
+# Pine passes atr × trailXPts to strategy.exit(trail_points=...) in TICK units.
 # Bot must multiply activation and offset by PINE_MINTICK to get price points.
-# Math proof from trade 382: ATR=254.58, peak=57pts, mintick=0.1
-#   activation = 254.58 * 0.70 * 0.1 = 17.82 pts  (trail arms at ~18 pts profit)
-#   offset     = 254.58 * 0.55 * 0.1 = 14.00 pts  (SL 14 pts behind peak)
-#   exit profit = 57 - 14 = 43 pts → exit price = 76785 - 43 = 76742.0 ✓
+#
+# Math proof from trade 382: ATR=254.58, peak=57 pts, mintick=0.1
+#   activation = 254.58 × 0.70 × 0.1 = 17.82 pts   (trail arms ≈ 18 pts profit)
+#   offset     = 254.58 × 0.55 × 0.1 = 14.00 pts   (SL 14 pts behind peak)
+#   exit profit = 57 − 14 = 43 pts → exit price = 76785 − 43 = 76742.0 ✓
+#
+# FIX-PINE-MINTICK-RESTORE (2026-05-26): default reverted from 1.0 → 0.1.
+# The 1.0 default caused trail activation to be 10× too late on every trade.
+PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "0.1"))
 
 # ──────────────────────────────────────────────
 # 5-STAGE TRAIL ENGINE  (PINE-STAGE-EXACT)
@@ -151,16 +167,13 @@ PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "1.0"))  # FIX-BUG4: was 0.1
 # Format: (trigger_ATR_mult, trail_points_mult, trail_offset_mult)
 #
 # trigger: stage upgrades when profit_dist >= ATR × trigger  (raw, no mintick)
-# pts:     trail arms when peak_profit >= ATR × pts  (raw USD points, no PINE_MINTICK)
-# off:     trail SL placed ATR × off behind peak     (raw USD points, no PINE_MINTICK)
+# pts:     trail arms when peak_profit >= ATR × pts × PINE_MINTICK
+# off:     trail SL placed ATR × off × PINE_MINTICK behind peak
 #
-# With ATR=312.18:
+# With ATR=312.18 and PINE_MINTICK=0.1:
 #   Stage 1 upgrades at 312 pts | arms at 21.9 pts | offset 17.2 pts
 TRAIL_STAGES = [
     # Confirmed from TradingView inputs panel (screenshots 2026-05-18):
-    # trigger: stage upgrades when profit_dist >= ATR × trigger
-    # pts:     trail arms when peak_profit >= ATR × pts
-    # off:     trail SL placed ATR × off behind peak
     (1.0,  0.70, 0.55),   # Stage 1
     (2.0,  0.55, 0.45),   # Stage 2
     (3.0,  0.45, 0.35),   # Stage 3
