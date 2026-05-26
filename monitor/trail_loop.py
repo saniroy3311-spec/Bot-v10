@@ -408,16 +408,15 @@ class TrailMonitor:
                 )
 
         # ── 7. Same-bar exit check ────────────────────────────────────────────
-        # Use pre_trail_sl — the SL that was active at bar open.
-        # For the retroactive entry-bar, bar high/low occurred BEFORE the entry
-        # signal (at bar close), so only the close price is valid for exit checks.
+        # For the retroactive entry-bar: Pine enters at bar CLOSE price, so the
+        # signal bar's high/low/close ALL pre-date the entry fill. No exit can
+        # fire on the entry bar — Pine never does this. Skip entirely.
+        # Only subsequent bar closes or live ticks can trigger exits.
         if is_entry_bar:
-            # Only check close vs SL/TP — the bar range is pre-entry noise
-            tp_hit = (bar_close >= risk.tp)      if is_long else (bar_close <= risk.tp)
-            sl_hit = (bar_close >= pre_trail_sl) if is_long else (bar_close <= pre_trail_sl)
-        else:
-            tp_hit = (bar_high >= risk.tp)      if is_long else (bar_low  <= risk.tp)
-            sl_hit = (bar_low  <= pre_trail_sl) if is_long else (bar_high >= pre_trail_sl)
+            return
+
+        tp_hit = (bar_high >= risk.tp)      if is_long else (bar_low  <= risk.tp)
+        sl_hit = (bar_low  <= pre_trail_sl) if is_long else (bar_high >= pre_trail_sl)
 
         if tp_hit or sl_hit:
             if tp_hit and sl_hit:
