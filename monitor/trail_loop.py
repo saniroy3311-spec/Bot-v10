@@ -271,25 +271,38 @@ class TrailMonitor:
             f"trail_off={_trail_off(1, risk_levels.atr):.2f}"
         )
 
-        # ── Retroactive entry-bar evaluation ─────────────────────────────────
-        # Pine sees the full entry bar from bar open. The bot fills at bar close,
-        # so on_bar_close() never fires for the entry bar. If the bar extreme
-        # already crossed trail activation, Pine arms + exits same bar but the bot
-        # misses it. Feed the signal bar OHLC in now so the trail engine sees it.
+        # ── FIX-RETRO-EVAL-REMOVED (2026-05-26) ──────────────────────────────
+        # The previous version called on_bar_close(is_entry_bar=True) here with
+        # the SIGNAL bar's OHLC, intending to "catch up" Pine's intrabar trail
+        # action on the entry bar. This was wrong on two counts:
+        #
+        #   1. With process_orders_on_close=false + barstate.isconfirmed,
+        #      Pine submits the entry at bar N-1's close and FILLS at bar N's
+        #      OPEN. Pine's trail engine then tracks best_price across bar N's
+        #      intrabar ticks — NOT bar N-1's OHLC. The signal bar (N-1) is
+        #      entirely outside the trade's lifetime in Pine. Feeding the
+        #      signal bar's high/low to the bot was injecting prices Pine
+        #      never sees.
+        #
+        #   2. The arming block in on_bar_close set state.best_price to the
+        #      signal bar's high (for a long). When the first live Binance
+        #      tick arrived AFTER fill at a retraced price, the trail SL —
+        #      already computed off the stale high — fired an immediate exit
+        #      because current_price was already below the inflated trail_sl.
+        #
+        # Pine's actual sequence on the trade's bar (bar N, the one AFTER the
+        # signal bar): entry fills at open, ticks move, trail arms when a tick
+        # crosses activation, best_price tracks live ticks. The bot reproduces
+        # this via on_price_tick() — that path is correct and untouched.
+        #
+        # We log the signal bar OHLC for diagnostics but do NOT pre-arm or
+        # seed best_price. Trail arming happens only via live ticks after fill
+        # or via the NEXT bar's on_bar_close() (not this one).
         if signal_bar_high is not None and signal_bar_low is not None and signal_bar_close is not None:
-            _open = signal_bar_open if signal_bar_open is not None else signal_bar_close
             logger.info(
-                f"[TRAIL] Entry-bar retroactive eval | "
+                f"[TRAIL] Signal bar OHLC (informational, not applied to trail) | "
                 f"high={signal_bar_high:.2f} low={signal_bar_low:.2f} "
                 f"close={signal_bar_close:.2f} atr={risk_levels.atr:.2f}"
-            )
-            self.on_bar_close(
-                bar_close    = signal_bar_close,
-                bar_high     = signal_bar_high,
-                bar_low      = signal_bar_low,
-                bar_open     = _open,
-                current_atr  = risk_levels.atr,
-                is_entry_bar = True,
             )
 
     def stop(self) -> None:
@@ -381,31 +394,35 @@ class TrailMonitor:
             self._activate_be(state, risk, is_long, current_atr, source="bar_close")
 
         # ── 5 & 6. Bar extreme: update best_price or check trail arm ─────────
+        # FIX-RETRO-EVAL-REMOVED: if a caller ever passes is_entry_bar=True,
+        # do NOT use the bar's extreme to seed best_price or arm the trail.
+        # That bar's prices pre-date the trade fill in Pine's model.
         bar_extreme = bar_high if is_long else bar_low
         bar_profit  = (bar_extreme - entry_price) if is_long else (entry_price - bar_extreme)
 
         # Snapshot SL before trail update (for same-bar exit check)
         pre_trail_sl = state.current_sl
 
-        if getattr(state, 'trail_armed', False):
-            # Update best_price from bar extreme
-            self._update_best_price(state, bar_extreme, is_long)
-            # Recompute trail SL
-            new_trail_sl = _trail_sl_from_best(state.best_price, state.stage, current_atr, is_long)
-            self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="bar_close")
-        else:
-            # Check if bar extreme crossed activation price
-            act_price = _activation_price(entry_price, max(state.stage, 1), current_atr, is_long)
-            armed = (bar_extreme >= act_price) if is_long else (bar_extreme <= act_price)
-            if armed:
-                state.trail_armed = True
-                state.best_price  = bar_extreme
-                new_trail_sl = _trail_sl_from_best(state.best_price, max(state.stage, 1), current_atr, is_long)
-                self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="bar_close_arm")
-                logger.info(
-                    f"[TRAIL] Trail ARMED at bar close | best={bar_extreme:.2f} "
-                    f"trail_sl={state.current_sl:.2f} act_price={act_price:.2f}"
-                )
+        if not is_entry_bar:
+            if getattr(state, 'trail_armed', False):
+                # Update best_price from bar extreme
+                self._update_best_price(state, bar_extreme, is_long)
+                # Recompute trail SL
+                new_trail_sl = _trail_sl_from_best(state.best_price, state.stage, current_atr, is_long)
+                self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="bar_close")
+            else:
+                # Check if bar extreme crossed activation price
+                act_price = _activation_price(entry_price, max(state.stage, 1), current_atr, is_long)
+                armed = (bar_extreme >= act_price) if is_long else (bar_extreme <= act_price)
+                if armed:
+                    state.trail_armed = True
+                    state.best_price  = bar_extreme
+                    new_trail_sl = _trail_sl_from_best(state.best_price, max(state.stage, 1), current_atr, is_long)
+                    self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="bar_close_arm")
+                    logger.info(
+                        f"[TRAIL] Trail ARMED at bar close | best={bar_extreme:.2f} "
+                        f"trail_sl={state.current_sl:.2f} act_price={act_price:.2f}"
+                    )
 
         # ── 7. Same-bar exit check ────────────────────────────────────────────
         # For the retroactive entry-bar: Pine enters at bar CLOSE price, so the
