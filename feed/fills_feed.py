@@ -118,8 +118,11 @@ class FillsFeed:
         self._trail_mon  = trail_monitor
         self._order_mgr  = order_manager
         self._task: Optional[asyncio.Task] = None
+        self._ping_task: Optional[asyncio.Task] = None   # FIX: keepalive
         self._running    = False
         self._ws_symbol  = _ws_symbol(SYMBOL)
+        self._ws_conn    = None                           # FIX: hold current ws ref
+        self._PING_INTERVAL = 20                          # FIX: ping every 20s
 
     # ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -127,7 +130,8 @@ class FillsFeed:
         """Schedule the fills listener as a background asyncio task."""
         self._running = True
         loop = asyncio.get_running_loop()
-        self._task = loop.create_task(self._run(), name="fills_feed")
+        self._task      = loop.create_task(self._run(),         name="fills_feed")
+        self._ping_task = loop.create_task(self._keepalive(),   name="fills_ping")  # FIX
         logger.info(
             f"[FILLS] FillsFeed started — listening for bracket fills on {self._ws_symbol}"
         )
@@ -138,7 +142,25 @@ class FillsFeed:
         if self._task and not self._task.done():
             self._task.cancel()
         self._task = None
+        if self._ping_task and not self._ping_task.done():   # FIX
+            self._ping_task.cancel()                         # FIX
+        self._ping_task = None                               # FIX
         logger.info("[FILLS] FillsFeed stopped.")
+
+    # ── Keepalive ping ─────────────────────────────────────────────────────────
+
+    async def _keepalive(self) -> None:
+        """FIX: Send a ping every _PING_INTERVAL seconds to prevent silent WS drops."""
+        while self._running:
+            await asyncio.sleep(self._PING_INTERVAL)
+            ws = self._ws_conn
+            if ws is not None:
+                try:
+                    pong = await ws.ping()
+                    await asyncio.wait_for(asyncio.shield(pong), timeout=10)
+                    logger.debug("[FILLS] Keepalive ping ✅")
+                except Exception as e:
+                    logger.warning(f"[FILLS] Keepalive ping failed: {e}")
 
     # ── Main loop ──────────────────────────────────────────────────────────────
 
@@ -167,13 +189,15 @@ class FillsFeed:
     async def _connect_and_listen(self) -> None:
         """Single WebSocket session: auth → subscribe → process messages."""
         ws_url = _WS_TESTNET if DELTA_TESTNET else _WS_LIVE
+        self._ws_conn = None  # FIX: clear before each new session
 
         async with websockets.connect(
             ws_url,
-            ping_interval = 20,
-            ping_timeout  = 10,
+            ping_interval = None,   # FIX: disabled — our _keepalive() manages pings
+            ping_timeout  = None,   # FIX: avoids duplicate ping conflicts
             close_timeout = 10,
         ) as ws:
+            self._ws_conn = ws      # FIX: expose to keepalive task
             # ── Authenticate ──────────────────────────────────────────────────
             ts  = str(int(time.time()))
             sig = _make_auth_signature(ts)
