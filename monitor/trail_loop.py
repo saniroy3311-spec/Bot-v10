@@ -257,6 +257,11 @@ class TrailMonitor:
 
         self._source_offset    = None
         self._first_tick_ts_ms = 0
+        # Seed recal timer so the 30s cooldown starts from trade open, not epoch 0.
+        # Without this, _last_recal_ms=0 means recalibration fires on the very first
+        # tick — before the trail has any breathing room — and can collapse the offset
+        # enough to arm+fire the trail immediately.
+        self._last_recal_ms = int(time.time() * 1000)
 
         self._entry_bar_end_ms = (
             (entry_bar_time_ms // BAR_PERIOD_MS) * BAR_PERIOD_MS
@@ -491,6 +496,18 @@ class TrailMonitor:
 
     async def _recalibrate_offset(self, binance_price_raw: float) -> None:
         try:
+            # Guard: don't recalibrate within 60s of the first tick.
+            # A sharp offset recal in the first seconds of a trade can arm the trail
+            # at an inflated price and immediately fire the exit on the very next tick.
+            if self._first_tick_ts_ms > 0:
+                elapsed_since_first_tick = int(time.time() * 1000) - self._first_tick_ts_ms
+                if elapsed_since_first_tick < 60_000:
+                    logger.info(
+                        f"[TRAIL] Offset recal skipped — trade too new "
+                        f"({elapsed_since_first_tick}ms < 60s hold-off)"
+                    )
+                    return
+
             delta_mark = await self._get_mark_price()
             if delta_mark and delta_mark > 0 and self._source_offset is not None:
                 new_offset = binance_price_raw - delta_mark
