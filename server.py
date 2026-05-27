@@ -22,6 +22,7 @@ Running
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -40,6 +41,11 @@ logger = logging.getLogger(__name__)
 
 PORT          = int(os.environ.get("DASHBOARD_PORT", "10000"))
 DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# ── Basic Auth credentials (set in .env or change defaults here) ──────────────
+DASH_USER = os.environ.get("DASHBOARD_USER", "shiva")
+DASH_PASS = os.environ.get("DASHBOARD_PASS", "sniper123")
+_AUTH_TOKEN = base64.b64encode(f"{DASH_USER}:{DASH_PASS}".encode()).decode()
 
 # ── Shared state (set by main.py before server starts) ────────────────────────
 _journal: "Journal | None" = None
@@ -127,7 +133,24 @@ class _Handler(BaseHTTPRequestHandler):
         except FileNotFoundError:
             self.send_error(404, "File not found")
 
+    def _check_auth(self) -> bool:
+        """Return True if request has valid Basic Auth credentials."""
+        auth_header = self.headers.get("Authorization", "")
+        if auth_header.startswith("Basic "):
+            token = auth_header[6:]
+            if token == _AUTH_TOKEN:
+                return True
+        # Send 401 — browser will show login popup
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="Shiva Sniper Dashboard"')
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return False
+
     def do_GET(self):
+        if not self._check_auth():
+            return
+
         parsed = urlparse(self.path)
         path   = parsed.path
         params = parse_qs(parsed.query)
