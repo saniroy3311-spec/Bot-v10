@@ -278,7 +278,7 @@ class TrailMonitor:
         if TIME_EXIT_MINUTES > 0 and elapsed_already > 0:
             logger.info(
                 f"[TRAIL] Time exit: trade already {elapsed_already}s old at start "
-                f"(limit={TIME_EXIT_MINUTES * 60}s)"
+                f"(exits at entry bar close)"
             )
 
         self._source_offset    = None
@@ -725,11 +725,10 @@ class TrailMonitor:
                             await self._fire_exit(price, "Max SL", source="tick")
                             return
 
-                # Time exit check
-                if TIME_EXIT_MINUTES > 0 and self._entry_wall_ms > 0:
-                    elapsed_ms = int(time.time() * 1000) - self._entry_wall_ms
-                    if elapsed_ms >= TIME_EXIT_MINUTES * 60_000:
-                        await self._fire_exit(price, f"Time exit ({TIME_EXIT_MINUTES}m)", source="tick")
+                # Time exit check — fire at entry bar close if SL/TP not hit
+                if TIME_EXIT_MINUTES > 0 and self._entry_bar_end_ms > 0:
+                    if int(time.time() * 1000) >= self._entry_bar_end_ms:
+                        await self._fire_exit(price, "Time exit (bar close)", source="tick")
                         return
                 return
 
@@ -774,11 +773,10 @@ class TrailMonitor:
                     await self._fire_exit(price, "Max SL", source="tick")
                     return
 
-        # ── 10. Time exit ─────────────────────────────────────────────────────
-        if TIME_EXIT_MINUTES > 0 and self._entry_wall_ms > 0:
-            elapsed_ms = int(time.time() * 1000) - self._entry_wall_ms
-            if elapsed_ms >= TIME_EXIT_MINUTES * 60_000:
-                await self._fire_exit(price, f"Time exit ({TIME_EXIT_MINUTES}m)", source="tick")
+        # ── 10. Time exit — fire at entry bar close if SL/TP not hit ─────────
+        if TIME_EXIT_MINUTES > 0 and self._entry_bar_end_ms > 0:
+            if int(time.time() * 1000) >= self._entry_bar_end_ms:
+                await self._fire_exit(price, "Time exit (bar close)", source="tick")
 
     # ── Trail helpers ──────────────────────────────────────────────────────────
 
