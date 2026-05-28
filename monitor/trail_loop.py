@@ -12,7 +12,7 @@ from peak_price and an offset. This never matched because:
 
   1. MIN_ARM_ATR_MULT (4.0×) — artificial floor not in Pine
   2. LOOSE_OFFSET_ATR_MULT (6.0×) — artificial wide offset not in Pine
-  3. Peak tracking from WS ticks ≠ Pine's internal best_price tracking
+  3. Peak tracking from WS ticks ≠ Pine's internal best_price tracking
   4. Trail SL computation intrabar drifted with every tick
 
 HOW PINE'S trail_points / trail_offset ACTUALLY WORKS
@@ -70,6 +70,31 @@ BREAKEVEN
 Pine: if profitDist > atr * beMult → override stop = entryPrice
 Once BE fires, trail continues from entryPrice as new worst-allowed SL.
 BE does NOT disable trailing — it just sets a floor on the SL.
+
+DIVERGENCE FIXES (2026-05-28)
+──────────────────────────────────────────────────────────────────────────
+FIX-RECAL-HOLDOFF-20S:
+  Reduced offset recalibration hold-off from 60s → 20s.
+  Both 07:00 and 09:00 trades today exited within ~10 minutes. The 60s
+  hold-off meant the offset never stabilised before exit — logs showed
+  it jumping +16 → +62 → +35 → +0 → +48 in the first 5 min, each shift
+  distorting best_price and trail_sl. 20s gives protection against the
+  very-first-tick collapse bug while allowing faster stabilisation.
+
+FIX-DELTA-TICK-BEST-PRICE:
+  Added push_delta_tick() — accepts Delta mark price directly (no Binance
+  offset needed) and feeds it to _evaluate_tick() for best_price tracking.
+  Binance and Delta can diverge 30–60 pts intrabar. best_price seeded from
+  Binance ticks (offset-adjusted) may miss the true Delta low/high on a
+  short-lived spike, causing trail_sl to fire at a higher (worse) level.
+  When the caller supplies Delta mark price ticks, push_delta_tick() uses
+  them directly — bypassing the offset arithmetic — giving best_price the
+  same anchor Pine would use (Delta's own price).
+
+  Usage in ws_feed / fills_feed: call trail_monitor.push_delta_tick(price)
+  whenever a Delta mark price tick arrives. Both Binance and Delta feeds
+  can run simultaneously — whichever reaches the deeper extreme wins
+  (best_price = running min/max).
 
 ════════════════════════════════════════════════════════════════════════════
 """
@@ -188,10 +213,11 @@ class TrailMonitor:
       • Initial SL updates every bar with live ATR (matches Pine's strategy.exit recalc)
       • Breakeven sets SL floor at entry_price, trail continues above it
 
-    on_bar_close()   → ATR update + stage upgrade + BE + initial SL update
-    on_price_tick()  → primary intrabar exit (WS feed)
-    _tick_loop()     → 5-second REST safety-net backup
-    push_ws_candle() → intrabar peak update + immediate exit eval
+    on_bar_close()      → ATR update + stage upgrade + BE + initial SL update
+    on_price_tick()     → primary intrabar exit (Binance WS feed, offset-adjusted)
+    push_delta_tick()   → Delta mark price tick — no offset, direct best_price feed
+    _tick_loop()        → 5-second REST safety-net backup
+    push_ws_candle()    → intrabar peak update + immediate exit eval
     """
 
     def __init__(self, order_mgr, telegram, journal) -> None:
@@ -458,7 +484,7 @@ class TrailMonitor:
                 self._fire_exit(exit_px, reason, source="bar_close")
             )
 
-    # ── WS price push — primary exit detection ─────────────────────────────────
+    # ── WS price push — primary exit detection (Binance feed) ─────────────────
 
     async def on_price_tick(self, price: float, source: str = "binance") -> None:
         """Primary intrabar exit path — called from WS feed on every tick."""
@@ -494,17 +520,55 @@ class TrailMonitor:
 
         await self._evaluate_tick(price)
 
+    # ── Delta mark price tick — no offset needed ───────────────────────────────
+
+    async def push_delta_tick(self, price: float) -> None:
+        """
+        FIX-DELTA-TICK-BEST-PRICE (2026-05-28)
+
+        Accept a Delta Exchange mark price tick directly — no Binance offset
+        arithmetic. Feeds straight into _evaluate_tick() so best_price tracks
+        the real Delta price, not the offset-adjusted Binance proxy.
+
+        Call this from ws_feed or fills_feed whenever Delta's mark/last price
+        arrives. Both Binance (via on_price_tick) and Delta (via this method)
+        can run simultaneously — whichever reaches the deeper extreme wins
+        because _update_best_price is a running min/max.
+
+        Why this closes the gap with Pine:
+          Pine's trail engine tracks best_price against Delta's simulated price
+          (which mirrors Delta's mark price). Binance feed offset-adjusted can
+          diverge 20–60 pts intrabar, causing best_price to miss the true Delta
+          low on a short. Supplying Delta mark price ticks directly removes that
+          divergence.
+
+        Log tag: [TRAIL] Delta tick — distinguishable from Binance tick logs.
+        """
+        if not self._running or self._exit_fired or price <= 0:
+            return
+        logger.debug(f"[TRAIL] Delta tick {price:.2f}")
+        await self._evaluate_tick(price)
+
     async def _recalibrate_offset(self, binance_price_raw: float) -> None:
         try:
-            # Guard: don't recalibrate within 60s of the first tick.
-            # A sharp offset recal in the first seconds of a trade can arm the trail
-            # at an inflated price and immediately fire the exit on the very next tick.
+            # FIX-RECAL-HOLDOFF-20S (2026-05-28):
+            # Reduced from 60s → 20s.
+            #
+            # Both today's trades (07:00 and 09:00 IST) exited within ~10 minutes.
+            # The 60s hold-off meant the offset never stabilised before the exit —
+            # logs showed it jumping +16 → +62 → +35 → +0 → +48 in the first 5 min,
+            # each recal shifting the translated Binance price and distorting
+            # best_price and trail_sl.
+            #
+            # 20s still protects against the instant-collapse-on-first-tick bug
+            # (which needed ~1–2s, not 20s) while letting the offset stabilise
+            # well before a typical short-bar trade exits.
             if self._first_tick_ts_ms > 0:
                 elapsed_since_first_tick = int(time.time() * 1000) - self._first_tick_ts_ms
-                if elapsed_since_first_tick < 60_000:
+                if elapsed_since_first_tick < 20_000:
                     logger.info(
                         f"[TRAIL] Offset recal skipped — trade too new "
-                        f"({elapsed_since_first_tick}ms < 60s hold-off)"
+                        f"({elapsed_since_first_tick}ms < 20s hold-off)"
                     )
                     return
 
@@ -589,7 +653,7 @@ class TrailMonitor:
         # Tick-level upgrades cause the bot to tighten the trail mid-bar before
         # Pine would, creating premature exits on volatile bars.
         #
-        # The bar-close stage upgrade is handled in on_bar_close() (line 333).
+        # The bar-close stage upgrade is handled in on_bar_close() (see above).
         # This tick-level upgrade block is now disabled for Pine parity.
         #
         # ORIGINAL CODE (now commented out):
