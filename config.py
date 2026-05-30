@@ -205,6 +205,20 @@ COMMISSION_PCT           = 0.059 / 100
 BRACKET_SL_BUFFER        = float(os.environ.get("BRACKET_SL_BUFFER",        "10.0"))
 TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "0.0"))
 
+# ──────────────────────────────────────────────
+# TRAIL OFFSET FLOOR  (FIX-TICK-NOISE-WHIPSAW)
+# ──────────────────────────────────────────────
+# The trail SL can never sit tighter than this fraction of ATR behind
+# best_price. Root cause of the +0.50 pt instant exits: the bot evaluates
+# the trail on EVERY Binance tick (Pine evaluates on bar OHLC, ~4 prices/bar).
+# With PINE_MINTICK=0.1 the stage-1 offset is atr*0.55*0.1 ≈ 7.86 pts — smaller
+# than BTC tick noise, so the first noise-bounce after arming fires the stop.
+# This floor keeps the offset above the noise band so the trade can develop.
+#   0.30 ≈ 43 pts at ATR=143, ≈ 90 pts at ATR=300.
+# Raise to give the move more room (captures more, gives back more at exit);
+# lower to trail tighter. Set to 0.0 to disable the floor (old behaviour).
+TRAIL_OFFSET_FLOOR_MULT = float(os.environ.get("TRAIL_OFFSET_FLOOR_MULT", "0.20"))
+
 SL_FIRE_VIA_BRACKET = os.environ.get("SL_FIRE_VIA_BRACKET", "false").lower() == "true"
 
 # ──────────────────────────────────────────────
