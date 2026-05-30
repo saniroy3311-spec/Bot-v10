@@ -111,6 +111,7 @@ from config import (
     TRAIL_LOOP_SEC, TRAIL_SL_PRE_FIRE_BUFFER,
     CANDLE_TIMEFRAME, TIME_EXIT_MINUTES, PINE_MINTICK,
     TREND_ATR_MULT, RANGE_ATR_MULT,
+    TRAIL_OFFSET_FLOOR_MULT,
 )
 from risk.calculator import RiskLevels, TrailState
 
@@ -148,10 +149,14 @@ def _trail_off(stage: int, atr: float) -> float:
     """
     Offset distance in price points.
     Pine: trail_offset = atr * off_mult  (tick units → price via PINE_MINTICK)
+    Floored at atr * TRAIL_OFFSET_FLOOR_MULT so BTC tick noise cannot fire the
+    trail the instant it arms (FIX-TICK-NOISE-WHIPSAW).
     """
     idx = max(stage - 1, 0)
     _, _, off_mult = TRAIL_STAGES[idx]
-    return atr * off_mult * PINE_MINTICK
+    raw   = atr * off_mult * PINE_MINTICK
+    floor = atr * TRAIL_OFFSET_FLOOR_MULT
+    return max(raw, floor)
 
 
 def _activation_price(entry: float, stage: int, atr: float, is_long: bool) -> float:
