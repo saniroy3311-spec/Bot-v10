@@ -150,17 +150,35 @@ class FillsFeed:
     # ── Keepalive ping ─────────────────────────────────────────────────────────
 
     async def _keepalive(self) -> None:
-        """FIX: Send a ping every _PING_INTERVAL seconds to prevent silent WS drops."""
+        """Send a ping every _PING_INTERVAL seconds to prevent silent WS drops.
+        FIX-FILLS-DEAD-SOCKET: on 2 consecutive ping failures, force-close the
+        socket so the reconnect loop kicks in within ~1 min instead of waiting
+        ~15 min for a TCP-level timeout (ping_interval/ping_timeout are disabled
+        here, so the library will not detect the dead socket on its own)."""
+        fails = 0
         while self._running:
             await asyncio.sleep(self._PING_INTERVAL)
             ws = self._ws_conn
-            if ws is not None:
-                try:
-                    pong = await ws.ping()
-                    await asyncio.wait_for(asyncio.shield(pong), timeout=10)
-                    logger.debug("[FILLS] Keepalive ping ✅")
-                except Exception as e:
-                    logger.warning(f"[FILLS] Keepalive ping failed: {e}")
+            if ws is None:
+                fails = 0
+                continue
+            try:
+                pong = await ws.ping()
+                await asyncio.wait_for(asyncio.shield(pong), timeout=10)
+                fails = 0
+                logger.debug("[FILLS] Keepalive ping ✅")
+            except Exception as e:
+                fails += 1
+                logger.warning(f"[FILLS] Keepalive ping failed ({fails}): {e}")
+                if fails >= 2:
+                    logger.warning(
+                        "[FILLS] 2 pings failed — forcing reconnect (dead socket)"
+                    )
+                    fails = 0
+                    try:
+                        await ws.close()
+                    except Exception:
+                        pass
 
     # ── Main loop ──────────────────────────────────────────────────────────────
 
