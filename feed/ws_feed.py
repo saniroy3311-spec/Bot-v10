@@ -124,6 +124,7 @@ from config import (
     DELTA_API_KEY, DELTA_API_SECRET, DELTA_TESTNET,
     SYMBOL, CANDLE_TIMEFRAME, WS_RECONNECT_SEC, EMA_TREND_LEN,
     BINANCE_SIGNAL_FEED, BINANCE_SYMBOL,
+    TRAIL_EXIT_FROM_DELTA_WS,
 )
 
 logger   = logging.getLogger(__name__)
@@ -580,7 +581,19 @@ class CandleFeed:
                 self._df.at[idx, "close"]  = c
                 self._df.at[idx, "volume"] = v
 
-            if self.trail_monitor is not None:
+            if self.trail_monitor is not None and TRAIL_EXIT_FROM_DELTA_WS:
+                # FIX-STALE-CANDLE-HIGH (2026-05-31): these two calls are gated OFF
+                # by default. They push the 30m candle's CUMULATIVE high/low to the
+                # trail monitor intrabar. For a short, push_ws_candle routes the
+                # cumulative high (set near the candle open) through the exit-check
+                # logic; once the trail arms at the candle low, that stale high fires
+                # the SL — the confirmed cause of trade #302 exiting at +22 vs Pine's
+                # +61.5. binance_price_feed.py's header always intended these lines to
+                # be removed once the Binance aggTrade exit feed went live. Exits now
+                # run on the Binance aggTrade feed (Pine's reference source) plus the
+                # REST mark-price safety net. Set TRAIL_EXIT_FROM_DELTA_WS=true to
+                # restore the old behaviour.
+                #
                 # FIX-PARITY-02: push live close price as a price tick so the
                 # trail loop evaluates SL/TP immediately — no REST round-trip.
                 # FIX-DUAL-SOURCE-B: this `c` is the Delta India intrabar close
