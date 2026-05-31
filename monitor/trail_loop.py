@@ -112,6 +112,7 @@ from config import (
     CANDLE_TIMEFRAME, TIME_EXIT_MINUTES, PINE_MINTICK,
     TREND_ATR_MULT, RANGE_ATR_MULT,
     TRAIL_OFFSET_FLOOR_MULT,
+    TRAIL_FIRE_SL_ON_CANDLE_EXTREME,
 )
 from risk.calculator import RiskLevels, TrailState
 
@@ -956,8 +957,27 @@ class TrailMonitor:
 
     def push_ws_candle(self, high: float, low: float, source: str = "binance") -> None:
         """
-        Called by ws_feed on every intrabar WS candle update.
-        Evaluates both TP-side and SL-side prices immediately.
+        Called by ws_feed / binance_price_feed on every intrabar WS candle update.
+
+        FIX-STALE-CANDLE-HIGH (2026-05-31)
+        ----------------------------------
+        The high and low passed here are CUMULATIVE since the candle/bucket
+        opened. The old code routed BOTH extremes through _evaluate_tick():
+        for a short it updated best_price from the low (correct) and then
+        checked the high against the trail SL (wrong) — so the instant the
+        trail armed at the low, a high price from earlier in the candle fired
+        the stop. Confirmed cause of trade #302 exiting at +22 vs Pine's +61.5.
+
+        Default behaviour now: only the FAVOURABLE extreme is evaluated
+        (low for a short, high for a long). That extreme can still advance
+        best_price, arm the trail, and legitimately hit TP (price genuinely
+        reached the target). The trail SL is fired ONLY by on_price_tick()
+        against the live trade price — the same way Pine retraces into its
+        stop. The adverse extreme is never used to fire the SL because it is
+        not the current price.
+
+        Set TRAIL_FIRE_SL_ON_CANDLE_EXTREME=true to restore the old behaviour
+        (evaluate both extremes).
         """
         if not self._running or self._exit_fired or self._state is None or self._risk is None:
             return
@@ -971,9 +991,22 @@ class TrailMonitor:
             low  = low  - self._source_offset
 
         try:
-            loop    = asyncio.get_running_loop()
-            tp_side = high if is_long else low
-            sl_side = low  if is_long else high
-            loop.create_task(self._evaluate_tick_pair(tp_side, sl_side))
+            loop = asyncio.get_running_loop()
+
+            if TRAIL_FIRE_SL_ON_CANDLE_EXTREME:
+                # OLD behaviour: evaluate favourable then adverse extreme.
+                # The adverse extreme can fire the SL on a stale candle high/low.
+                tp_side = high if is_long else low
+                sl_side = low  if is_long else high
+                loop.create_task(self._evaluate_tick_pair(tp_side, sl_side))
+            else:
+                # FIX (default): evaluate ONLY the favourable extreme.
+                # Long  → high (advances best_price up, may hit TP).
+                # Short → low  (advances best_price down, may hit TP).
+                # best_price tracking + trail arming + TP detection are
+                # preserved; SL firing is left entirely to on_price_tick()
+                # on the live trade price.
+                favourable = high if is_long else low
+                loop.create_task(self._evaluate_tick(favourable))
         except RuntimeError:
             pass
