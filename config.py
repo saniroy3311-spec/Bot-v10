@@ -222,6 +222,45 @@ TRAIL_OFFSET_FLOOR_MULT = float(os.environ.get("TRAIL_OFFSET_FLOOR_MULT", "0.20"
 SL_FIRE_VIA_BRACKET = os.environ.get("SL_FIRE_VIA_BRACKET", "false").lower() == "true"
 
 # ──────────────────────────────────────────────
+# EXIT PRICE SOURCE  (FIX-STALE-CANDLE-HIGH 2026-05-31)
+# ──────────────────────────────────────────────
+# When the Binance aggTrade exit feed was added (see binance_price_feed.py),
+# the two intrabar Delta-candle push calls in ws_feed.py were SUPPOSED to be
+# removed but never were. Those calls push the 30m candle's CUMULATIVE high/low
+# to the trail monitor every ~500ms. For a short, the cumulative high (set near
+# the candle OPEN) is re-checked against the trail SL on every update — so the
+# instant the trail arms at the candle LOW, a high price from minutes earlier
+# fires the stop. Pine walks the bar open→high→low→close in order and never
+# re-triggers on that stale high.
+#
+# CONFIRMED on trade #302 (2026-05-31 13:00): best tracked the low (73848) and
+# the exit fired on price=73885 (the candle high) in the same instant — only
+# push_ws_candle() passes both a low and a high in one call. Bot booked +22pts;
+# Pine booked +61.5 by riding the same candle down to its true low.
+#
+# False (default, THE FIX): exits run only on the Binance aggTrade feed (the
+#   intended Pine-matching source) + the REST mark-price safety net. The stale
+#   30m candle high can no longer fire the SL.
+# True (old behaviour): re-enables the leftover Delta intrabar push.
+TRAIL_EXIT_FROM_DELTA_WS = os.environ.get("TRAIL_EXIT_FROM_DELTA_WS", "false").lower() == "true"
+
+# ──────────────────────────────────────────────
+# TRAIL SL FIRING SOURCE  (FIX-STALE-CANDLE-HIGH 2026-05-31)
+# ──────────────────────────────────────────────
+# push_ws_candle() receives a candle's high AND low together. For a short it
+# updates best_price from the low (correct) and then runs the high through the
+# exit check (wrong): the high is cumulative since the candle/bucket opened, so
+# once the trail arms at the low, a high price from earlier fires the stop. This
+# affects BOTH the Binance 1m bucket feed and (when enabled) the Delta 30m feed.
+#
+# False (default, THE FIX): push_ws_candle only advances best_price from the
+#   FAVOURABLE extreme (low for a short, high for a long). The trail SL is fired
+#   only by on_price_tick() against the live trade price (~10ms Binance aggTrade
+#   + 5s Delta REST safety net) — which is how Pine retraces into its stop.
+# True (old behaviour): candle extremes may fire the SL directly.
+TRAIL_FIRE_SL_ON_CANDLE_EXTREME = os.environ.get("TRAIL_FIRE_SL_ON_CANDLE_EXTREME", "false").lower() == "true"
+
+# ──────────────────────────────────────────────
 # TIMING
 # ──────────────────────────────────────────────
 CANDLE_TIMEFRAME = os.environ.get("CANDLE_TIMEFRAME", "30m")
