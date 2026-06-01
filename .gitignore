@@ -1,1 +1,6 @@
 .env
+gsheet.json
+.env.bak
+.env.save
+.envy
+Bot-v10/
