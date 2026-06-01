@@ -4,3 +4,13 @@ gsheet.json
 .env.save
 .envy
 Bot-v10/
+__pycache__/
+*.pyc
+*.pyo
+*.bak
+*.prepatch
+*.old
+*.py.bak
+journal.db-shm
+journal.db-wal
+patch_*.py
