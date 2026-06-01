@@ -610,6 +610,20 @@ class CandleFeed:
                 # FIX-DUAL-SOURCE-B: h/l here are Delta WS values, source="delta".
                 self.trail_monitor.push_ws_candle(h, l, source="delta")
 
+            # FIX-DELTA-TICK-BEST-PRICE (2026-06-01):
+            # Push Delta's real close price directly to push_delta_tick() so
+            # best_price tracks the actual Delta price — no Binance offset math.
+            # This runs unconditionally alongside the Binance aggTrade feed.
+            # Whichever source reaches the deeper extreme wins (running min/max).
+            # Eliminates the ~20-pt offset wobble that was corrupting best_price
+            # and causing ~12–20 pts/trade give-back vs Pine.
+            # Frequency: ~500ms (Delta WS candlestick update rate).
+            if self.trail_monitor is not None:
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    self.trail_monitor.push_delta_tick(c)
+                )
+
     # ── REST polling fallback ──────────────────────────────────────────────────
 
     async def _poll_rest_once(self) -> None:
