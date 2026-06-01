@@ -14,3 +14,5 @@ __pycache__/
 journal.db-shm
 journal.db-wal
 patch_*.py
+bot.log
+*.bak.now
