@@ -1,9 +1,34 @@
 """
-feed/ws_feed.py  —  Shiva Sniper v10  (ENTRY-DELAY-FIX-v2)
+feed/ws_feed.py  —  Shiva Sniper v10  (DELTA-TICK-FIX-v1)
 ════════════════════════════════════════════════════════════════════════════════
 
-NEW FIX IN THIS VERSION (ENTRY-DELAY-FIX-v2):
+NEW FIXES IN THIS VERSION (DELTA-TICK-FIX-v1):
 ──────────────────────────────────────────────────────────────────────────────
+FIX-DELTA-TICKER-WS | HIGH — Real-time Delta v2/ticker feed now drives
+  push_delta_tick() instead of relying only on the ~500ms candlestick close.
+
+  ROOT CAUSE:
+  push_delta_tick() was wired in _process_ws_candle's intrabar branch, but
+  the candlestick channel only pushes every ~500ms. The trail loop evaluates
+  SL hits between those ticks via the Binance aggTrade feed, which still runs
+  through offset arithmetic that can wobble ~20 pts. With a 50-pt stop, that
+  wobble was a significant fraction of the stop distance — causing phantom
+  lows that dragged best_price down and produced ~12–20 pts/trade give-back
+  vs Pine.
+
+  FIX:
+  _run_websocket() now subscribes BOTH channels simultaneously:
+    - candlestick_30m  (bar close / intrabar OHLC — unchanged)
+    - v2/ticker        (real-time last/mark price — NEW)
+  v2/ticker messages call push_delta_tick() directly — no offset math, no
+  Binance conversion. The Binance aggTrade feed can still update best_price
+  for speed, but only if its translated price is within
+  BINANCE_DELTA_DIVERGENCE_MAX pts of the last real Delta tick (divergence
+  gate). Outside that band the Binance tick is dropped entirely. The union
+  of both sources keeps the fast ~10ms Binance cadence when prices agree,
+  and falls back to real Delta ticks (~10–50ms via v2/ticker) when they
+  diverge.
+
 FIX-PEAK-REST-02 | FIX-PEAK-REST now also applied in REST fallback path.
   The WS path (_process_ws_candle) fetches the authoritative closed-bar OHLCV
   via REST and overwrites df.iloc[-1] before calling on_bar_close(). The REST
@@ -146,6 +171,12 @@ _MAX_WS_FAILURES           = 5    # consecutive failures before REST fallback
 _WS_RETRY_AFTER_REST_POLLS = 60   # REST polls before retrying WS (FIX-BUG4)
 _WS_HEARTBEAT_SEC          = 30
 
+# FIX-DELTA-TICKER-WS: max pts gap between offset-adjusted Binance price and
+# last real Delta tick before the Binance tick is rejected from best_price.
+# Set conservatively — the Binance/Delta basis rarely exceeds 5–8 pts at rest;
+# a 15-pt gate blocks the spike artifacts while letting normal ticks through.
+_BINANCE_DELTA_DIVERGENCE_MAX = 15.0
+
 
 def _timeframe_to_ms(tf: str) -> int:
     tf = tf.strip().lower()
@@ -195,6 +226,15 @@ class CandleFeed:
         self._processing           = False
         self._msg_count            = 0
         self.trail_monitor         = None  # FIX-PEAK-WS / FIX-PARITY-02
+        # FIX-DELTA-TICKER-WS: last real Delta price seen from v2/ticker.
+        # Used by the divergence gate to validate incoming Binance ticks.
+        self._last_delta_tick: Optional[float] = None
+
+    @property
+    def last_delta_tick(self) -> Optional[float]:
+        """FIX-DELTA-TICKER-WS: last real Delta price from v2/ticker.
+        Read by binance_price_feed to divergence-gate Binance ticks."""
+        return self._last_delta_tick
 
     async def start(self) -> None:
         await self._load_history()
@@ -384,17 +424,25 @@ class CandleFeed:
         ws_symbol = _ccxt_to_ws_symbol(SYMBOL)
         channel   = _timeframe_to_channel(CANDLE_TIMEFRAME)
 
+        # FIX-DELTA-TICKER-WS: subscribe to both the candlestick channel
+        # (bar close / intrabar OHLC) and v2/ticker (real-time last price).
+        # v2/ticker fires on every trade match — typically every 10–100ms —
+        # giving push_delta_tick() a true Delta price stream with no offset.
         subscribe_msg = json.dumps({
             "type": "subscribe",
             "payload": {
                 "channels": [
-                    {"name": channel, "symbols": [ws_symbol]}
+                    {"name": channel,    "symbols": [ws_symbol]},
+                    {"name": "v2/ticker", "symbols": [ws_symbol]},
                 ]
             }
         })
         heartbeat_msg = json.dumps({"type": "heartbeat"})
 
-        logger.info(f"WebSocket connecting → {ws_url} | channel={channel} symbol={ws_symbol}")
+        logger.info(
+            f"WebSocket connecting → {ws_url} | "
+            f"channels={channel},v2/ticker symbol={ws_symbol}"
+        )
 
         async with websockets.connect(
             ws_url,
@@ -422,8 +470,38 @@ class CandleFeed:
                 msg_type = msg.get("type", "")
 
                 self._msg_count += 1
-                if self._msg_count <= 10 and msg_type not in (channel, "subscriptions", "heartbeat"):
+                if self._msg_count <= 10 and msg_type not in (
+                    channel, "v2/ticker", "subscriptions", "heartbeat"
+                ):
                     logger.debug(f"WS msg #{self._msg_count} type={msg_type!r}")
+
+                # ── FIX-DELTA-TICKER-WS: real-time Delta price tick ───────────
+                # v2/ticker carries the latest matched trade price ("close" or
+                # "last_price" depending on Delta's schema). Route it directly
+                # to push_delta_tick() — no offset arithmetic, no Binance
+                # conversion.  Also update _last_delta_tick so the divergence
+                # gate in binance_price_feed knows the current Delta level.
+                if msg_type == "v2/ticker":
+                    data = msg.get("data") or msg
+                    if data:
+                        raw_price = (
+                            data.get("close") or
+                            data.get("last_price") or
+                            data.get("mark_price") or
+                            0
+                        )
+                        try:
+                            delta_price = float(raw_price)
+                        except (TypeError, ValueError):
+                            delta_price = 0.0
+                        if delta_price > 0 and self.trail_monitor is not None:
+                            self._last_delta_tick = delta_price
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(
+                                self.trail_monitor.push_delta_tick(delta_price)
+                            )
+                    continue
+                # ── END FIX-DELTA-TICKER-WS ──────────────────────────────────
 
                 if msg_type not in (channel, f"candlestick_{CANDLE_TIMEFRAME}"):
                     continue
@@ -610,15 +688,15 @@ class CandleFeed:
                 # FIX-DUAL-SOURCE-B: h/l here are Delta WS values, source="delta".
                 self.trail_monitor.push_ws_candle(h, l, source="delta")
 
-            # FIX-DELTA-TICK-BEST-PRICE (2026-06-01):
-            # Push Delta's real close price directly to push_delta_tick() so
-            # best_price tracks the actual Delta price — no Binance offset math.
-            # This runs unconditionally alongside the Binance aggTrade feed.
-            # Whichever source reaches the deeper extreme wins (running min/max).
-            # Eliminates the ~20-pt offset wobble that was corrupting best_price
-            # and causing ~12–20 pts/trade give-back vs Pine.
-            # Frequency: ~500ms (Delta WS candlestick update rate).
+            # FIX-DELTA-TICK-BEST-PRICE (2026-06-01, updated DELTA-TICK-FIX-v1):
+            # Push Delta's candle close to push_delta_tick() as a ~500ms
+            # heartbeat / fallback.  The primary real-time path is now the
+            # v2/ticker subscription in _run_websocket() which fires on every
+            # matched trade (~10–100ms) and calls push_delta_tick() directly.
+            # This fallback ensures best_price stays anchored to real Delta
+            # price even if the v2/ticker stream temporarily lags.
             if self.trail_monitor is not None:
+                self._last_delta_tick = c   # keep gate reference in sync
                 loop = asyncio.get_running_loop()
                 loop.create_task(
                     self.trail_monitor.push_delta_tick(c)
