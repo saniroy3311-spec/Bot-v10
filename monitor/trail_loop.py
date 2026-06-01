@@ -11,7 +11,7 @@ from config import (
 logger = logging.getLogger("trail_loop")
 
 class TrailMonitor:
-    def __init__(self, bot=None):
+    def __init__(self, bot=None, order_mgr=None, **kwargs):
         """
         Manages high-cadence tracking using live price streams.
         Preserves microsecond processing safety loops across execution windows.
