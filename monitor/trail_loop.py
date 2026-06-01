@@ -98,7 +98,7 @@ class TrailMonitor:
             f"(binance={binance_px:.2f} delta={delta_px:.2f})"
         )
 
-    def push_delta_tick(self, price: float):
+    async def push_delta_tick(self, price: float):
         """
         Bug 14 Fix: Processes native price ticks to bypass translation layers entirely.
         """
@@ -119,7 +119,7 @@ class TrailMonitor:
         translated_price = binance_price - self._offset
         self._evaluate_trail(translated_price, src="tick")
 
-    def push_ws_candle(self, candle_high: float, candle_low: float, candle_close: float):
+    def push_ws_candle(self, candle_high: float, candle_low: float, candle_close: float = None, **kwargs):
         """
         Validates interval boundaries.
         """
