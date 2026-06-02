@@ -106,6 +106,12 @@ class TrailMonitor:
         self._offset_locked   = False
         self._last_delta_seen = None
 
+        # Pine parity: Trail SL cannot fire on the entry candle (FIX-GHOST-TRADE).
+        # Set to the wall-clock ms of the next bar boundary after entry.
+        # Trail SL fires are suppressed until time.time()*1000 >= this value.
+        # TP and original SL are never suppressed.
+        self._entry_bar_boundary_ms = 0
+
     # ──────────────────────────────────────────────────────────────────────
     # Start / stop
     # ──────────────────────────────────────────────────────────────────────
@@ -157,6 +163,7 @@ class TrailMonitor:
 
         self._exit_fired = False
         self._running    = True
+        self._entry_bar_boundary_ms = 0  # set by main.py via set_entry_bar_boundary()
 
         stage = int(getattr(trail_state, "stage", 0)) if trail_state else 0
         logger.info(
@@ -177,6 +184,15 @@ class TrailMonitor:
         """Halt trailing. Safe to call multiple times."""
         self._running = False
         logger.info("TrailMonitor stopped.")
+
+    def set_entry_bar_boundary(self, next_bar_open_ms: int):
+        """Called by main.py immediately after start().
+        next_bar_open_ms = timestamp when the NEXT bar opens (= entry bar closes).
+        Trail SL fires are suppressed until that moment — TP and bracket SL are not.
+        """
+        self._entry_bar_boundary_ms = int(next_bar_open_ms)
+        logger.info(f"[TRAIL] Ghost-trade guard: Trail SL suppressed until entry bar closes "
+                    f"(in ~{max(0, next_bar_open_ms - int(time.time()*1000))//1000}s)")
 
     # ──────────────────────────────────────────────────────────────────────
     # Stage / offset helpers (use ENTRY ATR — frozen for the trade)
@@ -362,14 +378,33 @@ class TrailMonitor:
 
         # ── Stop / take-profit crosses ────────────────────────────────────────
         buf = TRAIL_SL_PRE_FIRE_BUFFER
+        # Ghost-trade guard: Trail SL and Initial SL cannot fire on the entry candle.
+        # TP and Max SL are always allowed. _entry_bar_boundary_ms=0 means no guard.
+        _now_ms = int(time.time() * 1000)
+        _sl_on_entry_bar = (
+            self._entry_bar_boundary_ms > 0
+            and _now_ms < self._entry_bar_boundary_ms
+        )
         if self.is_long:
             if self.trail_sl is not None and price <= self.trail_sl + buf:
-                await self._fire_exit("Trail SL" if self.trail_armed else "Initial SL", self.trail_sl, src)
+                if _sl_on_entry_bar:
+                    logger.debug(
+                        f"[TRAIL] Ghost-trade guard: Trail/Initial SL suppressed on entry bar "
+                        f"(bar closes in {(self._entry_bar_boundary_ms - _now_ms)//1000}s)"
+                    )
+                else:
+                    await self._fire_exit("Trail SL" if self.trail_armed else "Initial SL", self.trail_sl, src)
             elif self.tp and price >= self.tp:
                 await self._fire_exit("Take Profit", self.tp, src)
         else:
             if self.trail_sl is not None and price >= self.trail_sl - buf:
-                await self._fire_exit("Trail SL" if self.trail_armed else "Initial SL", self.trail_sl, src)
+                if _sl_on_entry_bar:
+                    logger.debug(
+                        f"[TRAIL] Ghost-trade guard: Trail/Initial SL suppressed on entry bar "
+                        f"(bar closes in {(self._entry_bar_boundary_ms - _now_ms)//1000}s)"
+                    )
+                else:
+                    await self._fire_exit("Trail SL" if self.trail_armed else "Initial SL", self.trail_sl, src)
             elif self.tp and price <= self.tp:
                 await self._fire_exit("Take Profit", self.tp, src)
 
