@@ -173,12 +173,12 @@ PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "0.1"))
 # With ATR=312.18 and PINE_MINTICK=0.1:
 #   Stage 1 upgrades at 312 pts | arms at 21.9 pts | offset 17.2 pts
 TRAIL_STAGES = [
-    # Confirmed from TradingView inputs panel (screenshots 2026-05-18):
-    (1.0,  0.70, 0.55),   # Stage 1
-    (2.0,  0.55, 0.45),   # Stage 2
-    (3.0,  0.45, 0.35),   # Stage 3
-    (5.0,  0.30, 0.25),   # Stage 4
-    (8.0,  0.20, 0.15),   # Stage 5
+    # Exact values from Pine script inputs (verified 2026-06-02):
+    (0.8,  0.50, 0.40),   # Stage 1
+    (1.5,  0.40, 0.30),   # Stage 2
+    (2.5,  0.30, 0.25),   # Stage 3
+    (4.0,  0.20, 0.15),   # Stage 4
+    (6.0,  0.15, 0.10),   # Stage 5
 ]
 
 # ──────────────────────────────────────────────
