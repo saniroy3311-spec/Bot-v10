@@ -217,7 +217,7 @@ TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "0.0
 #   0.30 ≈ 43 pts at ATR=143, ≈ 90 pts at ATR=300.
 # Raise to give the move more room (captures more, gives back more at exit);
 # lower to trail tighter. Set to 0.0 to disable the floor (old behaviour).
-TRAIL_OFFSET_FLOOR_MULT = 0.25
+TRAIL_OFFSET_FLOOR_MULT = 0.15
 TRAIL_ARM_FLOOR_MULT    = 0.25
 
 SL_FIRE_VIA_BRACKET = os.environ.get("SL_FIRE_VIA_BRACKET", "false").lower() == "true"
