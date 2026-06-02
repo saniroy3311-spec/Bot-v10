@@ -53,6 +53,7 @@ import logging
 from config import (
     PINE_MINTICK,
     TRAIL_OFFSET_FLOOR_MULT,
+    TRAIL_ARM_FLOOR_MULT,
     TIME_EXIT_MINUTES,
     TRAIL_FIRE_SL_ON_CANDLE_EXTREME,
     TRAIL_STAGES,
@@ -335,7 +336,7 @@ class TrailMonitor:
 
         # ── Arm on first favourable push past stage-1 activation ──────────────
         if not self.trail_armed:
-            arm_pts = self.atr * TRAIL_STAGES[0][1] * PINE_MINTICK
+            arm_pts = max(self.atr * TRAIL_STAGES[0][1] * PINE_MINTICK, self.atr * TRAIL_ARM_FLOOR_MULT)
             if self._favorable_profit(price) >= arm_pts:
                 self._update_best(price)
                 self.trail_armed = True
