@@ -626,6 +626,19 @@ class ShivaSniperBot:
                 signal_bar_open   = snap.open,
                 signal_bar_close  = snap.close,
             )
+            # Ghost-trade guard: compute next bar boundary from the candle timestamp.
+            # snap.timestamp is the bar's open time in ms; add one bar period to get
+            # the bar close / next open time.  CANDLE_TIMEFRAME e.g. "30m" → 1800000ms.
+            try:
+                _tf_str  = CANDLE_TIMEFRAME           # e.g. "30m", "15m", "1h"
+                _unit    = _tf_str[-1]
+                _n       = int(_tf_str[:-1])
+                _mult_ms = {"m": 60_000, "h": 3_600_000, "d": 86_400_000}.get(_unit, 60_000)
+                _period_ms      = _n * _mult_ms
+                _next_bar_open  = int(snap.timestamp) + _period_ms
+                self._trail_mon.set_entry_bar_boundary(_next_bar_open)
+            except Exception as _gge:
+                logger.warning(f"[ENTRY] Ghost-trade guard skipped: {_gge}")
 
             logger.info(
                 f"[ENTRY] Filled | type={sig.signal_type.value}  "
