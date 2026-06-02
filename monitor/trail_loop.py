@@ -335,7 +335,7 @@ class TrailMonitor:
 
         # ── Arm on first favourable push past stage-1 activation ──────────────
         if not self.trail_armed:
-            arm_pts = self.atr * TRAIL_STAGES[0][0]  # Pine arms on trigger (t1Trig=0.8), not pts
+            arm_pts = self.atr * TRAIL_STAGES[0][1] * PINE_MINTICK  # Pine parity: t1Pts × ATR × mintick
             if self._favorable_profit(price) >= arm_pts:
                 self._update_best(price)
                 self.trail_armed = True
