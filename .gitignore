@@ -16,3 +16,4 @@ journal.db-wal
 patch_*.py
 bot.log
 *.bak.now
+.env
