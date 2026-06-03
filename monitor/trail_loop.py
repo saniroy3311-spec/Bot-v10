@@ -1,17 +1,22 @@
 """
 monitor/trail_loop.py — Shiva Sniper v10 trailing-stop engine
 ================================================================
+PINE-PARITY REWRITE (2026-06-03)
 
-REWRITE (2026-06-02): the previous file in the repo exposed an OLD interface
-(`start(entry_price, risk, is_long)`, `bot.handle_trail_exit`, sync
-`on_price_tick`, no `on_bar_close`, `_running` never set True). main.py and
-both feeds were written for a NEWER interface, so every entry crashed with:
+WHAT CHANGED vs PREVIOUS VERSION:
+─────────────────────────────────
+1. REMOVED the "ghost-trade guard" that suppressed Trail SL / Initial SL
+   on the entry bar. Pine's strategy.exit() fires intrabar on the entry
+   bar — your TV trade list (315, 314, 313, 312, 311, 310, 309…) shows
+   same-bar entry+exit is the normal case. Suppressing it was an anti-Pine
+   patch dressed up as "Pine parity".
 
-    TrailMonitor.start() got an unexpected keyword argument 'risk_levels'
+2. TRAIL_OFFSET_FLOOR_MULT now defaults to 0.0 (set in config.py). Pine has
+   no floor; the bot now has no floor. Trail offset = ATR × t1Off × mintick
+   exactly as Pine computes it.
 
-…the trail never started, the position sat behind the static emergency
-bracket, and the bracket fired silently (recovered by the drift-check as a
-loss). This file restores the interface the rest of the codebase calls.
+3. set_entry_bar_boundary() is kept as a no-op for backward compatibility
+   with main.py — it accepts the call but never suppresses anything.
 
 PUBLIC INTERFACE (consumed by main.py / feeds — DO NOT rename):
     TrailMonitor(order_mgr=, telegram=, journal=)
@@ -28,22 +33,20 @@ PUBLIC INTERFACE (consumed by main.py / feeds — DO NOT rename):
 
 EXIT OWNERSHIP:
     main.py._on_trail_exit() only does bookkeeping (journal / Telegram /
-    WhatsApp / state reset) — it sends NO orders. So this engine must close
-    the Delta position itself (order_mgr.close_position) BEFORE invoking the
+    WhatsApp / state reset) — it sends NO orders. This engine closes the
+    Delta position itself (order_mgr.close_position) BEFORE invoking the
     callback with position_already_closed=True.
 
-PINE-PARITY NOTES (preserved from Master Memory bug history):
+PINE-PARITY NOTES:
     • Trail math uses the ENTRY-bar ATR (risk_levels.atr), never live ATR —
-      live ATR drift after entry destroys parity (FIX-RECOVERY).
+      live ATR drift after entry destroys parity.
     • best_price is seeded from the ENTRY price, never from the signal bar
-      OHLC — seeding from the signal bar fired the trail on tick 1 (Bug 10).
+      OHLC — seeding from the signal bar fires the trail on tick 1.
     • Stage upgrades + breakeven only advance at bar close (Pine
-      calc_on_every_tick=false). Trail SL only FIRES on live ticks (Bug 11).
+      calc_on_every_tick=false). Trail SL FIRES on live ticks — Pine's
+      strategy.exit() is intrabar-active, including on the entry bar.
     • push_ws_candle advances best_price from the FAVOURABLE extreme only;
-      it never fires the stop unless TRAIL_FIRE_SL_ON_CANDLE_EXTREME=true
-      (the stale cumulative-high bug, FIX-STALE-CANDLE-HIGH).
-    • Trail offset has an ATR floor so it can never trail tighter than tick
-      noise (Bug 16 / FIX-TICK-NOISE-WHIPSAW).
+      never fires the stop unless TRAIL_FIRE_SL_ON_CANDLE_EXTREME=true.
 """
 
 import time
@@ -100,17 +103,11 @@ class TrailMonitor:
         self.be_done      = False
         self.max_sl_fired = False
 
-        # Binance→Delta offset (FIX-DUAL-SOURCE-B). Locked once after entry so
-        # mid-trade recalibration can't slide the trail (Bug 10 / Bug 16).
+        # Binance→Delta offset. Locked once after entry so mid-trade
+        # recalibration can't slide the trail.
         self._offset          = 0.0
         self._offset_locked   = False
         self._last_delta_seen = None
-
-        # Pine parity: Trail SL cannot fire on the entry candle (FIX-GHOST-TRADE).
-        # Set to the wall-clock ms of the next bar boundary after entry.
-        # Trail SL fires are suppressed until time.time()*1000 >= this value.
-        # TP and original SL are never suppressed.
-        self._entry_bar_boundary_ms = 0
 
     # ──────────────────────────────────────────────────────────────────────
     # Start / stop
@@ -152,8 +149,6 @@ class TrailMonitor:
             self.max_sl_fired = False
             self.trail_armed  = False
 
-        # Time-exit clock: prefer the original wall time on recovery so the
-        # cap counts from the real entry, not the restart.
         self._entry_time_ms = int(entry_wall_ms or entry_bar_time_ms or time.time() * 1000)
 
         # Reset offset calibration for the new trade.
@@ -163,7 +158,6 @@ class TrailMonitor:
 
         self._exit_fired = False
         self._running    = True
-        self._entry_bar_boundary_ms = 0  # set by main.py via set_entry_bar_boundary()
 
         stage = int(getattr(trail_state, "stage", 0)) if trail_state else 0
         logger.info(
@@ -172,7 +166,7 @@ class TrailMonitor:
             f"stage={stage} armed={self.trail_armed}"
         )
 
-        # Informational only — NOT fed into the trail math (Bug 6 / Bug 10/11).
+        # Informational only — NOT fed into the trail math.
         if signal_bar_high is not None and signal_bar_low is not None:
             logger.info(
                 f"[TRAIL] Signal bar OHLC (informational only) | "
@@ -186,13 +180,14 @@ class TrailMonitor:
         logger.info("TrailMonitor stopped.")
 
     def set_entry_bar_boundary(self, next_bar_open_ms: int):
-        """Called by main.py immediately after start().
-        next_bar_open_ms = timestamp when the NEXT bar opens (= entry bar closes).
-        Trail SL fires are suppressed until that moment — TP and bracket SL are not.
+        """No-op kept for backward compatibility with main.py.
+
+        Previous versions used this to suppress Trail SL fires on the entry
+        bar — that was wrong because Pine's strategy.exit() is intrabar-active
+        on the entry bar too (your TV trade list confirms same-bar exits).
+        The call is accepted and ignored.
         """
-        self._entry_bar_boundary_ms = int(next_bar_open_ms)
-        logger.info(f"[TRAIL] Ghost-trade guard: Trail SL suppressed until entry bar closes "
-                    f"(in ~{max(0, next_bar_open_ms - int(time.time()*1000))//1000}s)")
+        return
 
     # ──────────────────────────────────────────────────────────────────────
     # Stage / offset helpers (use ENTRY ATR — frozen for the trade)
@@ -204,15 +199,22 @@ class TrailMonitor:
         return self.entry_price - ref_price
 
     def _stage_offset(self):
-        """ATR-scaled trail offset for the current stage, with the noise floor."""
+        """ATR-scaled trail offset for the current stage.
+
+        With TRAIL_OFFSET_FLOOR_MULT=0.0 (Pine-exact), this is purely:
+            offset = atr × stage_off_mult × PINE_MINTICK
+        which matches Pine's strategy.exit(trail_offset=atr × tNOff).
+        """
         stage = int(getattr(self._state, "stage", 0)) if self._state else 0
         if stage < 1:
             off_mult = TRAIL_STAGES[0][2]
         else:
             off_mult = TRAIL_STAGES[min(stage, len(TRAIL_STAGES)) - 1][2]
         raw   = self.atr * off_mult * PINE_MINTICK
-        floor = self.atr * TRAIL_OFFSET_FLOOR_MULT
-        return max(raw, floor)
+        if TRAIL_OFFSET_FLOOR_MULT > 0.0:
+            floor = self.atr * TRAIL_OFFSET_FLOOR_MULT
+            return max(raw, floor)
+        return raw
 
     def _recompute_trail_sl(self, src):
         """Tighten the trail SL toward best_price. Only ever moves in favour."""
@@ -230,8 +232,9 @@ class TrailMonitor:
             self.trail_sl = new_sl
             stage = int(getattr(self._state, "stage", 0)) if self._state else 0
             logger.info(
-                f"[TRAIL] Trail SL: {old:.2f} → {self.trail_sl:.2f} "
-                f"(stage {stage} best={self.best_price:.2f} off={offset:.2f} src={src})"
+                f"[TRAIL] SL: {old:.2f}→{self.trail_sl:.2f} | "
+                f"stage={stage} best={self.best_price:.2f} off={offset:.2f} "
+                f"atr={self.atr:.2f} entry={self.entry_price:.2f} src={src}"
             )
         self._sync_state()
 
@@ -263,12 +266,10 @@ class TrailMonitor:
     # Bar close — stage upgrades + breakeven (SYNC, called un-awaited)
     # ──────────────────────────────────────────────────────────────────────
     def on_bar_close(self, bar_close, bar_high, bar_low, bar_open=None, current_atr=None):
-        """
-        Pine evaluates stage upgrades and breakeven at bar close only. This is
-        sync and never fires an exit — actual SL/TP firing happens on the next
-        live tick (on_price_tick), which is correct Pine parity for bar-close
-        entries. current_atr is logged for diagnostics but NOT used for the
-        trail math (entry ATR is frozen for parity).
+        """Pine evaluates stage upgrades and breakeven at bar close only.
+
+        Sync; never fires an exit — actual SL/TP firing happens on the next
+        live tick (on_price_tick).
         """
         if not self._running or self._state is None:
             return
@@ -314,8 +315,8 @@ class TrailMonitor:
     # Live ticks — exit firing (ASYNC)
     # ──────────────────────────────────────────────────────────────────────
     async def on_price_tick(self, price, source="binance"):
-        """Primary intrabar exit path. Binance prices are translated into Delta
-        space via the locked offset; Delta prices are used as-is."""
+        """Primary intrabar exit path. Binance prices translated to Delta
+        space via the locked offset; Delta prices used as-is."""
         if not self._running or self._exit_fired:
             return
 
@@ -323,7 +324,6 @@ class TrailMonitor:
             self._last_delta_seen = float(price)
             px = float(price)
         else:  # binance
-            # Lock the Binance→Delta offset once, using the latest Delta tick.
             if not self._offset_locked and self._last_delta_seen is not None:
                 self._offset        = float(price) - float(self._last_delta_seen)
                 self._offset_locked = True
@@ -341,8 +341,12 @@ class TrailMonitor:
         await self._evaluate(float(price), "delta")
 
     async def _evaluate(self, price, src):
-        """Update peak, tighten trail, then check time / SL / TP / Max-SL."""
-        # ── Time exit ─────────────────────────────────────────────────────────
+        """Update peak, tighten trail, then check time / SL / TP / Max-SL.
+
+        Pine-parity: this fires intrabar including on the entry bar. No
+        ghost-trade guard. Pine's strategy.exit() does the same thing.
+        """
+        # ── Time exit (only if user opted in via TIME_EXIT_MINUTES > 0) ──────
         if TIME_EXIT_MINUTES > 0:
             elapsed_ms = int(time.time() * 1000) - self._entry_time_ms
             if elapsed_ms >= TIME_EXIT_MINUTES * 60_000:
@@ -350,8 +354,10 @@ class TrailMonitor:
                 return
 
         # ── Arm on first favourable push past stage-1 activation ──────────────
+        # Pine: trail activates when profit >= atr × t1Pts (in MINTICK units),
+        # i.e. profit_in_price >= atr × t1Pts × PINE_MINTICK.
         if not self.trail_armed:
-            arm_pts = self.atr * TRAIL_STAGES[0][1] * PINE_MINTICK  # Pine parity: t1Pts × ATR × mintick
+            arm_pts = self.atr * TRAIL_STAGES[0][1] * PINE_MINTICK
             if self._favorable_profit(price) >= arm_pts:
                 self._update_best(price)
                 self.trail_armed = True
@@ -367,6 +373,8 @@ class TrailMonitor:
                 self._recompute_trail_sl(src=src)
 
         # ── Max SL circuit breaker (hard cap from entry) ──────────────────────
+        # Pine: maxSLDist = min(atr × maxSLMult, maxSLPoints); fires when
+        # low <= entry - maxSLDist (long) or high >= entry + maxSLDist (short).
         if not self.max_sl_fired:
             adverse = (self.entry_price - price) if self.is_long else (price - self.entry_price)
             max_dist = min(self.atr * MAX_SL_MULT, MAX_SL_POINTS)
@@ -376,35 +384,16 @@ class TrailMonitor:
                 await self._fire_exit("Max SL", price, src)
                 return
 
-        # ── Stop / take-profit crosses ────────────────────────────────────────
+        # ── Stop / take-profit crosses (Pine-parity, no entry-bar guard) ─────
         buf = TRAIL_SL_PRE_FIRE_BUFFER
-        # Ghost-trade guard: Trail SL and Initial SL cannot fire on the entry candle.
-        # TP and Max SL are always allowed. _entry_bar_boundary_ms=0 means no guard.
-        _now_ms = int(time.time() * 1000)
-        _sl_on_entry_bar = (
-            self._entry_bar_boundary_ms > 0
-            and _now_ms < self._entry_bar_boundary_ms
-        )
         if self.is_long:
             if self.trail_sl is not None and price <= self.trail_sl + buf:
-                if _sl_on_entry_bar:
-                    logger.debug(
-                        f"[TRAIL] Ghost-trade guard: Trail/Initial SL suppressed on entry bar "
-                        f"(bar closes in {(self._entry_bar_boundary_ms - _now_ms)//1000}s)"
-                    )
-                else:
-                    await self._fire_exit("Trail SL" if self.trail_armed else "Initial SL", self.trail_sl, src)
+                await self._fire_exit("Trail SL" if self.trail_armed else "Initial SL", self.trail_sl, src)
             elif self.tp and price >= self.tp:
                 await self._fire_exit("Take Profit", self.tp, src)
         else:
             if self.trail_sl is not None and price >= self.trail_sl - buf:
-                if _sl_on_entry_bar:
-                    logger.debug(
-                        f"[TRAIL] Ghost-trade guard: Trail/Initial SL suppressed on entry bar "
-                        f"(bar closes in {(self._entry_bar_boundary_ms - _now_ms)//1000}s)"
-                    )
-                else:
-                    await self._fire_exit("Trail SL" if self.trail_armed else "Initial SL", self.trail_sl, src)
+                await self._fire_exit("Trail SL" if self.trail_armed else "Initial SL", self.trail_sl, src)
             elif self.tp and price <= self.tp:
                 await self._fire_exit("Take Profit", self.tp, src)
 
@@ -412,13 +401,9 @@ class TrailMonitor:
     # WS candle — favourable peak only (SYNC)
     # ──────────────────────────────────────────────────────────────────────
     def push_ws_candle(self, high, low, source="binance", close=None, **kwargs):
-        """
-        Advance best_price from the FAVOURABLE extreme only (low for a short,
-        high for a long) and tighten the trail. Never fires the stop on the
-        adverse extreme unless TRAIL_FIRE_SL_ON_CANDLE_EXTREME=true — that was
-        the stale cumulative-high bug. This is sync; if the (rare) candle-fire
-        path is enabled, the exit is scheduled on the event loop.
-        """
+        """Advance best_price from the FAVOURABLE extreme only. Never fires
+        the stop on the adverse extreme unless TRAIL_FIRE_SL_ON_CANDLE_EXTREME
+        is true."""
         if not self._running or self._exit_fired:
             return
 
@@ -438,7 +423,7 @@ class TrailMonitor:
                 loop = asyncio.get_running_loop()
                 loop.create_task(self._evaluate(adverse, "ws_candle_extreme"))
             except RuntimeError:
-                pass  # no running loop — caller will tick again shortly
+                pass
 
     # ──────────────────────────────────────────────────────────────────────
     # Exit dispatch (ASYNC, idempotent)
@@ -450,20 +435,16 @@ class TrailMonitor:
         self._running    = False
 
         logger.info(f"[TRAIL] Exit fired: reason={reason} price={price:.2f} "
-                    f"source={src} atr={self.atr:.2f}")
+                    f"source={src} atr={self.atr:.2f} entry={self.entry_price:.2f} "
+                    f"best={(self.best_price or 0):.2f}")
 
         is_sl = any(reason.startswith(r) for r in _SL_REASONS)
 
-        # When the bracket SL owns SL crosses, do NOT send a market close — the
-        # Delta bracket fills at matching-engine speed and main.py's bar-close
-        # drift-check records the exit. Avoids double-closing the position.
         if SL_FIRE_VIA_BRACKET and is_sl:
             logger.info("[TRAIL] SL_FIRE_VIA_BRACKET=true — leaving close to "
                         "Delta bracket; drift-check will record the exit.")
             return
 
-        # Otherwise the engine closes the Delta position itself, then hands off
-        # to main.py for journal / Telegram / state reset.
         if self._order_mgr is not None:
             try:
                 await self._order_mgr.close_position(is_long=self.is_long, reason=reason)
