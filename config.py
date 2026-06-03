@@ -216,3 +216,15 @@ WS_RECONNECT_SEC = 5
 # LOGGING
 # ──────────────────────────────────────────────
 LOG_FILE = os.environ.get("LOG_FILE", "/root/Bot-v10/journal.db")
+
+# ──────────────────────────────────────────────
+# PARITY ALIASES  (flat constants for verification — do not use in logic)
+# Derived from TRAIL_STAGES list above. Values are identical.
+# ──────────────────────────────────────────────
+ADX_EMA_LEN   = ADX_EMA   # alias — same value (5)
+
+TRAIL_T1_TRIG, TRAIL_T1_PTS, TRAIL_T1_OFF = TRAIL_STAGES[0]
+TRAIL_T2_TRIG, TRAIL_T2_PTS, TRAIL_T2_OFF = TRAIL_STAGES[1]
+TRAIL_T3_TRIG, TRAIL_T3_PTS, TRAIL_T3_OFF = TRAIL_STAGES[2]
+TRAIL_T4_TRIG, TRAIL_T4_PTS, TRAIL_T4_OFF = TRAIL_STAGES[3]
+TRAIL_T5_TRIG, TRAIL_T5_PTS, TRAIL_T5_OFF = TRAIL_STAGES[4]
