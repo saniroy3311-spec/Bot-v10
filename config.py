@@ -1,5 +1,5 @@
 """
-config.py - Shiva Sniper v10  (PINE-ALIGNED 2026-06-03)
+config.py - Shiva Sniper v10  (PINE-ALIGNED 2026-06-03, BUG-FIX-3 2026-06-03)
 
 WHAT CHANGED IN THIS VERSION
 ============================
@@ -21,6 +21,33 @@ Aligned to Pine:
   BE_MULT             1.0 → 0.6      (Pine beMult)
   TRAIL_OFFSET_FLOOR  0.15 → 0.0     (Pine has NO floor)
   TRAIL_ARM_FLOOR     0.25 → 0.0     (Pine has NO floor)
+
+BUG-FIX-3 (2026-06-03) — Three root causes fixed that made bot fire trades
+TV never showed, and exit at completely different prices:
+
+  BUG-1 | FILTER_VOL_ENABLED  "true"  → "false"
+    Delta Exchange REST volumes are ~3% of TradingView's volumes. With the
+    filter ON every bar fails volOK → bot drops every signal that TV fires.
+    Pine's volOK uses TV data; the bot cannot replicate that with Delta REST.
+    Fix: disable the volume filter. ATR + body filters still guard bad bars.
+
+  BUG-2 | PINE_MINTICK         0.1    → 1.0
+    Pine's strategy.exit(trail_points, trail_offset) takes values in TICKS.
+    The correct mintick for BTCUSDT.P on Delta India is 0.5 (USD per tick),
+    but Pine's trail_points/trail_offset inputs are dimensionless ATR
+    multiples — they are NOT in tick units. Multiplying by mintick shrinks
+    the offset by 10×, making the bot's trail 10× tighter than Pine's.
+    Example: ATR=400, stage-1 offset = 400×0.4×0.1 = 16 pts (old bot)
+                                     vs 400×0.4×1.0 = 160 pts (Pine exact).
+    Fix: set PINE_MINTICK=1.0 so offset = ATR × mult, identical to Pine.
+
+  BUG-3 | BREAKOUT_BUFFER_PTS  0      → 40
+    Pine's trendLong uses TradingView's close > high[1]. The bot uses
+    Delta Exchange REST data for the same check. Delta's prev_high is
+    routinely 30–80 pts lower than TradingView's on the same bar, so the
+    bot sees a breakout that Pine never saw → ghost entries with no TV match.
+    Fix: require close > prev_high + 40 pts before firing trend entries.
+    Tune up/down by 10 pts if you see missed signals or ghost entries return.
 
 If you intentionally want any of the OLD values back (for example if the
 Delta-vs-TradingView ADX gap is hurting you), override that single key in
@@ -99,8 +126,15 @@ FILTER_BODY_MULT   = float(os.environ.get("FILTER_BODY_MULT", "0.5"))
 # 0.0 = strict Pine match. Default 0.05 = lets body of >ATR*0.45 pass.
 FILTER_BODY_TOLERANCE = float(os.environ.get("FILTER_BODY_TOLERANCE", "0.0"))
 
-# Volume filter — Pine REQUIRES volume > volSMA (volOK)
-FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "true").lower() == "true"
+# Volume filter — BUG-FIX-3/BUG-1: DEFAULT IS NOW FALSE.
+# Pine REQUIRES volume > volSMA (volOK), but Pine uses TradingView volume.
+# Delta Exchange REST volumes are ~3% of TradingView's — incomparable sources.
+# With the filter ON, every bar fails volOK and all signals are dropped silently.
+# The bot cannot replicate Pine's volOK without TradingView volume data.
+# ATR + body filters still reject dead/choppy bars — they are sufficient.
+# To re-enable (e.g. if you connect a TradingView-compatible volume feed):
+#   FILTER_VOL_ENABLED=true in .env
+FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "false").lower() == "true"
 FILTER_VOL_MULT    = float(os.environ.get("FILTER_VOL_MULT", "1.0"))
 
 # ──────────────────────────────────────────────
@@ -123,13 +157,22 @@ MAX_SL_MULT    = float(os.environ.get("MAX_SL_MULT",    "1.5"))
 MAX_SL_POINTS  = float(os.environ.get("MAX_SL_POINTS",  "500.0"))
 
 # ──────────────────────────────────────────────
-# PINE MINTICK
+# PINE MINTICK  — BUG-FIX-3/BUG-2: DEFAULT IS NOW 1.0
 # ──────────────────────────────────────────────
-# Pine passes atr × tNPts to strategy.exit(trail_points=...) in TICK units.
-# For BTCUSD.P on Delta India: mintick = 0.1
-#   activation_in_price = atr × t1Pts × PINE_MINTICK
-#   offset_in_price     = atr × t1Off × PINE_MINTICK
-PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "0.1"))
+# Pine's strategy.exit(trail_points=X, trail_offset=Y) takes X and Y as
+# dimensionless ATR multiples — they are NOT in exchange tick units.
+# The old default of 0.1 multiplied the offset by 0.1, making the bot's
+# trail 10× tighter than Pine's:
+#
+#   ATR=400, stage-1 offset (old): 400 × 0.40 × 0.1  =  16 pts  ← WRONG
+#   ATR=400, stage-1 offset (new): 400 × 0.40 × 1.0  = 160 pts  ← Pine exact
+#
+# With PINE_MINTICK=1.0:  offset_in_price = atr × stage_off_mult  (= Pine)
+# With PINE_MINTICK=0.1:  offset_in_price = atr × stage_off_mult × 0.1
+#
+# Only change this if you have a concrete reason to scale the offsets
+# (e.g. a different instrument where Pine explicitly passes tick-unit values).
+PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "1.0"))
 
 # ──────────────────────────────────────────────
 # 5-STAGE TRAIL ENGINE  (PINE-STAGE-EXACT)
@@ -162,7 +205,21 @@ BE_MULT = float(os.environ.get("BE_MULT", "0.6"))
 RSI_OB  = int(os.environ.get("RSI_OB", "70"))
 RSI_OS  = int(os.environ.get("RSI_OS", "30"))
 
-BREAKOUT_BUFFER_PTS = float(os.environ.get("BREAKOUT_BUFFER_PTS", "0"))
+# BUG-FIX-3/BUG-3: BREAKOUT_BUFFER_PTS DEFAULT IS NOW 40
+# Pine's trendLong uses: close > high[1]  (TradingView bar data)
+# The bot uses Delta Exchange REST data for the same check.
+# Delta's prev_high is routinely 30–80 pts lower than TradingView's on the
+# same 30m bar because the two feeds have different OHLCV for the same candle.
+# Result: bot sees close > delta_prev_high and fires; Pine never fired because
+# tv_close <= tv_prev_high → ghost entries with zero match to TV trade list.
+#
+# Fix: require close > prev_high + BREAKOUT_BUFFER_PTS before firing.
+# Default 40 absorbs the typical Delta–TradingView high/low spread on BTC 30m.
+# Tune by ±10 pts:
+#   Too many ghost entries still? → increase to 50 or 60.
+#   Missing valid TV signals?     → decrease to 30 or 20.
+#   Set to 0 to restore old behaviour (exact Pine condition, no buffer).
+BREAKOUT_BUFFER_PTS = float(os.environ.get("BREAKOUT_BUFFER_PTS", "40"))
 
 # ──────────────────────────────────────────────
 # COMMISSION + BUFFERS
