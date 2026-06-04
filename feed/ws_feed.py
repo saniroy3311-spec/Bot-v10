@@ -159,7 +159,7 @@ logger   = logging.getLogger(__name__)
 # stable values. Setting MIN_BARS=1500 made the bot wait ~31 days of 30m
 # candles before evaluating ANY signal, missing every trade in that window.
 # 200 = enough for EMA(200) warmup, matches Pine's effective behaviour.
-MIN_BARS = 200
+MIN_BARS = 450
 
 _INDIA_LIVE    = "https://api.india.delta.exchange"
 _INDIA_TESTNET = "https://testnet-api.india.delta.exchange"
