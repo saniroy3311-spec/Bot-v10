@@ -229,6 +229,18 @@ BRACKET_SL_BUFFER        = float(os.environ.get("BRACKET_SL_BUFFER",        "10.
 TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "0.0"))
 
 # ──────────────────────────────────────────────
+# SL CONFIRMATION WINDOW  (FIX-BINANCE-SPIKE)
+# ──────────────────────────────────────────────
+# Pine's backtester uses simulated intrabar movement (interpolated OHLC).
+# The bot uses real Binance aggTrade ticks (~10ms), which include micro-spikes
+# that Pine's model smooths over. A 50-150pt wick lasting <500ms fires the
+# bot's Initial SL, while Pine never saw it.
+# Fix: require price to stay beyond Initial SL for this many ms before firing.
+# Trail SL / TP / Max SL still fire immediately.
+# 0 = disabled (instant fire). 1500 = 1.5s (recommended).
+SL_CONFIRM_MS = int(os.environ.get("SL_CONFIRM_MS", "1500"))
+
+# ──────────────────────────────────────────────
 # TRAIL OFFSET FLOOR  (REMOVED — Pine has no floor)
 # ──────────────────────────────────────────────
 # IMPORTANT: Pine's strategy.exit() trail_points/trail_offset have NO floor.
