@@ -64,6 +64,7 @@ from config import (
     MAX_SL_POINTS,
     SL_FIRE_VIA_BRACKET,
     TRAIL_SL_PRE_FIRE_BUFFER,
+    SL_CONFIRM_MS,          # FIX-BINANCE-SPIKE: confirmation window for Initial SL
 )
 
 logger = logging.getLogger("trail_loop")
@@ -108,6 +109,10 @@ class TrailMonitor:
         self._offset          = 0.0
         self._offset_locked   = False
         self._last_delta_seen = None
+
+        # SL confirmation timer (FIX-BINANCE-SPIKE)
+        self._sl_breach_start_ms = 0
+        self._sl_breach_active   = False
 
     # ──────────────────────────────────────────────────────────────────────
     # Start / stop
@@ -155,6 +160,10 @@ class TrailMonitor:
         self._offset          = 0.0
         self._offset_locked   = False
         self._last_delta_seen = None
+
+        # Reset SL confirmation timer (FIX-BINANCE-SPIKE)
+        self._sl_breach_start_ms = 0
+        self._sl_breach_active   = False
 
         self._exit_fired = False
         self._running    = True
@@ -343,8 +352,10 @@ class TrailMonitor:
     async def _evaluate(self, price, src):
         """Update peak, tighten trail, then check time / SL / TP / Max-SL.
 
-        Pine-parity: this fires intrabar including on the entry bar. No
-        ghost-trade guard. Pine's strategy.exit() does the same thing.
+        FIX-BINANCE-SPIKE: Initial SL now requires price to stay beyond the
+        SL level for SL_CONFIRM_MS milliseconds before firing. This filters
+        Binance micro-spikes that Pine's simulated intrabar model never sees.
+        Trail SL (trail already armed), TP, and Max SL fire immediately.
         """
         # ── Time exit (only if user opted in via TIME_EXIT_MINUTES > 0) ──────
         if TIME_EXIT_MINUTES > 0:
@@ -372,9 +383,7 @@ class TrailMonitor:
             if self._update_best(price):
                 self._recompute_trail_sl(src=src)
 
-        # ── Max SL circuit breaker (hard cap from entry) ──────────────────────
-        # Pine: maxSLDist = min(atr × maxSLMult, maxSLPoints); fires when
-        # low <= entry - maxSLDist (long) or high >= entry + maxSLDist (short).
+        # ── Max SL circuit breaker (hard cap from entry — fires immediately) ──
         if not self.max_sl_fired:
             adverse = (self.entry_price - price) if self.is_long else (price - self.entry_price)
             max_dist = min(self.atr * MAX_SL_MULT, MAX_SL_POINTS)
@@ -384,18 +393,64 @@ class TrailMonitor:
                 await self._fire_exit("Max SL", price, src)
                 return
 
-        # ── Stop / take-profit crosses (Pine-parity, no entry-bar guard) ─────
+        # ── Stop / take-profit crosses ────────────────────────────────────────
         buf = TRAIL_SL_PRE_FIRE_BUFFER
+
         if self.is_long:
-            if self.trail_sl is not None and price <= self.trail_sl + buf:
-                await self._fire_exit("Trail SL" if self.trail_armed else "Initial SL", self.trail_sl, src)
-            elif self.tp and price >= self.tp:
-                await self._fire_exit("Take Profit", self.tp, src)
+            sl_breached = self.trail_sl is not None and price <= self.trail_sl + buf
+            tp_breached = self.tp and price >= self.tp
         else:
-            if self.trail_sl is not None and price >= self.trail_sl - buf:
-                await self._fire_exit("Trail SL" if self.trail_armed else "Initial SL", self.trail_sl, src)
-            elif self.tp and price <= self.tp:
-                await self._fire_exit("Take Profit", self.tp, src)
+            sl_breached = self.trail_sl is not None and price >= self.trail_sl - buf
+            tp_breached = self.tp and price <= self.tp
+
+        # TP fires immediately (no confirmation needed)
+        if tp_breached:
+            self._sl_breach_active = False
+            self._sl_breach_start_ms = 0
+            await self._fire_exit("Take Profit", self.tp, src)
+            return
+
+        if sl_breached:
+            reason = "Trail SL" if self.trail_armed else "Initial SL"
+
+            # FIX-BINANCE-SPIKE: Trail SL fires immediately (trail is already
+            # armed = price moved in our favour first, so the cross is real).
+            # Initial SL gets a confirmation window to filter Binance micro-spikes.
+            if self.trail_armed or SL_CONFIRM_MS <= 0:
+                self._sl_breach_active = False
+                self._sl_breach_start_ms = 0
+                await self._fire_exit(reason, self.trail_sl, src)
+                return
+
+            # Initial SL with confirmation window
+            now_ms = int(time.time() * 1000)
+            if not self._sl_breach_active:
+                self._sl_breach_active = True
+                self._sl_breach_start_ms = now_ms
+                logger.info(
+                    f"[TRAIL] SL breach started (confirming) | price={price:.2f} "
+                    f"sl={self.trail_sl:.2f} confirm_ms={SL_CONFIRM_MS}"
+                )
+                return
+
+            elapsed = now_ms - self._sl_breach_start_ms
+            if elapsed >= SL_CONFIRM_MS:
+                logger.info(
+                    f"[TRAIL] SL breach CONFIRMED after {elapsed}ms | "
+                    f"price={price:.2f} sl={self.trail_sl:.2f}"
+                )
+                self._sl_breach_active = False
+                self._sl_breach_start_ms = 0
+                await self._fire_exit(reason, self.trail_sl, src)
+        else:
+            # Price moved back inside SL — reset confirmation timer
+            if self._sl_breach_active:
+                logger.info(
+                    f"[TRAIL] SL breach RESET (price recovered) | price={price:.2f} "
+                    f"sl={self.trail_sl:.2f}"
+                )
+                self._sl_breach_active = False
+                self._sl_breach_start_ms = 0
 
     # ──────────────────────────────────────────────────────────────────────
     # WS candle — favourable peak only (SYNC)
