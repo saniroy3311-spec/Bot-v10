@@ -162,7 +162,8 @@ class TrailMonitor:
             self.max_sl_fired = bool(getattr(trail_state, "max_sl_fired", False))
             self.trail_armed  = int(getattr(trail_state, "stage", 0)) > 0
         else:
-            self.trail_sl     = float(risk_levels.sl)
+            t1_pts_dist = float(self.atr) * TRAIL_STAGES[0][1] * PINE_MINTICK
+            self.trail_sl = (self.entry_price + t1_pts_dist) if not self.is_long else (self.entry_price - t1_pts_dist)
             self.best_price   = self.entry_price
             self.be_done      = False
             self.max_sl_fired = False
@@ -428,19 +429,20 @@ class TrailMonitor:
                 await self._fire_exit(f"Time exit ({TIME_EXIT_MINUTES}m)", price, src)
                 return
 
-        # ── Arm on first favourable push past stage-1 activation ──────────────
-        # Pine: trail activates when profit >= atr × t1Pts (in MINTICK units),
-        # i.e. profit_in_price >= atr × t1Pts × PINE_MINTICK.
+        # ── Arm on first favourable tick — Pine arms immediately on entry ─────
+        # Pine strategy.exit(trail_points, trail_offset) places the trail SL
+        # from tick 1 — there is NO profit threshold before arming.
+        # trail_points = initial SL distance (set in start())
+        # trail_offset = trailing distance behind best_price once moving
         if not self.trail_armed:
-            arm_pts = self.atr * TRAIL_STAGES[0][1] * PINE_MINTICK
-            if self._favorable_profit(price) >= arm_pts:
+            if self._favorable_profit(price) > 0:
                 self._update_best(price)
                 self.trail_armed = True
                 if self._state is not None and self._state.stage < 1:
                     self._state.stage = 1
                 self._recompute_trail_sl(src=src)
                 logger.info(
-                    f"[TRAIL] Trail ARMED | price={price:.2f} arm_pts={arm_pts:.2f} "
+                    f"[TRAIL] Trail ARMED | price={price:.2f} "
                     f"trail_sl={self.trail_sl:.2f}"
                 )
         else:
