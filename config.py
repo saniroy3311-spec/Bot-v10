@@ -300,3 +300,6 @@ TRAIL_T5_TRIG, TRAIL_T5_PTS, TRAIL_T5_OFF = TRAIL_STAGES[4]
 
 # Bar-close SL evaluation mode
 BAR_CLOSE_SL_EVAL = False
+
+# Bar-close SL evaluation mode
+BAR_CLOSE_SL_EVAL = False
