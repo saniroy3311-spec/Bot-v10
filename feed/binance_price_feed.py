@@ -147,7 +147,9 @@ class BinancePriceFeed:
         while self._running:
             try:
                 await self._connect_and_stream()
-                # clean exit from _connect_and_stream means self._running=False
+                if self._running:
+                    logger.warning('[BINANCE-PX] Stream ended cleanly — reconnecting in 3s')
+                    await asyncio.sleep(3)
             except asyncio.CancelledError:
                 break
             except Exception as e:
