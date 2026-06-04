@@ -452,9 +452,14 @@ class ShivaSniperBot:
                         current_sl = rebuilt.sl
 
                     self._risk        = rebuilt
+                    # Recovery: recompute Pine initial SL; arm trail if already in profit
+                    from config import TRAIL_STAGES as _TS, PINE_MINTICK as _MT
+                    _t1_dist = rebuilt.atr * _TS[0][1] * _MT
+                    _pine_init_sl = (rebuilt.entry_price + _t1_dist) if not rebuilt.is_long else (rebuilt.entry_price - _t1_dist)
+                    _rec_stage = int(open_row.get("trail_stage", 0)) if open_row else 0
                     self._trail_state = TrailState(
-                        stage      = int(open_row.get("trail_stage", 0)) if open_row else 0,
-                        current_sl = current_sl,
+                        stage      = _rec_stage,
+                        current_sl = current_sl if _rec_stage > 0 else _pine_init_sl,
                         peak_price = self._risk.entry_price,
                     )
 
@@ -610,9 +615,13 @@ class ShivaSniperBot:
             self._in_position  = True
             self._risk         = risk
             self._signal_type  = sig.signal_type.value
+            # Pine: initial trail SL = entry +/- ATR*t1Pts from tick 1
+            from config import TRAIL_STAGES as _TS, PINE_MINTICK as _MT
+            _t1_dist = risk.atr * _TS[0][1] * _MT
+            _pine_init_sl = (risk.entry_price + _t1_dist) if not risk.is_long else (risk.entry_price - _t1_dist)
             self._trail_state  = TrailState(
                 stage      = 0,
-                current_sl = risk.sl,
+                current_sl = _pine_init_sl,
                 peak_price = fill,
             )
 
