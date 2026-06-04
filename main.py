@@ -826,9 +826,10 @@ class ShivaSniperBot:
         # This replaces the old Delta WS intrabar price monitoring.
         # Binance prices (~10ms) match Pine's broker emulator data source,
         # eliminating phantom SL/TP triggers from the Delta-Binance price gap.
-        self._binance_px_feed = BinancePriceFeed(self._trail_mon)
-        self._binance_px_feed.start_task()
-        logger.info("[MAIN] BinancePriceFeed started — exits now use Binance aggTrade prices")
+        if os.environ.get("USE_BINANCE_FEED", "true").lower() == "true":
+            self._binance_px_feed = BinancePriceFeed(self._trail_mon)
+            self._binance_px_feed.start_task()
+            logger.info("[MAIN] BinancePriceFeed started — exits now use Binance aggTrade prices")
 
         # FIX-FILLS-WS: start Delta fills WebSocket listener for instant
         # bracket exit detection. Replaces the bar-close drift check as
