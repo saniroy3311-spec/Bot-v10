@@ -1,7 +1,7 @@
 """
 monitor/trail_loop.py — Shiva Sniper v10 trailing-stop engine
 ================================================================
-PINE-PARITY REWRITE (2026-06-03)
+PINE-PARITY REWRITE (2026-06-03) + INTRABAR FIX (2026-06-04)
 
 WHAT CHANGED vs PREVIOUS VERSION:
 ─────────────────────────────────
@@ -17,6 +17,15 @@ WHAT CHANGED vs PREVIOUS VERSION:
 
 3. set_entry_bar_boundary() is kept as a no-op for backward compatibility
    with main.py — it accepts the call but never suppresses anything.
+
+4. INTRABAR FIX (2026-06-04):
+   • Initial SL  — fires on live ticks (with SL_CONFIRM_MS filter)
+   • TP          — fires on live ticks immediately
+   • Trail SL    — fires on live ticks immediately (trail armed = real move)
+   • Max SL      — fires on live ticks immediately
+   • Stage upgrades — now also run intrabar on every tick (not bar-close only)
+   • BAR_CLOSE_SL_EVAL — kept as safety-net catch for trail exits missed
+     intrabar (e.g. connectivity gap). Does NOT block intrabar exits.
 
 PUBLIC INTERFACE (consumed by main.py / feeds — DO NOT rename):
     TrailMonitor(order_mgr=, telegram=, journal=)
@@ -65,6 +74,7 @@ from config import (
     SL_FIRE_VIA_BRACKET,
     TRAIL_SL_PRE_FIRE_BUFFER,
     SL_CONFIRM_MS,          # FIX-BINANCE-SPIKE: confirmation window for Initial SL
+    BAR_CLOSE_SL_EVAL,      # PINE-PARITY: defer SL/TP/Trail checks to bar close
 )
 
 logger = logging.getLogger("trail_loop")
@@ -113,6 +123,10 @@ class TrailMonitor:
         # SL confirmation timer (FIX-BINANCE-SPIKE)
         self._sl_breach_start_ms = 0
         self._sl_breach_active   = False
+
+        # Bar-close SL eval: track true intrabar HIGH/LOW from Delta ticks.
+        self._bar_true_high = None   # highest Delta price seen this bar
+        self._bar_true_low  = None   # lowest Delta price seen this bar
 
     # ──────────────────────────────────────────────────────────────────────
     # Start / stop
@@ -164,6 +178,10 @@ class TrailMonitor:
         # Reset SL confirmation timer (FIX-BINANCE-SPIKE)
         self._sl_breach_start_ms = 0
         self._sl_breach_active   = False
+
+        # Reset bar-close true OHLC trackers
+        self._bar_true_high = None
+        self._bar_true_low  = None
 
         self._exit_fired = False
         self._running    = True
@@ -275,10 +293,12 @@ class TrailMonitor:
     # Bar close — stage upgrades + breakeven (SYNC, called un-awaited)
     # ──────────────────────────────────────────────────────────────────────
     def on_bar_close(self, bar_close, bar_high, bar_low, bar_open=None, current_atr=None):
-        """Pine evaluates stage upgrades and breakeven at bar close only.
+        """Bar close: advance best_price, run stage upgrades (belt-and-braces),
+        then act as a safety-net trail exit using bar_true_high/low for any
+        trail cross that was missed intrabar (e.g. connectivity gap).
 
-        Sync; never fires an exit — actual SL/TP firing happens on the next
-        live tick (on_price_tick).
+        Initial SL, TP, and Max SL are NOT re-evaluated here — they fire on
+        live ticks. Only Trail SL uses bar-close as a catch-all fallback.
         """
         if not self._running or self._state is None:
             return
@@ -317,8 +337,41 @@ class TrailMonitor:
 
         logger.info(
             f"[TRAIL] Bar close | best={self.best_price:.2f} sl={self.trail_sl:.2f} "
-            f"stage={stage} armed={self.trail_armed} live_atr={(current_atr or 0):.2f}"
+            f"stage={stage} armed={self.trail_armed} live_atr={(current_atr or 0):.2f} "
+            f"true_high={self._bar_true_high} true_low={self._bar_true_low}"
         )
+
+        # ── SAFETY-NET: Trail SL catch at bar close ───────────────────────────
+        # Initial SL, TP, Max SL all fire on live ticks above.
+        # This block only catches Trail SL that was missed intrabar
+        # (e.g. connectivity gap during the bar). Idempotent — skipped if
+        # exit already fired.
+        if not self._exit_fired and self.trail_armed:
+            true_high = self._bar_true_high if self._bar_true_high is not None else bar_high
+            true_low  = self._bar_true_low  if self._bar_true_low  is not None else bar_low
+
+            trail_crossed = False
+            if self.is_long:
+                trail_crossed = true_low  <= self.trail_sl
+            else:
+                trail_crossed = true_high >= self.trail_sl
+
+            if trail_crossed:
+                logger.info(
+                    f"[TRAIL] Safety-net Trail SL at bar close | "
+                    f"true_high={true_high:.2f} true_low={true_low:.2f} "
+                    f"trail_sl={self.trail_sl:.2f}"
+                )
+                import asyncio
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self._fire_exit("Trail SL", self.trail_sl, "bar_close_safety"))
+                except RuntimeError:
+                    pass
+
+        # Reset intrabar true OHLC for the next bar
+        self._bar_true_high = None
+        self._bar_true_low  = None
 
     # ──────────────────────────────────────────────────────────────────────
     # Live ticks — exit firing (ASYNC)
@@ -347,11 +400,22 @@ class TrailMonitor:
         self._last_delta_seen = float(price)
         if not self._running or self._exit_fired:
             return
-        await self._evaluate(float(price), "delta")
+        px = float(price)
+        # Track intrabar true HIGH / LOW for bar-close SL evaluation.
+        if self._bar_true_high is None or px > self._bar_true_high:
+            self._bar_true_high = px
+        if self._bar_true_low is None or px < self._bar_true_low:
+            self._bar_true_low = px
+        await self._evaluate(px, "delta")
 
     async def _evaluate(self, price, src):
         """Update peak, tighten trail, then check time / SL / TP / Max-SL.
 
+        BAR_CLOSE_SL_EVAL=true (default/Pine-parity): intrabar ticks ONLY
+        update best_price. All exit checks (SL/Trail/TP/MaxSL) are deferred
+        to on_bar_close() which uses bar_true_high / bar_true_low.
+
+        BAR_CLOSE_SL_EVAL=false (legacy tick-by-tick mode):
         FIX-BINANCE-SPIKE: Initial SL now requires price to stay beyond the
         SL level for SL_CONFIRM_MS milliseconds before firing. This filters
         Binance micro-spikes that Pine's simulated intrabar model never sees.
@@ -382,6 +446,31 @@ class TrailMonitor:
         else:
             if self._update_best(price):
                 self._recompute_trail_sl(src=src)
+
+        # ── Intrabar stage upgrades (Pine fires these on every tick) ────────────
+        if self._state is not None and self.trail_armed:
+            profit = self._favorable_profit(self.best_price)
+            stage  = int(getattr(self._state, "stage", 0))
+            upgraded = False
+            while stage < len(TRAIL_STAGES) and profit >= self.atr * TRAIL_STAGES[stage][0]:
+                stage += 1
+                upgraded = True
+            if upgraded:
+                self._state.stage = stage
+                self._recompute_trail_sl(src=src)
+                logger.info(
+                    f"[TRAIL] Stage → {stage} (intrabar) | profit={profit:.2f} "
+                    f"atr={self.atr:.2f} trail_sl={self.trail_sl:.2f}"
+                )
+            # Breakeven intrabar
+            if not self.be_done and profit >= self.atr * BE_MULT:
+                self.be_done = True
+                if self.is_long:
+                    self.trail_sl = max(self.trail_sl or self.entry_price, self.entry_price)
+                else:
+                    self.trail_sl = min(self.trail_sl or self.entry_price, self.entry_price)
+                logger.info(f"[TRAIL] Breakeven armed (intrabar) | sl→{self.trail_sl:.2f} profit={profit:.2f}")
+                self._sync_state()
 
         # ── Max SL circuit breaker (hard cap from entry — fires immediately) ──
         if not self.max_sl_fired:
