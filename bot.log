@@ -13089,3 +13089,1360 @@ aiohttp.http_exceptions.BadStatusLine: 400, message:
 2026-06-05 11:45:57  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Delta]: closed bar corrected | true_high=62611.50 true_low=61944.50 true_close=62127.00
 2026-06-05 11:45:57  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780637400000 | new_boundary=1780639200000 | bars=499 — evaluating signals...
 2026-06-05 11:45:58  INFO      main — [BAR] close=62127.00  atr=597.58  adx=18.8  rsi=37.0  trend=False  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-06-05 20:55:41  WARNING   infra.whatsapp — WhatsApp disabled — set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_TO_NUMBER in .env to enable notifications.
+2026-06-05 20:55:41  INFO      infra.journal — Connected to SQLite at /root/Bot-v10/journal.db
+2026-06-05 20:55:41  INFO      infra.journal — Journal initialised [sqlite] | GSheet=enabled
+2026-06-05 20:55:41  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-06-05 20:55:41  INFO      main —   Shiva Sniper Bot v10 — Starting
+2026-06-05 20:55:41  INFO      main —   Symbol=BTC/USD:USD  TF=30m
+2026-06-05 20:55:41  INFO      main —   Position size: 0.001 BTC → 1 lots
+2026-06-05 20:55:41  INFO      main —   FILTER_VOL_ENABLED=False  (false = full Pine parity)
+2026-06-05 20:55:41  INFO      main —   MAX_ENTRY_SLIP_ATR_FRAC=0.3  (SL recalc threshold)
+2026-06-05 20:55:41  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-06-05 20:55:42  INFO      orders.manager — [OM] Resolved product_id=27 product_symbol=BTCUSD
+2026-06-05 20:55:42  INFO      orders.manager — [OM] Initialized — symbol=BTC/USD:USD  qty=1
+2026-06-05 20:55:43  INFO      main — [STARTUP] Flat on Delta — cancelled all stale bracket orders (clean slate)
+2026-06-05 20:55:44  INFO      infra.telegram — Telegram sent: '🟢 <b>Shiva Sniper Bot v10 Started</b>\nSymbol: <code>BTC/USD:USD</code>  TF: <code>30m</code>\nQty: <code>1 lots</code> (0.001 BTC)\nVolume filter: <code>OFF (Pine parity)</code>'
+2026-06-05 20:55:44  INFO      feed.binance_price_feed — [BINANCE-PX] Feed started → aggTrade stream
+2026-06-05 20:55:44  INFO      feed.fills_feed — [FILLS] FillsFeed started — listening for bracket fills on BTCUSD
+2026-06-05 20:55:44  INFO      server — Dashboard LIVE → http://127.0.0.1:10000
+2026-06-05 20:55:44  INFO      feed.ws_feed — Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-06-05 20:55:44  INFO      infra.telegram_controller — TelegramController started (long-poll)
+2026-06-05 20:55:44  INFO      feed.binance_price_feed — [BINANCE-PX] Connecting → wss://stream.binance.com:9443/ws/btcusdt@aggTrade
+2026-06-05 20:55:44  INFO      infra.whatsapp_controller — WhatsAppController webhook server started on port 8080
+2026-06-05 20:55:44  INFO      feed.binance_price_feed — [BINANCE-PX] Connected ✅  (aggTrade stream live)
+2026-06-05 20:55:44  INFO      feed.fills_feed — [FILLS] WS auth sent — waiting for confirmation...
+2026-06-05 20:55:44  INFO      feed.fills_feed — [FILLS] Subscribed to user_trades | symbol=BTCUSD
+2026-06-05 20:55:45  INFO      feed.ws_feed — Symbol BTC/USD:USD verified ✅
+2026-06-05 20:55:45  INFO      feed.ws_feed — Loading 1050 historical bars via Binance REST for [BTC/USDT] [30m]...
+2026-06-05 20:55:47  INFO      feed.ws_feed — [BINANCE-SIGNAL] Fetched 1000/1050 bars...
+2026-06-05 20:55:47  INFO      feed.ws_feed — [BINANCE-SIGNAL] Fetched 1050/1050 bars...
+2026-06-05 20:55:47  INFO      feed.ws_feed — [BINANCE-SIGNAL] Loaded 1050 Binance bars ✅ (indicators will match Pine's data source)
+2026-06-05 20:55:47  INFO      feed.ws_feed — Feed ready — 1049 bars loaded (need 1000, have 1049 — OK ✅) [source=Binance]
+2026-06-05 20:55:47  INFO      main — Feed ready — waiting for first bar close...
+2026-06-05 20:55:47  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channels=candlestick_30m,v2/ticker symbol=BTCUSD
+2026-06-05 20:55:47  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-06-05 20:55:48  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Binance]: closed bar corrected | true_high=61195.99 true_low=60334.97 true_close=60868.97
+2026-06-05 20:55:48  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780669800000 | new_boundary=1780671600000 | bars=1049 — evaluating signals...
+2026-06-05 20:55:48  INFO      main — [BAR] close=60868.97  atr=706.44  adx=31.9  rsi=36.3  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-05 21:00:00  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Binance]: closed bar corrected | true_high=61126.00 true_low=60506.00 true_close=60790.36
+2026-06-05 21:00:00  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780671600000 | new_boundary=1780673400000 | bars=1050 — evaluating signals...
+2026-06-05 21:00:00  INFO      main — [BAR] close=60790.36  atr=700.27  adx=33.6  rsi=35.7  trend=True  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-06-05 21:21:03  INFO      main — Shutting down...
+2026-06-05 21:21:04  INFO      server — [SERVER] Dashboard stopped, port released.
+2026-06-05 21:21:04  INFO      trail_loop — TrailMonitor stopped.
+2026-06-05 21:21:04  INFO      feed.binance_price_feed — [BINANCE-PX] Feed stopped.
+2026-06-05 21:21:04  INFO      feed.fills_feed — [FILLS] FillsFeed stopped.
+2026-06-05 21:21:04  INFO      infra.telegram — Telegram sent: '🔴 <b>Shiva Sniper Bot Stopped</b>'
+2026-06-05 21:21:04  INFO      main — Shutdown complete.
+2026-06-05 21:21:06  WARNING   infra.whatsapp — WhatsApp disabled — set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_TO_NUMBER in .env to enable notifications.
+2026-06-05 21:21:06  INFO      infra.journal — Connected to SQLite at /root/Bot-v10/journal.db
+2026-06-05 21:21:06  INFO      infra.journal — Journal initialised [sqlite] | GSheet=enabled
+2026-06-05 21:21:06  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-06-05 21:21:06  INFO      main —   Shiva Sniper Bot v10 — Starting
+2026-06-05 21:21:06  INFO      main —   Symbol=BTC/USD:USD  TF=30m
+2026-06-05 21:21:06  INFO      main —   Position size: 0.001 BTC → 1 lots
+2026-06-05 21:21:06  INFO      main —   FILTER_VOL_ENABLED=False  (false = full Pine parity)
+2026-06-05 21:21:06  INFO      main —   MAX_ENTRY_SLIP_ATR_FRAC=0.3  (SL recalc threshold)
+2026-06-05 21:21:06  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-06-05 21:21:07  INFO      orders.manager — [OM] Resolved product_id=27 product_symbol=BTCUSD
+2026-06-05 21:21:07  INFO      orders.manager — [OM] Initialized — symbol=BTC/USD:USD  qty=1
+2026-06-05 21:21:08  INFO      main — [STARTUP] Flat on Delta — cancelled all stale bracket orders (clean slate)
+2026-06-05 21:21:09  INFO      infra.telegram — Telegram sent: '🟢 <b>Shiva Sniper Bot v10 Started</b>\nSymbol: <code>BTC/USD:USD</code>  TF: <code>30m</code>\nQty: <code>1 lots</code> (0.001 BTC)\nVolume filter: <code>OFF (Pine parity)</code>'
+2026-06-05 21:21:09  INFO      feed.binance_price_feed — [BINANCE-PX] Feed started → aggTrade stream
+2026-06-05 21:21:09  INFO      feed.fills_feed — [FILLS] FillsFeed started — listening for bracket fills on BTCUSD
+2026-06-05 21:21:09  INFO      server — Dashboard LIVE → http://127.0.0.1:10000
+2026-06-05 21:21:09  INFO      feed.ws_feed — Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-06-05 21:21:09  INFO      infra.telegram_controller — TelegramController started (long-poll)
+2026-06-05 21:21:09  INFO      feed.binance_price_feed — [BINANCE-PX] Connecting → wss://stream.binance.com:9443/ws/btcusdt@aggTrade
+2026-06-05 21:21:09  INFO      infra.whatsapp_controller — WhatsAppController webhook server started on port 8080
+2026-06-05 21:21:09  INFO      feed.ws_feed — Symbol BTC/USD:USD verified ✅
+2026-06-05 21:21:09  INFO      feed.fills_feed — [FILLS] WS auth sent — waiting for confirmation...
+2026-06-05 21:21:09  INFO      feed.fills_feed — [FILLS] Subscribed to user_trades | symbol=BTCUSD
+2026-06-05 21:21:09  INFO      feed.binance_price_feed — [BINANCE-PX] Connected ✅  (aggTrade stream live)
+2026-06-05 21:21:09  INFO      feed.ws_feed — Loading 1050 historical bars via Binance REST for [BTC/USDT] [30m]...
+2026-06-05 21:21:11  INFO      feed.ws_feed — [BINANCE-SIGNAL] Fetched 1000/1050 bars...
+2026-06-05 21:21:11  INFO      feed.ws_feed — [BINANCE-SIGNAL] Fetched 1050/1050 bars...
+2026-06-05 21:21:11  INFO      feed.ws_feed — [BINANCE-SIGNAL] Loaded 1050 Binance bars ✅ (indicators will match Pine's data source)
+2026-06-05 21:21:11  INFO      feed.ws_feed — Feed ready — 1049 bars loaded (need 1000, have 1049 — OK ✅) [source=Binance]
+2026-06-05 21:21:11  INFO      main — Feed ready — waiting for first bar close...
+2026-06-05 21:21:11  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channels=candlestick_30m,v2/ticker symbol=BTCUSD
+2026-06-05 21:21:12  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-06-05 21:21:12  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Binance]: closed bar corrected | true_high=61126.00 true_low=60506.00 true_close=60790.36
+2026-06-05 21:21:12  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780671600000 | new_boundary=1780673400000 | bars=1049 — evaluating signals...
+2026-06-05 21:21:12  INFO      main — [BAR] close=60790.36  atr=700.27  adx=33.6  rsi=35.7  trend=True  range=False  filters=FAIL  [atr=True body=False vol=True]
+2026-06-05 21:30:05  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Binance]: closed bar corrected | true_high=60852.90 true_low=60000.00 true_close=60438.01
+2026-06-05 21:30:05  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780673400000 | new_boundary=1780675200000 | bars=1050 — evaluating signals...
+2026-06-05 21:30:05  INFO      main — [BAR] close=60438.01  atr=711.17  adx=35.5  rsi=33.3  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-05 21:30:05  INFO      main — [SIGNAL] Trend Short  is_long=False  regime=TREND
+2026-06-05 21:30:05  INFO      orders.manager — [OM] Placing entry | side=sell  qty=1  sl=60864.71  tp=58731.20
+2026-06-05 21:30:06  INFO      orders.manager — [OM] Entry filled | id=1348475298  fill=60359.50
+2026-06-05 21:30:07  INFO      orders.manager — [OM] ✅ Emergency bracket SL placed on Delta | sl=60864.71  (never amended — Python trail owns exits)
+2026-06-05 21:30:07  INFO      trail_loop — [TRAIL] Started | entry=60359.50 sl=60715.09 tp=58731.20 entry_atr=711.17 is_long=False stage=0 armed=False
+2026-06-05 21:30:07  INFO      main — [ENTRY] Filled | type=Trend Short  fill=60359.50  sl=60864.71  tp=58731.20  atr=711.17  stop_dist=426.70
+2026-06-05 21:30:07  INFO      infra.journal — Open trade recorded | Trend Short  qty=1 lots  entry=60359.50
+2026-06-05 21:30:08  INFO      infra.telegram — Telegram sent: '🔴 <b>ENTRY — SHORT</b>  |  <code>1</code> lot  (0.0010 BTC)\n<code>2026-06-05 21:30:07 IST</code>\n\nFill  : <b>$60,359.50</b>\nSL    : <code>$60,864.71</code>  (-505.21)\nTP    : <code>$58,731.20</code>  (+1628.30)\nATR   : <code>711.17</code>  |  R:R <code>3.22</code>'
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60715.09→60637.97 | stage=1 best=60353.50 off=284.47 atr=711.17 entry=60359.50 src=delta
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] Trail ARMED | price=60353.50 trail_sl=60637.97
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] Offset locked: +34.51 (binance=60388.01 delta=60353.50)
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60637.97→60637.96 | stage=1 best=60353.49 off=284.47 atr=711.17 entry=60359.50 src=ws_candle
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60637.96→60637.95 | stage=1 best=60353.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60637.95→60637.70 | stage=1 best=60353.23 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60637.70→60637.61 | stage=1 best=60353.14 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60637.61→60637.56 | stage=1 best=60353.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60637.56→60636.90 | stage=1 best=60352.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60636.90→60636.24 | stage=1 best=60351.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60636.24→60635.96 | stage=1 best=60351.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60635.96→60635.88 | stage=1 best=60351.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60635.88→60635.56 | stage=1 best=60351.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60635.56→60635.51 | stage=1 best=60351.04 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60635.51→60635.35 | stage=1 best=60350.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60635.35→60634.96 | stage=1 best=60350.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60634.96→60634.84 | stage=1 best=60350.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60634.84→60634.83 | stage=1 best=60350.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60634.83→60634.57 | stage=1 best=60350.10 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60634.57→60634.44 | stage=1 best=60349.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60634.44→60634.43 | stage=1 best=60349.96 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60634.43→60634.34 | stage=1 best=60349.87 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60634.34→60633.96 | stage=1 best=60349.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60633.96→60633.90 | stage=1 best=60349.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60633.90→60633.85 | stage=1 best=60349.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60633.85→60632.52 | stage=1 best=60348.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60632.52→60632.17 | stage=1 best=60347.70 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60632.17→60632.04 | stage=1 best=60347.57 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60632.04→60631.96 | stage=1 best=60347.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60631.96→60631.92 | stage=1 best=60347.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60631.92→60631.87 | stage=1 best=60347.40 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60631.87→60631.63 | stage=1 best=60347.16 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60631.63→60631.32 | stage=1 best=60346.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60631.32→60630.86 | stage=1 best=60346.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60630.86→60630.65 | stage=1 best=60346.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60630.65→60630.51 | stage=1 best=60346.04 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60630.51→60629.96 | stage=1 best=60345.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60629.96→60629.93 | stage=1 best=60345.46 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60629.93→60629.88 | stage=1 best=60345.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60629.88→60629.76 | stage=1 best=60345.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60629.76→60629.52 | stage=1 best=60345.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60629.52→60629.27 | stage=1 best=60344.80 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60629.27→60629.16 | stage=1 best=60344.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60629.16→60629.04 | stage=1 best=60344.57 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60629.04→60628.99 | stage=1 best=60344.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60628.99→60628.64 | stage=1 best=60344.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60628.64→60628.20 | stage=1 best=60343.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60628.20→60627.96 | stage=1 best=60343.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60627.96→60627.95 | stage=1 best=60343.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60627.95→60627.86 | stage=1 best=60343.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60627.86→60627.85 | stage=1 best=60343.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60627.85→60626.10 | stage=1 best=60341.63 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60626.10→60626.09 | stage=1 best=60341.62 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60626.09→60625.96 | stage=1 best=60341.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60625.96→60625.88 | stage=1 best=60341.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60625.88→60625.80 | stage=1 best=60341.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60625.80→60625.79 | stage=1 best=60341.32 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60625.79→60625.08 | stage=1 best=60340.61 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60625.08→60624.81 | stage=1 best=60340.34 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60624.81→60623.96 | stage=1 best=60339.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60623.96→60623.95 | stage=1 best=60339.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60623.95→60623.84 | stage=1 best=60339.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60623.84→60623.56 | stage=1 best=60339.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60623.56→60622.44 | stage=1 best=60337.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60622.44→60622.40 | stage=1 best=60337.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60622.40→60622.19 | stage=1 best=60337.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:08  INFO      trail_loop — [TRAIL] SL: 60622.19→60621.96 | stage=1 best=60337.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60621.96→60621.95 | stage=1 best=60337.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60621.95→60621.94 | stage=1 best=60337.47 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60621.94→60621.93 | stage=1 best=60337.46 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60621.93→60621.06 | stage=1 best=60336.59 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60621.06→60620.60 | stage=1 best=60336.13 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60620.60→60620.57 | stage=1 best=60336.10 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60620.57→60619.99 | stage=1 best=60335.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60619.99→60619.96 | stage=1 best=60335.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60619.96→60619.95 | stage=1 best=60335.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60619.95→60619.89 | stage=1 best=60335.42 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60619.89→60619.48 | stage=1 best=60335.01 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60619.48→60619.08 | stage=1 best=60334.61 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60619.08→60618.84 | stage=1 best=60334.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60618.84→60618.76 | stage=1 best=60334.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60618.76→60617.96 | stage=1 best=60333.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60617.96→60617.88 | stage=1 best=60333.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60617.88→60617.10 | stage=1 best=60332.63 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60617.10→60617.04 | stage=1 best=60332.57 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60617.04→60616.21 | stage=1 best=60331.74 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60616.21→60615.96 | stage=1 best=60331.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60615.96→60615.92 | stage=1 best=60331.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60615.92→60615.87 | stage=1 best=60331.40 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60615.87→60615.75 | stage=1 best=60331.28 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60615.75→60615.72 | stage=1 best=60331.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60615.72→60615.51 | stage=1 best=60331.04 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60615.51→60615.50 | stage=1 best=60331.03 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60615.50→60615.46 | stage=1 best=60330.99 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60615.46→60613.96 | stage=1 best=60329.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60613.96→60613.73 | stage=1 best=60329.26 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60613.73→60613.68 | stage=1 best=60329.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60613.68→60613.56 | stage=1 best=60329.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60613.56→60613.36 | stage=1 best=60328.89 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60613.36→60612.72 | stage=1 best=60328.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60612.72→60612.60 | stage=1 best=60328.13 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60612.60→60612.36 | stage=1 best=60327.89 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60612.36→60612.03 | stage=1 best=60327.56 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60612.03→60611.96 | stage=1 best=60327.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60611.96→60611.41 | stage=1 best=60326.94 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60611.41→60611.40 | stage=1 best=60326.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60611.40→60611.10 | stage=1 best=60326.63 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60611.10→60610.93 | stage=1 best=60326.46 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60610.93→60610.03 | stage=1 best=60325.56 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60610.03→60609.96 | stage=1 best=60325.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60609.96→60609.95 | stage=1 best=60325.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60609.95→60609.88 | stage=1 best=60325.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60609.88→60609.87 | stage=1 best=60325.40 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60609.87→60609.70 | stage=1 best=60325.23 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60609.70→60609.48 | stage=1 best=60325.01 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60609.48→60609.00 | stage=1 best=60324.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60609.00→60608.45 | stage=1 best=60323.98 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60608.45→60608.38 | stage=1 best=60323.91 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60608.38→60608.29 | stage=1 best=60323.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60608.29→60607.96 | stage=1 best=60323.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60607.96→60607.95 | stage=1 best=60323.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60607.95→60607.80 | stage=1 best=60323.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60607.80→60606.67 | stage=1 best=60322.20 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60606.67→60606.41 | stage=1 best=60321.94 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60606.41→60606.36 | stage=1 best=60321.89 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:09  INFO      trail_loop — [TRAIL] SL: 60606.36→60605.96 | stage=1 best=60321.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:10  INFO      trail_loop — [TRAIL] SL: 60605.96→60605.95 | stage=1 best=60321.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:10  INFO      trail_loop — [TRAIL] SL: 60605.95→60605.94 | stage=1 best=60321.47 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60605.94→60605.65 | stage=1 best=60321.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60605.65→60605.64 | stage=1 best=60321.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60605.64→60605.43 | stage=1 best=60320.96 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60605.43→60605.30 | stage=1 best=60320.83 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60605.30→60605.10 | stage=1 best=60320.63 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60605.10→60604.98 | stage=1 best=60320.51 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60604.98→60604.97 | stage=1 best=60320.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60604.97→60604.96 | stage=1 best=60320.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60604.96→60604.84 | stage=1 best=60320.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60604.84→60604.80 | stage=1 best=60320.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60604.80→60604.51 | stage=1 best=60320.04 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60604.51→60604.26 | stage=1 best=60319.79 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60604.26→60604.25 | stage=1 best=60319.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60604.25→60604.10 | stage=1 best=60319.63 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60604.10→60603.96 | stage=1 best=60319.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60603.96→60603.73 | stage=1 best=60319.26 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60603.73→60603.72 | stage=1 best=60319.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60603.72→60603.65 | stage=1 best=60319.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60603.65→60603.50 | stage=1 best=60319.03 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60603.50→60603.46 | stage=1 best=60318.99 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60603.46→60603.44 | stage=1 best=60318.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60603.44→60603.43 | stage=1 best=60318.96 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60603.43→60603.24 | stage=1 best=60318.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60603.24→60603.16 | stage=1 best=60318.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60603.16→60602.90 | stage=1 best=60318.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60602.90→60602.87 | stage=1 best=60318.40 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60602.87→60602.72 | stage=1 best=60318.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60602.72→60602.64 | stage=1 best=60318.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60602.64→60602.58 | stage=1 best=60318.11 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60602.58→60602.46 | stage=1 best=60317.99 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60602.46→60602.36 | stage=1 best=60317.89 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60602.36→60602.28 | stage=1 best=60317.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60602.28→60601.96 | stage=1 best=60317.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60601.96→60601.88 | stage=1 best=60317.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60601.88→60601.76 | stage=1 best=60317.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60601.76→60601.73 | stage=1 best=60317.26 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60601.73→60601.72 | stage=1 best=60317.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60601.72→60601.68 | stage=1 best=60317.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60601.68→60601.38 | stage=1 best=60316.91 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60601.38→60601.11 | stage=1 best=60316.64 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60601.11→60600.62 | stage=1 best=60316.15 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60600.62→60600.51 | stage=1 best=60316.04 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60600.51→60600.12 | stage=1 best=60315.65 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60600.12→60600.10 | stage=1 best=60315.63 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60600.10→60599.96 | stage=1 best=60315.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60599.96→60599.95 | stage=1 best=60315.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60599.95→60599.93 | stage=1 best=60315.46 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:18  INFO      trail_loop — [TRAIL] SL: 60599.93→60599.92 | stage=1 best=60315.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60599.92→60599.91 | stage=1 best=60315.44 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60599.91→60599.90 | stage=1 best=60315.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60599.90→60599.63 | stage=1 best=60315.16 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60599.63→60598.92 | stage=1 best=60314.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60598.92→60598.19 | stage=1 best=60313.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60598.19→60597.96 | stage=1 best=60313.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60597.96→60597.95 | stage=1 best=60313.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60597.95→60597.76 | stage=1 best=60313.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60597.76→60597.35 | stage=1 best=60312.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60597.35→60597.00 | stage=1 best=60312.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60597.00→60596.99 | stage=1 best=60312.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60596.99→60596.63 | stage=1 best=60312.16 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60596.63→60596.15 | stage=1 best=60311.68 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60596.15→60595.96 | stage=1 best=60311.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60595.96→60595.95 | stage=1 best=60311.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60595.95→60595.56 | stage=1 best=60311.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60595.56→60594.58 | stage=1 best=60310.11 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60594.58→60594.34 | stage=1 best=60309.87 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60594.34→60594.12 | stage=1 best=60309.65 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60594.12→60593.96 | stage=1 best=60309.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60593.96→60593.88 | stage=1 best=60309.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60593.88→60593.71 | stage=1 best=60309.24 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60593.71→60592.83 | stage=1 best=60308.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60592.83→60592.51 | stage=1 best=60308.04 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60592.51→60592.33 | stage=1 best=60307.86 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60592.33→60592.20 | stage=1 best=60307.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60592.20→60591.96 | stage=1 best=60307.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60591.96→60591.86 | stage=1 best=60307.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60591.86→60591.85 | stage=1 best=60307.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60591.85→60591.75 | stage=1 best=60307.28 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60591.75→60591.72 | stage=1 best=60307.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60591.72→60591.71 | stage=1 best=60307.24 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60591.71→60591.56 | stage=1 best=60307.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60591.56→60591.55 | stage=1 best=60307.08 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60591.55→60591.54 | stage=1 best=60307.07 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60591.54→60591.42 | stage=1 best=60306.95 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60591.42→60591.33 | stage=1 best=60306.86 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60591.33→60590.76 | stage=1 best=60306.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60590.76→60590.70 | stage=1 best=60306.23 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:19  INFO      trail_loop — [TRAIL] SL: 60590.70→60589.99 | stage=1 best=60305.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60589.99→60589.97 | stage=1 best=60305.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60589.97→60589.96 | stage=1 best=60305.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60589.96→60589.95 | stage=1 best=60305.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60589.95→60589.81 | stage=1 best=60305.34 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60589.81→60588.84 | stage=1 best=60304.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60588.84→60588.83 | stage=1 best=60304.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60588.83→60588.53 | stage=1 best=60304.06 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60588.53→60588.40 | stage=1 best=60303.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60588.40→60588.11 | stage=1 best=60303.64 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60588.11→60587.97 | stage=1 best=60303.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60587.97→60587.96 | stage=1 best=60303.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60587.96→60587.95 | stage=1 best=60303.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60587.95→60587.84 | stage=1 best=60303.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60587.84→60587.64 | stage=1 best=60303.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60587.64→60587.40 | stage=1 best=60302.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60587.40→60587.16 | stage=1 best=60302.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60587.16→60587.10 | stage=1 best=60302.63 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60587.10→60586.43 | stage=1 best=60301.96 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60586.43→60585.97 | stage=1 best=60301.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60585.97→60585.96 | stage=1 best=60301.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60585.96→60585.70 | stage=1 best=60301.23 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60585.70→60585.69 | stage=1 best=60301.22 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60585.69→60585.48 | stage=1 best=60301.01 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60585.48→60584.96 | stage=1 best=60300.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60584.96→60584.91 | stage=1 best=60300.44 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60584.91→60584.90 | stage=1 best=60300.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60584.90→60584.89 | stage=1 best=60300.42 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60584.89→60584.88 | stage=1 best=60300.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60584.88→60584.78 | stage=1 best=60300.31 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60584.78→60584.77 | stage=1 best=60300.30 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60584.77→60584.76 | stage=1 best=60300.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60584.76→60584.52 | stage=1 best=60300.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60584.52→60584.35 | stage=1 best=60299.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60584.35→60584.00 | stage=1 best=60299.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60584.00→60583.99 | stage=1 best=60299.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60583.99→60583.97 | stage=1 best=60299.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60583.97→60583.96 | stage=1 best=60299.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60583.96→60583.82 | stage=1 best=60299.35 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60583.82→60583.55 | stage=1 best=60299.08 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60583.55→60583.54 | stage=1 best=60299.07 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60583.54→60583.29 | stage=1 best=60298.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60583.29→60583.18 | stage=1 best=60298.71 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60583.18→60583.12 | stage=1 best=60298.65 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60583.12→60582.48 | stage=1 best=60298.01 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60582.48→60582.24 | stage=1 best=60297.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60582.24→60582.12 | stage=1 best=60297.65 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60582.12→60581.97 | stage=1 best=60297.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60581.97→60581.96 | stage=1 best=60297.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60581.96→60581.94 | stage=1 best=60297.47 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60581.94→60581.82 | stage=1 best=60297.35 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60581.82→60581.47 | stage=1 best=60297.00 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60581.47→60581.40 | stage=1 best=60296.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60581.40→60581.20 | stage=1 best=60296.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60581.20→60581.19 | stage=1 best=60296.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60581.19→60580.69 | stage=1 best=60296.22 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60580.69→60580.58 | stage=1 best=60296.11 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60580.58→60579.97 | stage=1 best=60295.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60579.97→60579.96 | stage=1 best=60295.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60579.96→60579.78 | stage=1 best=60295.31 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60579.78→60579.45 | stage=1 best=60294.98 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60579.45→60579.38 | stage=1 best=60294.91 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60579.38→60579.35 | stage=1 best=60294.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60579.35→60579.25 | stage=1 best=60294.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60579.25→60579.22 | stage=1 best=60294.75 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60579.22→60578.95 | stage=1 best=60294.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60578.95→60578.76 | stage=1 best=60294.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60578.76→60578.72 | stage=1 best=60294.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60578.72→60578.61 | stage=1 best=60294.14 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60578.61→60578.28 | stage=1 best=60293.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60578.28→60578.12 | stage=1 best=60293.65 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60578.12→60577.96 | stage=1 best=60293.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60577.96→60577.92 | stage=1 best=60293.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60577.92→60577.90 | stage=1 best=60293.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60577.90→60577.89 | stage=1 best=60293.42 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60577.89→60577.86 | stage=1 best=60293.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60577.86→60577.77 | stage=1 best=60293.30 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60577.77→60577.58 | stage=1 best=60293.11 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60577.58→60576.97 | stage=1 best=60292.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60576.97→60576.74 | stage=1 best=60292.27 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60576.74→60576.47 | stage=1 best=60292.00 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60576.47→60576.43 | stage=1 best=60291.96 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60576.43→60575.97 | stage=1 best=60291.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60575.97→60575.96 | stage=1 best=60291.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60575.96→60575.90 | stage=1 best=60291.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:20  INFO      trail_loop — [TRAIL] SL: 60575.90→60575.83 | stage=1 best=60291.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60575.83→60575.50 | stage=1 best=60291.03 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60575.50→60575.49 | stage=1 best=60291.02 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60575.49→60575.40 | stage=1 best=60290.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60575.40→60575.16 | stage=1 best=60290.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60575.16→60574.67 | stage=1 best=60290.20 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60574.67→60574.66 | stage=1 best=60290.19 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60574.66→60574.25 | stage=1 best=60289.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60574.25→60574.23 | stage=1 best=60289.76 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60574.23→60574.22 | stage=1 best=60289.75 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60574.22→60574.07 | stage=1 best=60289.60 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60574.07→60573.97 | stage=1 best=60289.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60573.97→60573.96 | stage=1 best=60289.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60573.96→60573.91 | stage=1 best=60289.44 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60573.91→60573.63 | stage=1 best=60289.16 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60573.63→60573.57 | stage=1 best=60289.10 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60573.57→60573.45 | stage=1 best=60288.98 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60573.45→60573.44 | stage=1 best=60288.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60573.44→60573.43 | stage=1 best=60288.96 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60573.43→60573.40 | stage=1 best=60288.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60573.40→60573.16 | stage=1 best=60288.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60573.16→60573.04 | stage=1 best=60288.57 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60573.04→60572.64 | stage=1 best=60288.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60572.64→60572.60 | stage=1 best=60288.13 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60572.60→60572.54 | stage=1 best=60288.07 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60572.54→60572.37 | stage=1 best=60287.90 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60572.37→60572.33 | stage=1 best=60287.86 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60572.33→60572.28 | stage=1 best=60287.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60572.28→60572.19 | stage=1 best=60287.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60572.19→60572.04 | stage=1 best=60287.57 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60572.04→60571.96 | stage=1 best=60287.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60571.96→60571.68 | stage=1 best=60287.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60571.68→60571.41 | stage=1 best=60286.94 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60571.41→60570.74 | stage=1 best=60286.27 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60570.74→60570.72 | stage=1 best=60286.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60570.72→60570.70 | stage=1 best=60286.23 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60570.70→60570.46 | stage=1 best=60285.99 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60570.46→60570.41 | stage=1 best=60285.94 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60570.41→60570.39 | stage=1 best=60285.92 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60570.39→60570.20 | stage=1 best=60285.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60570.20→60569.96 | stage=1 best=60285.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60569.96→60569.88 | stage=1 best=60285.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60569.88→60569.85 | stage=1 best=60285.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60569.85→60569.20 | stage=1 best=60284.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60569.20→60568.98 | stage=1 best=60284.51 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60568.98→60568.92 | stage=1 best=60284.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60568.92→60568.68 | stage=1 best=60284.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60568.68→60568.57 | stage=1 best=60284.10 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60568.57→60568.39 | stage=1 best=60283.92 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60568.39→60567.99 | stage=1 best=60283.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60567.99→60567.97 | stage=1 best=60283.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60567.97→60567.96 | stage=1 best=60283.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60567.96→60567.91 | stage=1 best=60283.44 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60567.91→60567.86 | stage=1 best=60283.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60567.86→60567.73 | stage=1 best=60283.26 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60567.73→60567.70 | stage=1 best=60283.23 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60567.70→60567.44 | stage=1 best=60282.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60567.44→60567.36 | stage=1 best=60282.89 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60567.36→60567.35 | stage=1 best=60282.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60567.35→60567.01 | stage=1 best=60282.54 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60567.01→60566.91 | stage=1 best=60282.44 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60566.91→60566.79 | stage=1 best=60282.32 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60566.79→60566.70 | stage=1 best=60282.23 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60566.70→60566.69 | stage=1 best=60282.22 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60566.69→60566.68 | stage=1 best=60282.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60566.68→60566.62 | stage=1 best=60282.15 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60566.62→60566.52 | stage=1 best=60282.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60566.52→60566.25 | stage=1 best=60281.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60566.25→60565.96 | stage=1 best=60281.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60565.96→60565.81 | stage=1 best=60281.34 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60565.81→60565.80 | stage=1 best=60281.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60565.80→60565.68 | stage=1 best=60281.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60565.68→60565.43 | stage=1 best=60280.96 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60565.43→60565.32 | stage=1 best=60280.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60565.32→60564.98 | stage=1 best=60280.51 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60564.98→60564.70 | stage=1 best=60280.23 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60564.70→60564.69 | stage=1 best=60280.22 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60564.69→60564.34 | stage=1 best=60279.87 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60564.34→60564.31 | stage=1 best=60279.84 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60564.31→60564.24 | stage=1 best=60279.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60564.24→60564.17 | stage=1 best=60279.70 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60564.17→60563.99 | stage=1 best=60279.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60563.99→60563.96 | stage=1 best=60279.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60563.96→60563.92 | stage=1 best=60279.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60563.92→60563.91 | stage=1 best=60279.44 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60563.91→60563.88 | stage=1 best=60279.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60563.88→60563.67 | stage=1 best=60279.20 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60563.67→60563.65 | stage=1 best=60279.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60563.65→60563.40 | stage=1 best=60278.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60563.40→60563.29 | stage=1 best=60278.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60563.29→60563.00 | stage=1 best=60278.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60563.00→60562.92 | stage=1 best=60278.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60562.92→60562.91 | stage=1 best=60278.44 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60562.91→60562.85 | stage=1 best=60278.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60562.85→60562.68 | stage=1 best=60278.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60562.68→60562.64 | stage=1 best=60278.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60562.64→60562.26 | stage=1 best=60277.79 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60562.26→60561.96 | stage=1 best=60277.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60561.96→60561.83 | stage=1 best=60277.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60561.83→60561.65 | stage=1 best=60277.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60561.65→60561.30 | stage=1 best=60276.83 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60561.30→60561.29 | stage=1 best=60276.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60561.29→60561.18 | stage=1 best=60276.71 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60561.18→60561.16 | stage=1 best=60276.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60561.16→60561.09 | stage=1 best=60276.62 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60561.09→60560.90 | stage=1 best=60276.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60560.90→60560.82 | stage=1 best=60276.35 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60560.82→60560.67 | stage=1 best=60276.20 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60560.67→60560.39 | stage=1 best=60275.92 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60560.39→60560.32 | stage=1 best=60275.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60560.32→60560.31 | stage=1 best=60275.84 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60560.31→60559.96 | stage=1 best=60275.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60559.96→60559.82 | stage=1 best=60275.35 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60559.82→60559.56 | stage=1 best=60275.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60559.56→60559.31 | stage=1 best=60274.84 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60559.31→60559.07 | stage=1 best=60274.60 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60559.07→60559.05 | stage=1 best=60274.58 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60559.05→60559.03 | stage=1 best=60274.56 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60559.03→60558.98 | stage=1 best=60274.51 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60558.98→60558.93 | stage=1 best=60274.46 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60558.93→60558.60 | stage=1 best=60274.13 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60558.60→60558.29 | stage=1 best=60273.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60558.29→60558.24 | stage=1 best=60273.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60558.24→60557.96 | stage=1 best=60273.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60557.96→60557.87 | stage=1 best=60273.40 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60557.87→60557.65 | stage=1 best=60273.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60557.65→60557.24 | stage=1 best=60272.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60557.24→60557.23 | stage=1 best=60272.76 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60557.23→60557.22 | stage=1 best=60272.75 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60557.22→60556.97 | stage=1 best=60272.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60556.97→60556.72 | stage=1 best=60272.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60556.72→60556.63 | stage=1 best=60272.16 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60556.63→60556.50 | stage=1 best=60272.03 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60556.50→60556.44 | stage=1 best=60271.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60556.44→60556.32 | stage=1 best=60271.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60556.32→60555.96 | stage=1 best=60271.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60555.96→60555.81 | stage=1 best=60271.34 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60555.81→60555.80 | stage=1 best=60271.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60555.80→60555.65 | stage=1 best=60271.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60555.65→60555.58 | stage=1 best=60271.11 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60555.58→60555.35 | stage=1 best=60270.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60555.35→60555.31 | stage=1 best=60270.84 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60555.31→60555.25 | stage=1 best=60270.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60555.25→60555.24 | stage=1 best=60270.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60555.24→60554.83 | stage=1 best=60270.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60554.83→60554.82 | stage=1 best=60270.35 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60554.82→60554.69 | stage=1 best=60270.22 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60554.69→60554.65 | stage=1 best=60270.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60554.65→60554.30 | stage=1 best=60269.83 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60554.30→60554.18 | stage=1 best=60269.71 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60554.18→60554.09 | stage=1 best=60269.62 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60554.09→60553.97 | stage=1 best=60269.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60553.97→60553.96 | stage=1 best=60269.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60553.96→60553.92 | stage=1 best=60269.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60553.92→60553.54 | stage=1 best=60269.07 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60553.54→60553.32 | stage=1 best=60268.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60553.32→60553.28 | stage=1 best=60268.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60553.28→60553.08 | stage=1 best=60268.61 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60553.08→60552.99 | stage=1 best=60268.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.99→60552.98 | stage=1 best=60268.51 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.98→60552.83 | stage=1 best=60268.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.83→60552.71 | stage=1 best=60268.24 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.71→60552.65 | stage=1 best=60268.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.65→60552.64 | stage=1 best=60268.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.64→60552.63 | stage=1 best=60268.16 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.63→60552.44 | stage=1 best=60267.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.44→60552.25 | stage=1 best=60267.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.25→60552.20 | stage=1 best=60267.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.20→60552.17 | stage=1 best=60267.70 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.17→60552.11 | stage=1 best=60267.64 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.11→60552.03 | stage=1 best=60267.56 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60552.03→60551.96 | stage=1 best=60267.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60551.96→60551.88 | stage=1 best=60267.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60551.88→60551.77 | stage=1 best=60267.30 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60551.77→60551.57 | stage=1 best=60267.10 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60551.57→60551.34 | stage=1 best=60266.87 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60551.34→60551.28 | stage=1 best=60266.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60551.28→60551.26 | stage=1 best=60266.79 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60551.26→60551.20 | stage=1 best=60266.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60551.20→60551.16 | stage=1 best=60266.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60551.16→60551.15 | stage=1 best=60266.68 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60551.15→60550.87 | stage=1 best=60266.40 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60550.87→60550.86 | stage=1 best=60266.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60550.86→60550.66 | stage=1 best=60266.19 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60550.66→60550.62 | stage=1 best=60266.15 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60550.62→60550.58 | stage=1 best=60266.11 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60550.58→60550.40 | stage=1 best=60265.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60550.40→60550.37 | stage=1 best=60265.90 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60550.37→60550.20 | stage=1 best=60265.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60550.20→60550.17 | stage=1 best=60265.70 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60550.17→60550.01 | stage=1 best=60265.54 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60550.01→60550.00 | stage=1 best=60265.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60550.00→60549.97 | stage=1 best=60265.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60549.97→60549.96 | stage=1 best=60265.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:27  INFO      trail_loop — [TRAIL] SL: 60549.96→60549.95 | stage=1 best=60265.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60549.95→60549.94 | stage=1 best=60265.47 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60549.94→60549.93 | stage=1 best=60265.46 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60549.93→60549.86 | stage=1 best=60265.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60549.86→60549.63 | stage=1 best=60265.16 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60549.63→60549.25 | stage=1 best=60264.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60549.25→60549.20 | stage=1 best=60264.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60549.20→60549.05 | stage=1 best=60264.58 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60549.05→60548.96 | stage=1 best=60264.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60548.96→60548.56 | stage=1 best=60264.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60548.56→60548.55 | stage=1 best=60264.08 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60548.55→60548.54 | stage=1 best=60264.07 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60548.54→60548.52 | stage=1 best=60264.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60548.52→60548.16 | stage=1 best=60263.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60548.16→60547.97 | stage=1 best=60263.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60547.97→60547.96 | stage=1 best=60263.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60547.96→60547.59 | stage=1 best=60263.12 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60547.59→60547.58 | stage=1 best=60263.11 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60547.58→60547.08 | stage=1 best=60262.61 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60547.08→60547.07 | stage=1 best=60262.60 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60547.07→60546.59 | stage=1 best=60262.12 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60546.59→60546.51 | stage=1 best=60262.04 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60546.51→60546.20 | stage=1 best=60261.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60546.20→60545.96 | stage=1 best=60261.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60545.96→60545.78 | stage=1 best=60261.31 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60545.78→60545.72 | stage=1 best=60261.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60545.72→60545.57 | stage=1 best=60261.10 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60545.57→60545.56 | stage=1 best=60261.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60545.56→60545.39 | stage=1 best=60260.92 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60545.39→60545.29 | stage=1 best=60260.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60545.29→60545.16 | stage=1 best=60260.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60545.16→60544.85 | stage=1 best=60260.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60544.85→60544.80 | stage=1 best=60260.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60544.80→60544.58 | stage=1 best=60260.11 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60544.58→60544.38 | stage=1 best=60259.91 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60544.38→60544.08 | stage=1 best=60259.61 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60544.08→60544.07 | stage=1 best=60259.60 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60544.07→60544.06 | stage=1 best=60259.59 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60544.06→60543.97 | stage=1 best=60259.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60543.97→60543.96 | stage=1 best=60259.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60543.96→60543.93 | stage=1 best=60259.46 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:45  INFO      trail_loop — [TRAIL] SL: 60543.93→60543.48 | stage=1 best=60259.01 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60543.48→60543.41 | stage=1 best=60258.94 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60543.41→60543.40 | stage=1 best=60258.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60543.40→60543.15 | stage=1 best=60258.68 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60543.15→60542.80 | stage=1 best=60258.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60542.80→60542.79 | stage=1 best=60258.32 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60542.79→60542.78 | stage=1 best=60258.31 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60542.78→60542.25 | stage=1 best=60257.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60542.25→60541.97 | stage=1 best=60257.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60541.97→60541.96 | stage=1 best=60257.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60541.96→60541.80 | stage=1 best=60257.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60541.80→60541.75 | stage=1 best=60257.28 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60541.75→60540.84 | stage=1 best=60256.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60540.84→60540.43 | stage=1 best=60255.96 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60540.43→60540.28 | stage=1 best=60255.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60540.28→60540.15 | stage=1 best=60255.68 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60540.15→60539.96 | stage=1 best=60255.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60539.96→60539.67 | stage=1 best=60255.20 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60539.67→60539.57 | stage=1 best=60255.10 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60539.57→60539.11 | stage=1 best=60254.64 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60539.11→60539.05 | stage=1 best=60254.58 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60539.05→60538.88 | stage=1 best=60254.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60538.88→60538.84 | stage=1 best=60254.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60538.84→60538.44 | stage=1 best=60253.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60538.44→60538.33 | stage=1 best=60253.86 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60538.33→60538.29 | stage=1 best=60253.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60538.29→60538.19 | stage=1 best=60253.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60538.19→60537.96 | stage=1 best=60253.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60537.96→60537.94 | stage=1 best=60253.47 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60537.94→60537.90 | stage=1 best=60253.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60537.90→60537.76 | stage=1 best=60253.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60537.76→60537.72 | stage=1 best=60253.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60537.72→60537.57 | stage=1 best=60253.10 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60537.57→60537.45 | stage=1 best=60252.98 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60537.45→60537.21 | stage=1 best=60252.74 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60537.21→60537.12 | stage=1 best=60252.65 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60537.12→60537.10 | stage=1 best=60252.63 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60537.10→60536.93 | stage=1 best=60252.46 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60536.93→60536.85 | stage=1 best=60252.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60536.85→60536.01 | stage=1 best=60251.54 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60536.01→60535.96 | stage=1 best=60251.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60535.96→60535.77 | stage=1 best=60251.30 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60535.77→60535.68 | stage=1 best=60251.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60535.68→60535.67 | stage=1 best=60251.20 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60535.67→60535.35 | stage=1 best=60250.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60535.35→60535.32 | stage=1 best=60250.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60535.32→60535.08 | stage=1 best=60250.61 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60535.08→60534.60 | stage=1 best=60250.13 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60534.60→60534.15 | stage=1 best=60249.68 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60534.15→60534.11 | stage=1 best=60249.64 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60534.11→60534.02 | stage=1 best=60249.55 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60534.02→60533.96 | stage=1 best=60249.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60533.96→60533.95 | stage=1 best=60249.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60533.95→60533.93 | stage=1 best=60249.46 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60533.93→60533.70 | stage=1 best=60249.23 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60533.70→60533.55 | stage=1 best=60249.08 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60533.55→60533.28 | stage=1 best=60248.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60533.28→60531.96 | stage=1 best=60247.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60531.96→60531.80 | stage=1 best=60247.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60531.80→60531.72 | stage=1 best=60247.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60531.72→60531.65 | stage=1 best=60247.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60531.65→60531.61 | stage=1 best=60247.14 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60531.61→60531.48 | stage=1 best=60247.01 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60531.48→60531.32 | stage=1 best=60246.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60531.32→60531.28 | stage=1 best=60246.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60531.28→60531.05 | stage=1 best=60246.58 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60531.05→60530.97 | stage=1 best=60246.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60530.97→60530.53 | stage=1 best=60246.06 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:46  INFO      trail_loop — [TRAIL] SL: 60530.53→60530.07 | stage=1 best=60245.60 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60530.07→60529.97 | stage=1 best=60245.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60529.97→60529.96 | stage=1 best=60245.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60529.96→60529.74 | stage=1 best=60245.27 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60529.74→60529.50 | stage=1 best=60245.03 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60529.50→60529.37 | stage=1 best=60244.90 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60529.37→60528.92 | stage=1 best=60244.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60528.92→60528.88 | stage=1 best=60244.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60528.88→60528.58 | stage=1 best=60244.11 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60528.58→60528.36 | stage=1 best=60243.89 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60528.36→60528.22 | stage=1 best=60243.75 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60528.22→60528.06 | stage=1 best=60243.59 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60528.06→60528.02 | stage=1 best=60243.55 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60528.02→60527.96 | stage=1 best=60243.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60527.96→60527.86 | stage=1 best=60243.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60527.86→60527.76 | stage=1 best=60243.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60527.76→60527.73 | stage=1 best=60243.26 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60527.73→60527.30 | stage=1 best=60242.83 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60527.30→60526.91 | stage=1 best=60242.44 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60526.91→60526.83 | stage=1 best=60242.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60526.83→60526.80 | stage=1 best=60242.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60526.80→60526.49 | stage=1 best=60242.02 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:47  INFO      trail_loop — [TRAIL] SL: 60526.49→60526.25 | stage=1 best=60241.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60526.25→60526.23 | stage=1 best=60241.76 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60526.23→60526.22 | stage=1 best=60241.75 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60526.22→60526.14 | stage=1 best=60241.67 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60526.14→60526.13 | stage=1 best=60241.66 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60526.13→60526.10 | stage=1 best=60241.63 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60526.10→60525.96 | stage=1 best=60241.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60525.96→60525.93 | stage=1 best=60241.46 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60525.93→60525.29 | stage=1 best=60240.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60525.29→60525.24 | stage=1 best=60240.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60525.24→60525.20 | stage=1 best=60240.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60525.20→60525.00 | stage=1 best=60240.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60525.00→60524.29 | stage=1 best=60239.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60524.29→60524.04 | stage=1 best=60239.57 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60524.04→60524.03 | stage=1 best=60239.56 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60524.03→60523.96 | stage=1 best=60239.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60523.96→60523.65 | stage=1 best=60239.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60523.65→60523.47 | stage=1 best=60239.00 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60523.47→60523.44 | stage=1 best=60238.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60523.44→60522.98 | stage=1 best=60238.51 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60522.98→60522.97 | stage=1 best=60238.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60522.97→60522.96 | stage=1 best=60238.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60522.96→60522.68 | stage=1 best=60238.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60522.68→60522.31 | stage=1 best=60237.84 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60522.31→60522.12 | stage=1 best=60237.65 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60522.12→60522.01 | stage=1 best=60237.54 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60522.01→60521.96 | stage=1 best=60237.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60521.96→60521.83 | stage=1 best=60237.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60521.83→60521.64 | stage=1 best=60237.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60521.64→60521.38 | stage=1 best=60236.91 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60521.38→60520.72 | stage=1 best=60236.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60520.72→60520.46 | stage=1 best=60235.99 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60520.46→60520.23 | stage=1 best=60235.76 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60520.23→60519.96 | stage=1 best=60235.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60519.96→60519.90 | stage=1 best=60235.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60519.90→60519.80 | stage=1 best=60235.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60519.80→60519.56 | stage=1 best=60235.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60519.56→60519.34 | stage=1 best=60234.87 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60519.34→60519.00 | stage=1 best=60234.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60519.00→60518.92 | stage=1 best=60234.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60518.92→60518.82 | stage=1 best=60234.35 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60518.82→60518.55 | stage=1 best=60234.08 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60518.55→60518.33 | stage=1 best=60233.86 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60518.33→60518.28 | stage=1 best=60233.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60518.28→60518.01 | stage=1 best=60233.54 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60518.01→60517.99 | stage=1 best=60233.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60517.99→60517.97 | stage=1 best=60233.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60517.97→60517.96 | stage=1 best=60233.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60517.96→60517.78 | stage=1 best=60233.31 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60517.78→60517.65 | stage=1 best=60233.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60517.65→60517.38 | stage=1 best=60232.91 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60517.38→60517.26 | stage=1 best=60232.79 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60517.26→60516.89 | stage=1 best=60232.42 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60516.89→60516.62 | stage=1 best=60232.15 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60516.62→60516.58 | stage=1 best=60232.11 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60516.58→60516.10 | stage=1 best=60231.63 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60516.10→60515.97 | stage=1 best=60231.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60515.97→60515.96 | stage=1 best=60231.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60515.96→60515.94 | stage=1 best=60231.47 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60515.94→60515.88 | stage=1 best=60231.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60515.88→60515.81 | stage=1 best=60231.34 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60515.81→60515.47 | stage=1 best=60231.00 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60515.47→60515.38 | stage=1 best=60230.91 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60515.38→60514.92 | stage=1 best=60230.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60514.92→60514.86 | stage=1 best=60230.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60514.86→60514.24 | stage=1 best=60229.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60514.24→60514.23 | stage=1 best=60229.76 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60514.23→60514.19 | stage=1 best=60229.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60514.19→60513.96 | stage=1 best=60229.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60513.96→60513.90 | stage=1 best=60229.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60513.90→60513.11 | stage=1 best=60228.64 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60513.11→60512.90 | stage=1 best=60228.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60512.90→60512.76 | stage=1 best=60228.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60512.76→60512.55 | stage=1 best=60228.08 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60512.55→60512.35 | stage=1 best=60227.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60512.35→60512.03 | stage=1 best=60227.56 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60512.03→60511.98 | stage=1 best=60227.51 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60511.98→60511.96 | stage=1 best=60227.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60511.96→60511.86 | stage=1 best=60227.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60511.86→60511.64 | stage=1 best=60227.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60511.64→60511.56 | stage=1 best=60227.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60511.56→60511.42 | stage=1 best=60226.95 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60511.42→60511.21 | stage=1 best=60226.74 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60511.21→60511.11 | stage=1 best=60226.64 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60511.11→60511.06 | stage=1 best=60226.59 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60511.06→60511.00 | stage=1 best=60226.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60511.00→60510.93 | stage=1 best=60226.46 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60510.93→60510.86 | stage=1 best=60226.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60510.86→60510.84 | stage=1 best=60226.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60510.84→60510.54 | stage=1 best=60226.07 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60510.54→60509.96 | stage=1 best=60225.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60509.96→60509.89 | stage=1 best=60225.42 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60509.89→60509.67 | stage=1 best=60225.20 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60509.67→60509.64 | stage=1 best=60225.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60509.64→60508.95 | stage=1 best=60224.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60508.95→60508.79 | stage=1 best=60224.32 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60508.79→60508.67 | stage=1 best=60224.20 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60508.67→60508.43 | stage=1 best=60223.96 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60508.43→60508.29 | stage=1 best=60223.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60508.29→60508.20 | stage=1 best=60223.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60508.20→60507.96 | stage=1 best=60223.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60507.96→60507.82 | stage=1 best=60223.35 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60507.82→60507.13 | stage=1 best=60222.66 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60507.13→60506.94 | stage=1 best=60222.47 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60506.94→60506.90 | stage=1 best=60222.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60506.90→60506.85 | stage=1 best=60222.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60506.85→60506.78 | stage=1 best=60222.31 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60506.78→60506.76 | stage=1 best=60222.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60506.76→60506.52 | stage=1 best=60222.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60506.52→60506.37 | stage=1 best=60221.90 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60506.37→60505.96 | stage=1 best=60221.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60505.96→60505.95 | stage=1 best=60221.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60505.95→60505.92 | stage=1 best=60221.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60505.92→60505.91 | stage=1 best=60221.44 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60505.91→60505.29 | stage=1 best=60220.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60505.29→60505.27 | stage=1 best=60220.80 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60505.27→60504.84 | stage=1 best=60220.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60504.84→60504.66 | stage=1 best=60220.19 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60504.66→60504.19 | stage=1 best=60219.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60504.19→60503.96 | stage=1 best=60219.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60503.96→60503.83 | stage=1 best=60219.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60503.83→60503.76 | stage=1 best=60219.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60503.76→60503.40 | stage=1 best=60218.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60503.40→60503.29 | stage=1 best=60218.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60503.29→60502.74 | stage=1 best=60218.27 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60502.74→60502.61 | stage=1 best=60218.14 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60502.61→60502.38 | stage=1 best=60217.91 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60502.38→60502.25 | stage=1 best=60217.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60502.25→60502.19 | stage=1 best=60217.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60502.19→60502.16 | stage=1 best=60217.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60502.16→60501.96 | stage=1 best=60217.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60501.96→60501.50 | stage=1 best=60217.03 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60501.50→60501.48 | stage=1 best=60217.01 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60501.48→60501.42 | stage=1 best=60216.95 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60501.42→60500.80 | stage=1 best=60216.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60500.80→60500.72 | stage=1 best=60216.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60500.72→60500.71 | stage=1 best=60216.24 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60500.71→60500.28 | stage=1 best=60215.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60500.28→60499.96 | stage=1 best=60215.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60499.96→60499.83 | stage=1 best=60215.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60499.83→60499.73 | stage=1 best=60215.26 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60499.73→60499.52 | stage=1 best=60215.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60499.52→60498.92 | stage=1 best=60214.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60498.92→60498.76 | stage=1 best=60214.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60498.76→60498.68 | stage=1 best=60214.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60498.68→60498.42 | stage=1 best=60213.95 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60498.42→60498.39 | stage=1 best=60213.92 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60498.39→60498.12 | stage=1 best=60213.65 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60498.12→60498.08 | stage=1 best=60213.61 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60498.08→60497.96 | stage=1 best=60213.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60497.96→60497.87 | stage=1 best=60213.40 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60497.87→60497.77 | stage=1 best=60213.30 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60497.77→60497.76 | stage=1 best=60213.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60497.76→60497.16 | stage=1 best=60212.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60497.16→60497.13 | stage=1 best=60212.66 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60497.13→60497.01 | stage=1 best=60212.54 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60497.01→60496.92 | stage=1 best=60212.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60496.92→60496.88 | stage=1 best=60212.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60496.88→60496.83 | stage=1 best=60212.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60496.83→60496.69 | stage=1 best=60212.22 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60496.69→60496.32 | stage=1 best=60211.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60496.32→60496.20 | stage=1 best=60211.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60496.20→60495.96 | stage=1 best=60211.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60495.96→60495.81 | stage=1 best=60211.34 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60495.81→60495.80 | stage=1 best=60211.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60495.80→60495.51 | stage=1 best=60211.04 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60495.51→60495.23 | stage=1 best=60210.76 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60495.23→60495.09 | stage=1 best=60210.62 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60495.09→60494.91 | stage=1 best=60210.44 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60494.91→60494.76 | stage=1 best=60210.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60494.76→60494.75 | stage=1 best=60210.28 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60494.75→60494.59 | stage=1 best=60210.12 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60494.59→60494.04 | stage=1 best=60209.57 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60494.04→60493.96 | stage=1 best=60209.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60493.96→60493.90 | stage=1 best=60209.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60493.90→60493.78 | stage=1 best=60209.31 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60493.78→60493.73 | stage=1 best=60209.26 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60493.73→60493.59 | stage=1 best=60209.12 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60493.59→60493.35 | stage=1 best=60208.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60493.35→60492.74 | stage=1 best=60208.27 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60492.74→60492.53 | stage=1 best=60208.06 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60492.53→60492.12 | stage=1 best=60207.65 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60492.12→60491.96 | stage=1 best=60207.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60491.96→60491.76 | stage=1 best=60207.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60491.76→60491.71 | stage=1 best=60207.24 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60491.71→60491.69 | stage=1 best=60207.22 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60491.69→60491.54 | stage=1 best=60207.07 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60491.54→60491.22 | stage=1 best=60206.75 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60491.22→60491.09 | stage=1 best=60206.62 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60491.09→60491.08 | stage=1 best=60206.61 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60491.08→60491.02 | stage=1 best=60206.55 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60491.02→60490.92 | stage=1 best=60206.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60490.92→60490.82 | stage=1 best=60206.35 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60490.82→60490.71 | stage=1 best=60206.24 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60490.71→60490.64 | stage=1 best=60206.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60490.64→60490.37 | stage=1 best=60205.90 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60490.37→60489.96 | stage=1 best=60205.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60489.96→60489.11 | stage=1 best=60204.64 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60489.11→60489.02 | stage=1 best=60204.55 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60489.02→60488.83 | stage=1 best=60204.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60488.83→60488.70 | stage=1 best=60204.23 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60488.70→60488.64 | stage=1 best=60204.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60488.64→60488.36 | stage=1 best=60203.89 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60488.36→60488.23 | stage=1 best=60203.76 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60488.23→60488.21 | stage=1 best=60203.74 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60488.21→60488.05 | stage=1 best=60203.58 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60488.05→60487.96 | stage=1 best=60203.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60487.96→60487.85 | stage=1 best=60203.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60487.85→60487.80 | stage=1 best=60203.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60487.80→60487.74 | stage=1 best=60203.27 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60487.74→60487.70 | stage=1 best=60203.23 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60487.70→60487.68 | stage=1 best=60203.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60487.68→60487.43 | stage=1 best=60202.96 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60487.43→60487.42 | stage=1 best=60202.95 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60487.42→60486.58 | stage=1 best=60202.11 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60486.58→60486.54 | stage=1 best=60202.07 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60486.54→60486.12 | stage=1 best=60201.65 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60486.12→60486.09 | stage=1 best=60201.62 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60486.09→60486.07 | stage=1 best=60201.60 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60486.07→60486.04 | stage=1 best=60201.57 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60486.04→60485.96 | stage=1 best=60201.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60485.96→60485.85 | stage=1 best=60201.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60485.85→60485.64 | stage=1 best=60201.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60485.64→60485.40 | stage=1 best=60200.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60485.40→60485.38 | stage=1 best=60200.91 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60485.38→60485.36 | stage=1 best=60200.89 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60485.36→60485.25 | stage=1 best=60200.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60485.25→60485.16 | stage=1 best=60200.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60485.16→60484.86 | stage=1 best=60200.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60484.86→60484.68 | stage=1 best=60200.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60484.68→60484.59 | stage=1 best=60200.12 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60484.59→60484.46 | stage=1 best=60199.99 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60484.46→60484.31 | stage=1 best=60199.84 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60484.31→60484.22 | stage=1 best=60199.75 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60484.22→60484.13 | stage=1 best=60199.66 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60484.13→60484.00 | stage=1 best=60199.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60484.00→60483.96 | stage=1 best=60199.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60483.96→60483.85 | stage=1 best=60199.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60483.85→60483.62 | stage=1 best=60199.15 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60483.62→60483.60 | stage=1 best=60199.13 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60483.60→60483.52 | stage=1 best=60199.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60483.52→60483.14 | stage=1 best=60198.67 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60483.14→60482.79 | stage=1 best=60198.32 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60482.79→60482.65 | stage=1 best=60198.18 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60482.65→60482.55 | stage=1 best=60198.08 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60482.55→60481.96 | stage=1 best=60197.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60481.96→60481.56 | stage=1 best=60197.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60481.56→60481.41 | stage=1 best=60196.94 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60481.41→60481.29 | stage=1 best=60196.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60481.29→60481.10 | stage=1 best=60196.63 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60481.10→60480.99 | stage=1 best=60196.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60480.99→60480.78 | stage=1 best=60196.31 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60480.78→60480.54 | stage=1 best=60196.07 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60480.54→60480.16 | stage=1 best=60195.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60480.16→60479.97 | stage=1 best=60195.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60479.97→60479.96 | stage=1 best=60195.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60479.96→60479.79 | stage=1 best=60195.32 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60479.79→60479.58 | stage=1 best=60195.11 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60479.58→60479.33 | stage=1 best=60194.86 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60479.33→60479.28 | stage=1 best=60194.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60479.28→60479.04 | stage=1 best=60194.57 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60479.04→60478.54 | stage=1 best=60194.07 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60478.54→60478.52 | stage=1 best=60194.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60478.52→60478.44 | stage=1 best=60193.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60478.44→60477.96 | stage=1 best=60193.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60477.96→60477.88 | stage=1 best=60193.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60477.88→60477.73 | stage=1 best=60193.26 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60477.73→60477.68 | stage=1 best=60193.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60477.68→60477.60 | stage=1 best=60193.13 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60477.60→60477.23 | stage=1 best=60192.76 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60477.23→60477.02 | stage=1 best=60192.55 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60477.02→60476.79 | stage=1 best=60192.32 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60476.79→60476.60 | stage=1 best=60192.13 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60476.60→60476.55 | stage=1 best=60192.08 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60476.55→60476.53 | stage=1 best=60192.06 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60476.53→60476.08 | stage=1 best=60191.61 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60476.08→60476.03 | stage=1 best=60191.56 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60476.03→60475.96 | stage=1 best=60191.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60475.96→60475.94 | stage=1 best=60191.47 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60475.94→60475.83 | stage=1 best=60191.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60475.83→60475.52 | stage=1 best=60191.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60475.52→60475.32 | stage=1 best=60190.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60475.32→60475.28 | stage=1 best=60190.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60475.28→60475.25 | stage=1 best=60190.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60475.25→60475.21 | stage=1 best=60190.74 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60475.21→60474.96 | stage=1 best=60190.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60474.96→60474.83 | stage=1 best=60190.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60474.83→60474.82 | stage=1 best=60190.35 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60474.82→60474.76 | stage=1 best=60190.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60474.76→60474.54 | stage=1 best=60190.07 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60474.54→60474.39 | stage=1 best=60189.92 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60474.39→60474.21 | stage=1 best=60189.74 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60474.21→60474.09 | stage=1 best=60189.62 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60474.09→60473.97 | stage=1 best=60189.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60473.97→60473.96 | stage=1 best=60189.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60473.96→60473.90 | stage=1 best=60189.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60473.90→60473.52 | stage=1 best=60189.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60473.52→60473.51 | stage=1 best=60189.04 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60473.51→60473.31 | stage=1 best=60188.84 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60473.31→60473.29 | stage=1 best=60188.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60473.29→60473.22 | stage=1 best=60188.75 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60473.22→60472.90 | stage=1 best=60188.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60472.90→60472.61 | stage=1 best=60188.14 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60472.61→60472.57 | stage=1 best=60188.10 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60472.57→60472.29 | stage=1 best=60187.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60472.29→60472.20 | stage=1 best=60187.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60472.20→60472.18 | stage=1 best=60187.71 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60472.18→60472.06 | stage=1 best=60187.59 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60472.06→60471.96 | stage=1 best=60187.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60471.96→60471.73 | stage=1 best=60187.26 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60471.73→60471.53 | stage=1 best=60187.06 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60471.53→60471.24 | stage=1 best=60186.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60471.24→60471.00 | stage=1 best=60186.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60471.00→60470.76 | stage=1 best=60186.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60470.76→60470.55 | stage=1 best=60186.08 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60470.55→60469.96 | stage=1 best=60185.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60469.96→60469.88 | stage=1 best=60185.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60469.88→60469.84 | stage=1 best=60185.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60469.84→60469.81 | stage=1 best=60185.34 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60469.81→60469.25 | stage=1 best=60184.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60469.25→60469.24 | stage=1 best=60184.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60469.24→60469.08 | stage=1 best=60184.61 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60469.08→60469.02 | stage=1 best=60184.55 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60469.02→60468.64 | stage=1 best=60184.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60468.64→60468.21 | stage=1 best=60183.74 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60468.21→60468.00 | stage=1 best=60183.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60468.00→60467.96 | stage=1 best=60183.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60467.96→60467.76 | stage=1 best=60183.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60467.76→60467.46 | stage=1 best=60182.99 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60467.46→60467.34 | stage=1 best=60182.87 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60467.34→60467.04 | stage=1 best=60182.57 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60467.04→60466.82 | stage=1 best=60182.35 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60466.82→60466.45 | stage=1 best=60181.98 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60466.45→60466.44 | stage=1 best=60181.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60466.44→60466.25 | stage=1 best=60181.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60466.25→60466.23 | stage=1 best=60181.76 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60466.23→60465.96 | stage=1 best=60181.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60465.96→60465.21 | stage=1 best=60180.74 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60465.21→60464.96 | stage=1 best=60180.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60464.96→60464.81 | stage=1 best=60180.34 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60464.81→60464.69 | stage=1 best=60180.22 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60464.69→60464.51 | stage=1 best=60180.04 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60464.51→60464.50 | stage=1 best=60180.03 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60464.50→60464.27 | stage=1 best=60179.80 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60464.27→60464.24 | stage=1 best=60179.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60464.24→60463.98 | stage=1 best=60179.51 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60463.98→60463.96 | stage=1 best=60179.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60463.96→60463.63 | stage=1 best=60179.16 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60463.63→60463.15 | stage=1 best=60178.68 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60463.15→60463.03 | stage=1 best=60178.56 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60463.03→60462.85 | stage=1 best=60178.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60462.85→60462.84 | stage=1 best=60178.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60462.84→60462.63 | stage=1 best=60178.16 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60462.63→60461.96 | stage=1 best=60177.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60461.96→60461.40 | stage=1 best=60176.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60461.40→60461.31 | stage=1 best=60176.84 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60461.31→60460.96 | stage=1 best=60176.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60460.96→60460.40 | stage=1 best=60175.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60460.40→60460.26 | stage=1 best=60175.79 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60460.26→60459.96 | stage=1 best=60175.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60459.96→60459.84 | stage=1 best=60175.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60459.84→60459.72 | stage=1 best=60175.25 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60459.72→60459.64 | stage=1 best=60175.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60459.64→60459.57 | stage=1 best=60175.10 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60459.57→60459.48 | stage=1 best=60175.01 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60459.48→60459.13 | stage=1 best=60174.66 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60459.13→60459.11 | stage=1 best=60174.64 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60459.11→60458.52 | stage=1 best=60174.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60458.52→60458.45 | stage=1 best=60173.98 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60458.45→60458.02 | stage=1 best=60173.55 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60458.02→60457.96 | stage=1 best=60173.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60457.96→60457.76 | stage=1 best=60173.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60457.76→60457.50 | stage=1 best=60173.03 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60457.50→60457.43 | stage=1 best=60172.96 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60457.43→60456.83 | stage=1 best=60172.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60456.83→60456.69 | stage=1 best=60172.22 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60456.69→60456.60 | stage=1 best=60172.13 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60456.60→60456.56 | stage=1 best=60172.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60456.56→60456.48 | stage=1 best=60172.01 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60456.48→60455.96 | stage=1 best=60171.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60455.96→60455.33 | stage=1 best=60170.86 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60455.33→60454.78 | stage=1 best=60170.31 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60454.78→60454.50 | stage=1 best=60170.03 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60454.50→60454.44 | stage=1 best=60169.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60454.44→60454.36 | stage=1 best=60169.89 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60454.36→60454.10 | stage=1 best=60169.63 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60454.10→60453.99 | stage=1 best=60169.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60453.99→60453.96 | stage=1 best=60169.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60453.96→60453.48 | stage=1 best=60169.01 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60453.48→60452.84 | stage=1 best=60168.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60452.84→60452.53 | stage=1 best=60168.06 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60452.53→60452.40 | stage=1 best=60167.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60452.40→60452.36 | stage=1 best=60167.89 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60452.36→60451.96 | stage=1 best=60167.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60451.96→60451.88 | stage=1 best=60167.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60451.88→60451.51 | stage=1 best=60167.04 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60451.51→60451.32 | stage=1 best=60166.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60451.32→60450.46 | stage=1 best=60165.99 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60450.46→60450.17 | stage=1 best=60165.70 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60450.17→60450.11 | stage=1 best=60165.64 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60450.11→60450.09 | stage=1 best=60165.62 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60450.09→60449.98 | stage=1 best=60165.51 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60449.98→60449.96 | stage=1 best=60165.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60449.96→60449.85 | stage=1 best=60165.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60449.85→60449.27 | stage=1 best=60164.80 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60449.27→60448.99 | stage=1 best=60164.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60448.99→60448.96 | stage=1 best=60164.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60448.96→60448.87 | stage=1 best=60164.40 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60448.87→60448.32 | stage=1 best=60163.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60448.32→60448.04 | stage=1 best=60163.57 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60448.04→60447.96 | stage=1 best=60163.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60447.96→60447.89 | stage=1 best=60163.42 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60447.89→60446.84 | stage=1 best=60162.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60446.84→60446.40 | stage=1 best=60161.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60446.40→60446.35 | stage=1 best=60161.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60446.35→60446.08 | stage=1 best=60161.61 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60446.08→60445.96 | stage=1 best=60161.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60445.96→60445.27 | stage=1 best=60160.80 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60445.27→60444.97 | stage=1 best=60160.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60444.97→60444.64 | stage=1 best=60160.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60444.64→60444.07 | stage=1 best=60159.60 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60444.07→60443.96 | stage=1 best=60159.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60443.96→60443.83 | stage=1 best=60159.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60443.83→60443.63 | stage=1 best=60159.16 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60443.63→60443.56 | stage=1 best=60159.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60443.56→60443.50 | stage=1 best=60159.03 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60443.50→60443.39 | stage=1 best=60158.92 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60443.39→60443.21 | stage=1 best=60158.74 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:48  INFO      trail_loop — [TRAIL] SL: 60443.21→60443.05 | stage=1 best=60158.58 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60443.05→60442.80 | stage=1 best=60158.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60442.80→60442.60 | stage=1 best=60158.13 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60442.60→60442.28 | stage=1 best=60157.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60442.28→60442.26 | stage=1 best=60157.79 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60442.26→60442.19 | stage=1 best=60157.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60442.19→60442.13 | stage=1 best=60157.66 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60442.13→60442.02 | stage=1 best=60157.55 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60442.02→60441.96 | stage=1 best=60157.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60441.96→60441.89 | stage=1 best=60157.42 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60441.89→60441.74 | stage=1 best=60157.27 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60441.74→60441.56 | stage=1 best=60157.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60441.56→60441.28 | stage=1 best=60156.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60441.28→60441.07 | stage=1 best=60156.60 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60441.07→60441.05 | stage=1 best=60156.58 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60441.05→60441.00 | stage=1 best=60156.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60441.00→60440.83 | stage=1 best=60156.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60440.83→60440.81 | stage=1 best=60156.34 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60440.81→60440.60 | stage=1 best=60156.13 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60440.60→60440.37 | stage=1 best=60155.90 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60440.37→60440.35 | stage=1 best=60155.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60440.35→60440.30 | stage=1 best=60155.83 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60440.30→60439.96 | stage=1 best=60155.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60439.96→60439.80 | stage=1 best=60155.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60439.80→60439.78 | stage=1 best=60155.31 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60439.78→60439.70 | stage=1 best=60155.23 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60439.70→60439.32 | stage=1 best=60154.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60439.32→60439.31 | stage=1 best=60154.84 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60439.31→60438.83 | stage=1 best=60154.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60438.83→60438.44 | stage=1 best=60153.97 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60438.44→60438.35 | stage=1 best=60153.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60438.35→60438.19 | stage=1 best=60153.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60438.19→60438.08 | stage=1 best=60153.61 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60438.08→60438.07 | stage=1 best=60153.60 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:30:54  INFO      trail_loop — [TRAIL] SL: 60438.07→60437.96 | stage=1 best=60153.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:32:21  INFO      trail_loop — [TRAIL] SL: 60437.96→60437.92 | stage=1 best=60153.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:32:21  INFO      trail_loop — [TRAIL] SL: 60437.92→60437.88 | stage=1 best=60153.41 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:32:21  INFO      trail_loop — [TRAIL] SL: 60437.88→60437.64 | stage=1 best=60153.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:32:21  INFO      trail_loop — [TRAIL] SL: 60437.64→60437.41 | stage=1 best=60152.94 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:32:21  INFO      trail_loop — [TRAIL] SL: 60437.41→60437.30 | stage=1 best=60152.83 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:32:21  INFO      trail_loop — [TRAIL] SL: 60437.30→60437.15 | stage=1 best=60152.68 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:32:21  INFO      trail_loop — [TRAIL] SL: 60437.15→60437.02 | stage=1 best=60152.55 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:32:21  INFO      trail_loop — [TRAIL] SL: 60437.02→60436.57 | stage=1 best=60152.10 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:32:34  INFO      trail_loop — [TRAIL] SL: 60436.57→60436.26 | stage=1 best=60151.79 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:32:35  INFO      trail_loop — [TRAIL] SL: 60436.26→60436.25 | stage=1 best=60151.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60436.25→60436.19 | stage=1 best=60151.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60436.19→60436.11 | stage=1 best=60151.64 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60436.11→60435.96 | stage=1 best=60151.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60435.96→60435.69 | stage=1 best=60151.22 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60435.69→60435.56 | stage=1 best=60151.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60435.56→60435.22 | stage=1 best=60150.75 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60435.22→60435.19 | stage=1 best=60150.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60435.19→60435.18 | stage=1 best=60150.71 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60435.18→60435.12 | stage=1 best=60150.65 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60435.12→60435.00 | stage=1 best=60150.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60435.00→60434.95 | stage=1 best=60150.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60434.95→60434.83 | stage=1 best=60150.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60434.83→60434.81 | stage=1 best=60150.34 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60434.81→60434.76 | stage=1 best=60150.29 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60434.76→60434.57 | stage=1 best=60150.10 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60434.57→60434.55 | stage=1 best=60150.08 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60434.55→60434.45 | stage=1 best=60149.98 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60434.45→60434.28 | stage=1 best=60149.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60434.28→60434.25 | stage=1 best=60149.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:10  INFO      trail_loop — [TRAIL] SL: 60434.25→60433.97 | stage=1 best=60149.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.97→60433.96 | stage=1 best=60149.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.96→60433.94 | stage=1 best=60149.47 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.94→60433.80 | stage=1 best=60149.33 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.80→60433.79 | stage=1 best=60149.32 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.79→60433.74 | stage=1 best=60149.27 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.74→60433.64 | stage=1 best=60149.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.64→60433.56 | stage=1 best=60149.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.56→60433.48 | stage=1 best=60149.01 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.48→60433.37 | stage=1 best=60148.90 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.37→60433.36 | stage=1 best=60148.89 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.36→60433.29 | stage=1 best=60148.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.29→60433.15 | stage=1 best=60148.68 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.15→60433.14 | stage=1 best=60148.67 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60433.14→60432.97 | stage=1 best=60148.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60432.97→60432.83 | stage=1 best=60148.36 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60432.83→60432.66 | stage=1 best=60148.19 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60432.66→60432.29 | stage=1 best=60147.82 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60432.29→60432.00 | stage=1 best=60147.53 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60432.00→60431.99 | stage=1 best=60147.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60431.99→60431.96 | stage=1 best=60147.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60431.96→60431.77 | stage=1 best=60147.30 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60431.77→60431.64 | stage=1 best=60147.17 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60431.64→60431.09 | stage=1 best=60146.62 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60431.09→60430.96 | stage=1 best=60146.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60430.96→60430.92 | stage=1 best=60146.45 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60430.92→60430.69 | stage=1 best=60146.22 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60430.69→60430.68 | stage=1 best=60146.21 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60430.68→60430.35 | stage=1 best=60145.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60430.35→60429.97 | stage=1 best=60145.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60429.97→60429.96 | stage=1 best=60145.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60429.96→60429.95 | stage=1 best=60145.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60429.95→60429.85 | stage=1 best=60145.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60429.85→60429.67 | stage=1 best=60145.20 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60429.67→60429.42 | stage=1 best=60144.95 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60429.42→60429.40 | stage=1 best=60144.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60429.40→60429.35 | stage=1 best=60144.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60429.35→60429.31 | stage=1 best=60144.84 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60429.31→60429.04 | stage=1 best=60144.57 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60429.04→60429.02 | stage=1 best=60144.55 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60429.02→60429.01 | stage=1 best=60144.54 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60429.01→60428.52 | stage=1 best=60144.05 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60428.52→60428.35 | stage=1 best=60143.88 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60428.35→60428.20 | stage=1 best=60143.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60428.20→60428.14 | stage=1 best=60143.67 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60428.14→60427.96 | stage=1 best=60143.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60427.96→60427.95 | stage=1 best=60143.48 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60427.95→60427.73 | stage=1 best=60143.26 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60427.73→60427.56 | stage=1 best=60143.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60427.56→60426.84 | stage=1 best=60142.37 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60426.84→60426.74 | stage=1 best=60142.27 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60426.74→60426.40 | stage=1 best=60141.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60426.40→60426.33 | stage=1 best=60141.86 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60426.33→60426.19 | stage=1 best=60141.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60426.19→60426.17 | stage=1 best=60141.70 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60426.17→60426.16 | stage=1 best=60141.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60426.16→60425.97 | stage=1 best=60141.50 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60425.97→60425.96 | stage=1 best=60141.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60425.96→60425.56 | stage=1 best=60141.09 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60425.56→60425.47 | stage=1 best=60141.00 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60425.47→60425.40 | stage=1 best=60140.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60425.40→60425.34 | stage=1 best=60140.87 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60425.34→60425.12 | stage=1 best=60140.65 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60425.12→60425.02 | stage=1 best=60140.55 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60425.02→60424.96 | stage=1 best=60140.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60424.96→60424.85 | stage=1 best=60140.38 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60424.85→60424.82 | stage=1 best=60140.35 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60424.82→60424.79 | stage=1 best=60140.32 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60424.79→60424.28 | stage=1 best=60139.81 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60424.28→60424.25 | stage=1 best=60139.78 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60424.25→60424.20 | stage=1 best=60139.73 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60424.20→60424.19 | stage=1 best=60139.72 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:15  INFO      trail_loop — [TRAIL] SL: 60424.19→60424.16 | stage=1 best=60139.69 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60424.16→60423.96 | stage=1 best=60139.49 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.96→60423.93 | stage=1 best=60139.46 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.93→60423.87 | stage=1 best=60139.40 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.87→60423.86 | stage=1 best=60139.39 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.86→60423.40 | stage=1 best=60138.93 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.40→60423.34 | stage=1 best=60138.87 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.34→60423.30 | stage=1 best=60138.83 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.30→60423.27 | stage=1 best=60138.80 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.27→60423.24 | stage=1 best=60138.77 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.24→60423.23 | stage=1 best=60138.76 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.23→60423.18 | stage=1 best=60138.71 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.18→60423.17 | stage=1 best=60138.70 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.17→60423.15 | stage=1 best=60138.68 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60423.15→60422.99 | stage=1 best=60138.52 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60422.99→60422.90 | stage=1 best=60138.43 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60422.90→60422.82 | stage=1 best=60138.35 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60422.82→60422.81 | stage=1 best=60138.34 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60422.81→60422.50 | stage=1 best=60138.03 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60422.50→60422.33 | stage=1 best=60137.86 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:35:42  INFO      trail_loop — [TRAIL] SL: 60422.33→60422.32 | stage=1 best=60137.85 off=284.47 atr=711.17 entry=60359.50 src=binance
+2026-06-05 21:36:41  INFO      trail_loop — [TRAIL] Exit fired: reason=Trail SL price=60422.32 source=delta atr=711.17 entry=60359.50 best=60137.85
+2026-06-05 21:36:41  WARNING   orders.manager — [OM] cancel_bracket failed (ignored): Delta DELETE /v2/orders/bracket returned 404: Not Found
+2026-06-05 21:36:41  INFO      orders.manager — [OM] Closing position | side=buy  reason=Trail SL
+2026-06-05 21:36:42  INFO      orders.manager — [OM] Position closed | id=1348492889  fill=60423.00
+2026-06-05 21:36:42  INFO      main — [EXIT] reason=Trail SL  source=delta  entry=60359.5  exit=60422.32  gross_pl=-0.062819 USD
+2026-06-05 21:36:42  INFO      infra.journal — Trade logged [sqlite] | Trend Short SHORT  qty=1 lots  entry=60359.50 exit=60422.32  points=-62.82  P/L=-0.0628 USD  reason=Trail SL
+2026-06-05 21:36:43  ERROR     infra.gsheet — GSheet connection failed: 
+2026-06-05 21:36:43  ERROR     infra.gsheet — GSheet log_trade failed: 
+2026-06-05 21:36:43  INFO      infra.journal — Open trade cleared from DB
+2026-06-05 21:36:43  INFO      infra.telegram — Telegram sent: '🔻 <b>EXIT — SHORT</b>  |  <code>1</code> lot\n<code>2026-06-05 21:36:43 IST</code>\n\nEntry         : <code>$60,359.50</code>\nExit          : <b>$60,422.32</b>\nPoints        : <code>-62.82</code>\n<b>Gross P&amp;L : $-0.0628 USD</b>\nReason        : <code>Trail SL</code>'
+2026-06-05 21:41:14  INFO      main — Shutting down...
+2026-06-05 21:41:14  INFO      server — [SERVER] Dashboard stopped, port released.
+2026-06-05 21:41:14  INFO      trail_loop — TrailMonitor stopped.
+2026-06-05 21:41:14  INFO      feed.binance_price_feed — [BINANCE-PX] Feed stopped.
+2026-06-05 21:41:14  INFO      feed.fills_feed — [FILLS] FillsFeed stopped.
+2026-06-05 21:41:15  INFO      infra.telegram — Telegram sent: '🔴 <b>Shiva Sniper Bot Stopped</b>'
+2026-06-05 21:41:15  INFO      main — Shutdown complete.
+2026-06-05 21:41:16  WARNING   infra.whatsapp — WhatsApp disabled — set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_TO_NUMBER in .env to enable notifications.
+2026-06-05 21:41:16  INFO      infra.journal — Connected to SQLite at /root/Bot-v10/journal.db
+2026-06-05 21:41:16  INFO      infra.journal — Journal initialised [sqlite] | GSheet=enabled
+2026-06-05 21:41:16  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-06-05 21:41:16  INFO      main —   Shiva Sniper Bot v10 — Starting
+2026-06-05 21:41:16  INFO      main —   Symbol=BTC/USD:USD  TF=30m
+2026-06-05 21:41:16  INFO      main —   Position size: 0.001 BTC → 1 lots
+2026-06-05 21:41:16  INFO      main —   FILTER_VOL_ENABLED=False  (false = full Pine parity)
+2026-06-05 21:41:16  INFO      main —   MAX_ENTRY_SLIP_ATR_FRAC=0.3  (SL recalc threshold)
+2026-06-05 21:41:16  INFO      main — ══════════════════════════════════════════════════════════════════════
+2026-06-05 21:41:17  INFO      orders.manager — [OM] Resolved product_id=27 product_symbol=BTCUSD
+2026-06-05 21:41:17  INFO      orders.manager — [OM] Initialized — symbol=BTC/USD:USD  qty=1
+2026-06-05 21:41:17  INFO      main — [STARTUP] Flat on Delta — cancelled all stale bracket orders (clean slate)
+2026-06-05 21:41:19  INFO      infra.telegram — Telegram sent: '🟢 <b>Shiva Sniper Bot v10 Started</b>\nSymbol: <code>BTC/USD:USD</code>  TF: <code>30m</code>\nQty: <code>1 lots</code> (0.001 BTC)\nVolume filter: <code>OFF (Pine parity)</code>'
+2026-06-05 21:41:19  INFO      feed.binance_price_feed — [BINANCE-PX] Feed started → aggTrade stream
+2026-06-05 21:41:19  INFO      feed.fills_feed — [FILLS] FillsFeed started — listening for bracket fills on BTCUSD
+2026-06-05 21:41:19  INFO      server — Dashboard LIVE → http://127.0.0.1:10000
+2026-06-05 21:41:19  INFO      feed.ws_feed — Loading market map from Delta India (https://api.india.delta.exchange)...
+2026-06-05 21:41:19  INFO      infra.telegram_controller — TelegramController started (long-poll)
+2026-06-05 21:41:19  INFO      feed.binance_price_feed — [BINANCE-PX] Connecting → wss://stream.binance.com:9443/ws/btcusdt@aggTrade
+2026-06-05 21:41:19  INFO      infra.whatsapp_controller — WhatsAppController webhook server started on port 8080
+2026-06-05 21:41:19  INFO      feed.fills_feed — [FILLS] WS auth sent — waiting for confirmation...
+2026-06-05 21:41:19  INFO      feed.fills_feed — [FILLS] Subscribed to user_trades | symbol=BTCUSD
+2026-06-05 21:41:19  INFO      feed.binance_price_feed — [BINANCE-PX] Connected ✅  (aggTrade stream live)
+2026-06-05 21:41:19  INFO      feed.ws_feed — Symbol BTC/USD:USD verified ✅
+2026-06-05 21:41:20  INFO      feed.ws_feed — Loading 1050 historical bars via Binance REST for [BTC/USDT] [30m]...
+2026-06-05 21:41:21  INFO      feed.ws_feed — [BINANCE-SIGNAL] Fetched 1000/1050 bars...
+2026-06-05 21:41:21  INFO      feed.ws_feed — [BINANCE-SIGNAL] Fetched 1050/1050 bars...
+2026-06-05 21:41:21  INFO      feed.ws_feed — [BINANCE-SIGNAL] Loaded 1050 Binance bars ✅ (indicators will match Pine's data source)
+2026-06-05 21:41:22  INFO      feed.ws_feed — Feed ready — 1049 bars loaded (need 1000, have 1049 — OK ✅) [source=Binance]
+2026-06-05 21:41:22  INFO      main — Feed ready — waiting for first bar close...
+2026-06-05 21:41:22  INFO      feed.ws_feed — WebSocket connecting → wss://socket.india.delta.exchange | channels=candlestick_30m,v2/ticker symbol=BTCUSD
+2026-06-05 21:41:22  INFO      feed.ws_feed — WebSocket subscribed ✅
+2026-06-05 21:41:23  INFO      feed.ws_feed — [FEED] FIX-PEAK-REST [Binance]: closed bar corrected | true_high=60852.90 true_low=60000.00 true_close=60438.01
+2026-06-05 21:41:23  INFO      feed.ws_feed — ✅ Bar confirmed [WS] | closed_boundary=1780673400000 | new_boundary=1780675200000 | bars=1049 — evaluating signals...
+2026-06-05 21:41:23  INFO      main — [BAR] close=60438.01  atr=711.17  adx=35.5  rsi=33.3  trend=True  range=False  filters=OK  [atr=True body=True vol=True]
+2026-06-05 21:41:23  INFO      main — [STARTUP GUARD] Strategy math detected Trend Short on the downloaded history. Ignoring past signal to ensure Pine Parity. Bot will only enter on new live candles.

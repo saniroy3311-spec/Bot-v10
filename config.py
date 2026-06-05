@@ -7,7 +7,7 @@ PREVIOUS CHANGES (2026-06-03)
   TREND_RR 5→4, RANGE_RR 3→2.5, TREND_ATR_MULT 0.9→0.6, RANGE_ATR_MULT 0.7→0.5,
   MAX_SL_MULT 2→1.5, MAX_SL_POINTS 1500→500, BE_MULT 1→0.6,
   TRAIL_OFFSET_FLOOR 0.15→0.0, PINE_MINTICK 0.1→1.0,
-  BREAKOUT_BUFFER_PTS 0→40, FILTER_VOL_ENABLED true→false
+  BREAKOUT_BUFFER_PTS = 0
 
 TRADE-MATCH FIX (2026-06-05) — Fixes "trade mis + extra trade punch" report
 =============================================================================
@@ -25,7 +25,7 @@ Four root causes identified for bot trades not matching the Pine trade list:
     FIX:    Re-enable FILTER_VOL_ENABLED=true now that Binance data is the source.
             Set FILTER_VOL_ENABLED=false in .env only if BINANCE_SIGNAL_FEED=false.
 
-  FIX-B | BREAKOUT_BUFFER_PTS  40 → 5  (HIGH — missed Pine trend signals)
+  FIX-B | BREAKOUT_BUFFER_PTS = 0
     CAUSE:  Buffer of 40 was added to compensate for Delta REST OHLCV being
             30–80 pts different from TradingView's. With BINANCE_SIGNAL_FEED=true,
             prev_high/prev_low already come from Binance (= TradingView data).
@@ -218,7 +218,7 @@ BE_MULT = float(os.environ.get("BE_MULT", "0.6"))
 RSI_OB  = int(os.environ.get("RSI_OB", "70"))
 RSI_OS  = int(os.environ.get("RSI_OS", "30"))
 
-# BREAKOUT_BUFFER_PTS — ROOT CAUSE OF "MISSED PINE TRADES"
+# BREAKOUT_BUFFER_PTS = 0
 #
 # HISTORY: Was set to 40 to compensate for Delta REST OHLCV being 30–80 pts
 # different from TradingView's BTCUSDT candles on the same bar. A bar with
@@ -237,7 +237,7 @@ RSI_OS  = int(os.environ.get("RSI_OS", "30"))
 # If you see ghost entries return:  increase to 10 or 15.
 # If you see missed signals remain: set to 0 (exact Pine parity with Binance).
 # Only set high (30-50) if BINANCE_SIGNAL_FEED=false.
-BREAKOUT_BUFFER_PTS = float(os.environ.get("BREAKOUT_BUFFER_PTS", "5"))
+BREAKOUT_BUFFER_PTS = 0
 
 # ──────────────────────────────────────────────
 # COMMISSION + BUFFERS
