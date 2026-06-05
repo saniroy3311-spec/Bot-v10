@@ -1,58 +1,66 @@
 """
-config.py - Shiva Sniper v10  (PINE-ALIGNED 2026-06-03, BUG-FIX-3 2026-06-03)
+config.py - Shiva Sniper v10  (PINE-ALIGNED 2026-06-03 → TRADE-MATCH-FIX 2026-06-05)
 
-WHAT CHANGED IN THIS VERSION
-============================
-Every numeric input in this file was audited against the live Pine script
-"Shiva Sniper v6.5 — Delta India". Values that differed were aligned to Pine.
-The bot's previous config had drifted from Pine on ~10 parameters, which is
-why bot exit prices diverged from Pine chart labels.
+PREVIOUS CHANGES (2026-06-03)
+==============================
+  ADX_TREND_TH 17→22, FILTER_ATR_MULT 1.6→1.4, FILTER_BODY_MULT 0.4→0.5,
+  TREND_RR 5→4, RANGE_RR 3→2.5, TREND_ATR_MULT 0.9→0.6, RANGE_ATR_MULT 0.7→0.5,
+  MAX_SL_MULT 2→1.5, MAX_SL_POINTS 1500→500, BE_MULT 1→0.6,
+  TRAIL_OFFSET_FLOOR 0.15→0.0, PINE_MINTICK 0.1→1.0,
+  BREAKOUT_BUFFER_PTS 0→40, FILTER_VOL_ENABLED true→false
 
-Aligned to Pine:
-  ADX_TREND_TH        17  → 22       (Pine adxTrendTh)
-  FILTER_ATR_MULT     1.6 → 1.4      (Pine filterATRMult)
-  FILTER_BODY_MULT    0.4 → 0.5      (Pine filterBodyMult)
-  TREND_RR            5.0 → 4.0      (Pine trendRR)
-  RANGE_RR            3.0 → 2.5      (Pine rangeRR)
-  TREND_ATR_MULT      0.9 → 0.6      (Pine trendATRmul)
-  RANGE_ATR_MULT      0.7 → 0.5      (Pine rangeATRmul)
-  MAX_SL_MULT         2.0 → 1.5      (Pine maxSLmul)
-  MAX_SL_POINTS       1500 → 500     (Pine maxSLpoints)
-  BE_MULT             1.0 → 0.6      (Pine beMult)
-  TRAIL_OFFSET_FLOOR  0.15 → 0.0     (Pine has NO floor)
-  TRAIL_ARM_FLOOR     0.25 → 0.0     (Pine has NO floor)
+TRADE-MATCH FIX (2026-06-05) — Fixes "trade mis + extra trade punch" report
+=============================================================================
+Four root causes identified for bot trades not matching the Pine trade list:
 
-BUG-FIX-3 (2026-06-03) — Three root causes fixed that made bot fire trades
-TV never showed, and exit at completely different prices:
+  FIX-A | FILTER_VOL_ENABLED  false → true  (CRITICAL — extra trade punches)
+    CAUSE:  The previous fix disabled the volume filter because Delta REST
+            volumes (~3% of TradingView's) made every bar fail volOK.
+            BUT BINANCE_SIGNAL_FEED=true was already active — indicator bars
+            come from Binance REST (the same source TradingView uses for
+            BTCUSDT). Binance volumes ARE directly comparable to Pine's volSMA.
+    EFFECT: With filter OFF, bot entered on low-volume bars where Pine's
+            filtersOK = false (volOK failed). Every such bar is an "extra punch"
+            that has no match on the Pine chart.
+    FIX:    Re-enable FILTER_VOL_ENABLED=true now that Binance data is the source.
+            Set FILTER_VOL_ENABLED=false in .env only if BINANCE_SIGNAL_FEED=false.
 
-  BUG-1 | FILTER_VOL_ENABLED  "true"  → "false"
-    Delta Exchange REST volumes are ~3% of TradingView's volumes. With the
-    filter ON every bar fails volOK → bot drops every signal that TV fires.
-    Pine's volOK uses TV data; the bot cannot replicate that with Delta REST.
-    Fix: disable the volume filter. ATR + body filters still guard bad bars.
+  FIX-B | BREAKOUT_BUFFER_PTS  40 → 5  (HIGH — missed Pine trend signals)
+    CAUSE:  Buffer of 40 was added to compensate for Delta REST OHLCV being
+            30–80 pts different from TradingView's. With BINANCE_SIGNAL_FEED=true,
+            prev_high/prev_low already come from Binance (= TradingView data).
+    EFFECT: The 40pt buffer over-filtered: any Pine trend entry where
+            close > prev_low (Pine fires) but close < prev_low + 40 (bot skips)
+            was missed. These appeared as "trade mis" in the comparison.
+    FIX:    Reduce to 5pts (covers only REST timing jitter; ~1 pip).
+            Set to 0 for exact Pine parity. Only use 30–50 if BINANCE_SIGNAL_FEED=false.
 
-  BUG-2 | PINE_MINTICK         0.1    → 1.0
-    Pine's strategy.exit(trail_points, trail_offset) takes values in TICKS.
-    The correct mintick for BTCUSDT.P on Delta India is 0.5 (USD per tick),
-    but Pine's trail_points/trail_offset inputs are dimensionless ATR
-    multiples — they are NOT in tick units. Multiplying by mintick shrinks
-    the offset by 10×, making the bot's trail 10× tighter than Pine's.
-    Example: ATR=400, stage-1 offset = 400×0.4×0.1 = 16 pts (old bot)
-                                     vs 400×0.4×1.0 = 160 pts (Pine exact).
-    Fix: set PINE_MINTICK=1.0 so offset = ATR × mult, identical to Pine.
+  FIX-C | Intrabar stage upgrades REMOVED from trail_loop._evaluate()  (HIGH)
+    CAUSE:  trail_loop.py advanced trail stages on every price tick (intrabar).
+            Pine with calc_on_every_tick=false only runs its strategy body at
+            bar close, so trailStage only upgrades at bar close.
+    EFFECT: Bot reached stage 2/3 on an intrabar spike, immediately tightened
+            the trail offset, then trailed out at a worse price than Pine.
+            These showed as Trail SL exits at different prices vs Pine chart.
+    FIX:    Stage upgrades moved to on_bar_close() only (already present there).
+            Intrabar block removed from _evaluate() in trail_loop.py.
 
-  BUG-3 | BREAKOUT_BUFFER_PTS  0      → 40
-    Pine's trendLong uses TradingView's close > high[1]. The bot uses
-    Delta Exchange REST data for the same check. Delta's prev_high is
-    routinely 30–80 pts lower than TradingView's on the same bar, so the
-    bot sees a breakout that Pine never saw → ghost entries with no TV match.
-    Fix: require close > prev_high + 40 pts before firing trend entries.
-    Tune up/down by 10 pts if you see missed signals or ghost entries return.
+  FIX-D | Intrabar breakeven REMOVED from trail_loop._evaluate()  (MEDIUM)
+    CAUSE:  Same as FIX-C — breakeven (beDone check) fired intrabar when Pine
+            only checks it at bar close.
+    EFFECT: BE stop armed mid-bar; any pullback before bar close hit the BE stop
+            when Pine's BE stop wasn't yet active.
+    FIX:    BE check removed from _evaluate(). Remains in on_bar_close() only.
 
-If you intentionally want any of the OLD values back (for example if the
-Delta-vs-TradingView ADX gap is hurting you), override that single key in
-your .env — none of the changes above are hard-coded; every value reads
-from os.environ first.
+  FIX-E | self.atr updated from current_atr in on_bar_close()  (MEDIUM)
+    CAUSE:  Pine recalculates activePts = atr * tNPts and activeOff = atr * tNOff
+            every bar using the LIVE ATR (ta.atr is recomputed each bar).
+            Bot froze self.atr at the entry-bar ATR.
+    EFFECT: When live ATR shrank, Pine's trail offset shrank (tighter trail) but
+            bot's trail stayed wide → bot trailed behind Pine's trail SL.
+    FIX:    on_bar_close() now updates self.atr = current_atr each bar.
+
+All changes are .env-overridable.
 """
 import os
 
@@ -126,15 +134,20 @@ FILTER_BODY_MULT   = float(os.environ.get("FILTER_BODY_MULT", "0.5"))
 # 0.0 = strict Pine match. Default 0.05 = lets body of >ATR*0.45 pass.
 FILTER_BODY_TOLERANCE = float(os.environ.get("FILTER_BODY_TOLERANCE", "0.0"))
 
-# Volume filter — BUG-FIX-3/BUG-1: DEFAULT IS NOW FALSE.
-# Pine REQUIRES volume > volSMA (volOK), but Pine uses TradingView volume.
-# Delta Exchange REST volumes are ~3% of TradingView's — incomparable sources.
-# With the filter ON, every bar fails volOK and all signals are dropped silently.
-# The bot cannot replicate Pine's volOK without TradingView volume data.
-# ATR + body filters still reject dead/choppy bars — they are sufficient.
-# To re-enable (e.g. if you connect a TradingView-compatible volume feed):
-#   FILTER_VOL_ENABLED=true in .env
-FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "false").lower() == "true"
+# Volume filter — RE-ENABLED: DEFAULT IS NOW TRUE.
+#
+# PREVIOUS BUG: was forced false because Delta REST volumes are ~3% of TV's.
+# ROOT CAUSE OF "EXTRA TRADE PUNCHES":
+#   With BINANCE_SIGNAL_FEED=true (the default), indicator bars come from
+#   Binance REST + WS — the SAME data source TradingView uses for BTCUSDT.
+#   Binance volumes are directly comparable to Pine's volSMA, so
+#   filtersOK = atrOK AND volOK AND bodyOK now matches Pine exactly.
+#   With the filter OFF, the bot entered on low-volume bars that Pine's
+#   filtersOK rejected → these appeared as ghost entries vs the Pine list.
+#
+# Only set false if BINANCE_SIGNAL_FEED=false (Delta REST data):
+#   FILTER_VOL_ENABLED=false in .env
+FILTER_VOL_ENABLED = os.environ.get("FILTER_VOL_ENABLED", "true").lower() == "true"
 FILTER_VOL_MULT    = float(os.environ.get("FILTER_VOL_MULT", "1.0"))
 
 # ──────────────────────────────────────────────
@@ -205,21 +218,26 @@ BE_MULT = float(os.environ.get("BE_MULT", "0.6"))
 RSI_OB  = int(os.environ.get("RSI_OB", "70"))
 RSI_OS  = int(os.environ.get("RSI_OS", "30"))
 
-# BUG-FIX-3/BUG-3: BREAKOUT_BUFFER_PTS DEFAULT IS NOW 40
-# Pine's trendLong uses: close > high[1]  (TradingView bar data)
-# The bot uses Delta Exchange REST data for the same check.
-# Delta's prev_high is routinely 30–80 pts lower than TradingView's on the
-# same 30m bar because the two feeds have different OHLCV for the same candle.
-# Result: bot sees close > delta_prev_high and fires; Pine never fired because
-# tv_close <= tv_prev_high → ghost entries with zero match to TV trade list.
+# BREAKOUT_BUFFER_PTS — ROOT CAUSE OF "MISSED PINE TRADES"
 #
-# Fix: require close > prev_high + BREAKOUT_BUFFER_PTS before firing.
-# Default 40 absorbs the typical Delta–TradingView high/low spread on BTC 30m.
-# Tune by ±10 pts:
-#   Too many ghost entries still? → increase to 50 or 60.
-#   Missing valid TV signals?     → decrease to 30 or 20.
-#   Set to 0 to restore old behaviour (exact Pine condition, no buffer).
-BREAKOUT_BUFFER_PTS = float(os.environ.get("BREAKOUT_BUFFER_PTS", "40"))
+# HISTORY: Was set to 40 to compensate for Delta REST OHLCV being 30–80 pts
+# different from TradingView's BTCUSDT candles on the same bar. A bar with
+# tv_close barely below tv_prev_low would fire in Pine but NOT in the bot
+# (bot's delta_prev_low was lower, so bot didn't see it as a breakout).
+# Buffer of 40 was added so bot only fires when the move is unambiguous.
+#
+# ROOT CAUSE OF MISSED SIGNALS WITH BINANCE FEED:
+# With BINANCE_SIGNAL_FEED=true (the default), prev_high/prev_low come from
+# Binance OHLCV — the SAME exchange TradingView uses for BTCUSDT. The Delta
+# vs TradingView OHLCV gap no longer exists. A 40pt buffer on identical data
+# means the bot misses every Pine trend entry where:
+#   close > prev_low (Pine fires) but close < prev_low + 40 (bot doesn't).
+#
+# Fix: reduce to 5pts (tiny tolerance for REST fetch timing jitter only).
+# If you see ghost entries return:  increase to 10 or 15.
+# If you see missed signals remain: set to 0 (exact Pine parity with Binance).
+# Only set high (30-50) if BINANCE_SIGNAL_FEED=false.
+BREAKOUT_BUFFER_PTS = float(os.environ.get("BREAKOUT_BUFFER_PTS", "5"))
 
 # ──────────────────────────────────────────────
 # COMMISSION + BUFFERS
