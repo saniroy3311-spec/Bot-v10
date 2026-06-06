@@ -4,22 +4,28 @@ risk/calculator.py — Shiva Sniper Bot-v10
 
 SL calculation matches Pine Script exactly:
     stopDist = math.min(atr * atrMultActive, maxSLPoints)
-    Trend: atrMultActive = 0.9  → ~281 pts at ATR=312
-    Range: atrMultActive = 0.7  → ~219 pts at ATR=312
+    Trend: atrMultActive = 0.6  → ~380 pts at ATR=634
+    Range: atrMultActive = 0.5  → ~317 pts at ATR=634
 
-    longSL  = entryPrice - stopDist
-    longTP  = entryPrice + stopDist * rrActive
-    shortSL = entryPrice + stopDist
-    shortTP = entryPrice - stopDist * rrActive
+    longSL  = signalClose - stopDist
+    longTP  = signalClose + stopDist * rrActive
+    shortSL = signalClose + stopDist
+    shortTP = signalClose - stopDist * rrActive
 
-recalc_levels_from_fill(): used ONLY in startup recovery path.
-calc_real_pl(): 0.059% taker on entry, 0% maker on exit — mirrors Pine.
+CHANGE: TrailState now includes trail_armed and best_price fields.
+  Previously these were set as dynamic attributes on the TrailState
+  instance in trail_loop.py. Declaring them explicitly in the dataclass
+  is cleaner and avoids AttributeError if the fields are accessed before
+  trail_loop.start() runs.
+
+  trail_armed — True once activation_price is crossed (trail engine is live)
+  best_price  — Running lowest (short) or highest (long) since trail armed
 ══════════════════════════════════════════════════════════════════════════════
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from config import (
     TREND_ATR_MULT, RANGE_ATR_MULT,
@@ -36,13 +42,14 @@ class RiskLevels:
     """
     Immutable snapshot of SL / TP levels for one trade.
 
-    entry_price — actual fill price
-    sl          — initial stop loss  (entry ± ATR × atr_mult)
-    tp          — take-profit price  (entry ∓ stopDist × R:R)
-    stop_dist   — abs distance from entry to SL (pts)
-    atr         — entry-bar ATR (used for Max SL and trail math)
-    is_long     — True = long, False = short
-    is_trend    — True = trend regime, False = range regime
+    entry_price  — actual fill price
+    sl           — initial stop loss  (signal_close ± ATR × atr_mult)
+    tp           — take-profit price  (signal_close ∓ stopDist × R:R)
+    stop_dist    — abs distance from signal_close to SL (pts)
+    atr          — entry-bar ATR (used for Max SL and trail math)
+    is_long      — True = long, False = short
+    is_trend     — True = trend regime, False = range regime
+    signal_close — bar close that generated the signal (SL anchor, Pine-exact)
     """
     entry_price:     float
     sl:              float
@@ -52,7 +59,7 @@ class RiskLevels:
     is_long:         bool
     is_trend:        bool
     entry_bar_open:  float = 0.0
-    signal_close:    float = 0.0  # FIX-BUG3: bar close that generated the signal
+    signal_close:    float = 0.0  # bar close that generated the signal
 
 
 @dataclass
@@ -60,17 +67,22 @@ class TrailState:
     """
     Mutable per-trade trailing stop state.
 
-    stage        — current trail stage (0 = no trail yet, 1–5 active)
-    current_sl   — live stop loss level
-    peak_price   — best price seen since entry (high for long, low for short)
+    stage        — current trail stage (0 = pre-arm, 1–5 active)
+    current_sl   — live stop loss level (initial SL → trail SL once armed)
+    peak_price   — legacy field (kept for DB/recovery compat; use best_price)
     be_done      — True once breakeven activated (once per trade)
     max_sl_fired — True once Max SL circuit breaker fired
+    trail_armed  — True once activation_price is crossed (Pine trail active)
+    best_price   — running extreme since trail armed (min for short, max for long)
     """
     stage:         int   = 0
     current_sl:    float = 0.0
     peak_price:    float = 0.0
     be_done:       bool  = False
     max_sl_fired:  bool  = False
+    # Trail engine runtime state (set/reset by trail_loop.start() each trade)
+    trail_armed:   bool  = False
+    best_price:    float = 0.0
 
 
 # ─── Core helpers ──────────────────────────────────────────────────────────────
@@ -81,7 +93,7 @@ def calc_levels(
     is_long:        bool,
     is_trend:       bool,
     entry_bar_open: float = 0.0,
-    signal_close:   float = 0.0,  # FIX-BUG3: pass signal bar close for SL anchor
+    signal_close:   float = 0.0,  # bar close that generated the signal (SL anchor)
 ) -> RiskLevels:
     """
     Compute initial SL and TP — Pine-exact formula.
@@ -89,21 +101,26 @@ def calc_levels(
     Pine Script:
         atrMultActive = isTrend ? trendATRmul : rangeATRmul
         stopDist      = math.min(atr * atrMultActive, maxSLPoints)
-        longSL        = entryPrice - stopDist
-        longTP        = entryPrice + stopDist * rrActive
-        shortSL       = entryPrice + stopDist
-        shortTP       = entryPrice - stopDist * rrActive
+        shortSL       = signalClose + stopDist    (anchored to signal bar close)
+        shortTP       = signalClose - stopDist * rrActive
+
+    SL is anchored to signal_close (the bar that generated the signal), not
+    the fill price — matches Pine's strategy.exit(stop=shortSL) which uses
+    the signal bar's computed level, not the next bar's fill.
     """
     atr_mult  = TREND_ATR_MULT if is_trend else RANGE_ATR_MULT
     rr        = TREND_RR       if is_trend else RANGE_RR
     stop_dist = min(atr * atr_mult, MAX_SL_POINTS)
 
+    # Anchor to signal_close if provided; fall back to fill price
+    anchor = signal_close if signal_close > 0 else entry_price
+
     if is_long:
-        sl = entry_price - stop_dist
-        tp = entry_price + stop_dist * rr
+        sl = anchor - stop_dist
+        tp = anchor + stop_dist * rr
     else:
-        sl = entry_price + stop_dist
-        tp = entry_price - stop_dist * rr
+        sl = anchor + stop_dist
+        tp = anchor - stop_dist * rr
 
     return RiskLevels(
         entry_price    = entry_price,
@@ -133,6 +150,7 @@ def recalc_levels_from_fill(risk: RiskLevels, fill_price: float) -> RiskLevels:
         is_long        = risk.is_long,
         is_trend       = risk.is_trend,
         entry_bar_open = risk.entry_bar_open,
+        signal_close   = risk.signal_close,
     )
 
 
@@ -144,10 +162,9 @@ def calc_real_pl(
 ) -> float:
     """
     Commission-adjusted P&L — mirrors Pine's calcRealPL().
-
     rawPL = (exitPx - entryPx) * qty   (long)
           = (entryPx - exitPx) * qty   (short)
-    comm  = entryPx * qty * 0.00059    (0.059% taker entry, 0% maker exit)
+    comm  = entryPx * qty * 0.00059    (0.059% taker entry)
     """
     raw_pl = (
         (exit_price - entry_price) * qty if is_long
@@ -157,8 +174,6 @@ def calc_real_pl(
     return raw_pl - comm
 
 
-
-
 def calc_gross_pl(
     entry_price: float,
     exit_price:  float,
@@ -166,17 +181,17 @@ def calc_gross_pl(
     qty:         int,
 ) -> float:
     """
-    Gross P&L — no commission.  Delta inverse-perp formula:
-        points = (exitPx - entryPx)  for long
-               = (entryPx - exitPx)  for short
+    Gross P&L — no commission. Delta inverse-perp formula:
+        points = exitPx - entryPx  (long)
+               = entryPx - exitPx  (short)
         gross  = points * qty * 0.001
-    Matches exactly what Telegram shows.
     """
     points = (
         (exit_price - entry_price) if is_long
         else (entry_price - exit_price)
     )
     return points * qty * 0.001
+
 
 def lots_to_btc(lots: int, price: float) -> float:
     """Delta BTCUSD inverse perp: 1 lot = 1 USD / price BTC."""
