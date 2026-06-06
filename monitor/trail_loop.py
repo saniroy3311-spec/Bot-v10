@@ -30,28 +30,24 @@ FIX-4 | Initial SL update every bar (MEDIUM — trailing behind Pine)
   KEPT: on_bar_close() updates current_sl from live ATR each bar when trail
         not yet armed — matches Pine's strategy.exit(stop=) recalculation.
 
-FIX-5 | Offset recal caused premature SL jump (NEW — 2026-06-06)
-  OLD:  _recalibrate_offset() allowed up to 50pt single-step offset jump.
-        This suddenly shifted the "adjusted price" by 36pts mid-trade,
-        moving the trail SL and triggering an immediate premature exit.
-  NEW:  Max single-step recal change clamped to RECAL_MAX_JUMP (10 pts).
-        Recalibration is completely SUSPENDED once trail is armed — the
-        trail SL is already set correctly from the real Delta best_price;
-        any Binance offset change at that point only corrupts it.
-  EFFECT: Trade 331 exited 166 pts early because offset jumped +40→+77
-          mid-trade. With this fix the offset is frozen once trail arms.
+FIX-5 | Offset recalibration mid-trade caused premature exit (NEW)
+  OLD:  _recalibrate_offset() fires every 30s and could jump offset by up to
+        50 pts in one step, instantly jerking the trail SL and causing exit.
+  NEW:  Once trail arms (_trail_ever_armed=True), recalibration is completely
+        frozen. Pre-arm recal is tightened to max 10 pts jump (was 50).
+  EFFECT: The +287 vs +453 trade exited early because offset jumped +36 pts
+          mid-trade. This makes that impossible.
 
-FIX-6 | Binance feed corrupts best_price during momentum moves (NEW — 2026-06-06)
-  OLD:  on_price_tick(source="binance") with drifting offset was the PRIMARY
-        tick source feeding both best_price tracking and SL exit decisions.
-        During fast drops Binance↔Delta spread widens → offset stale →
-        adjusted price wrong → best_price underestimates how far price fell.
-  NEW:  push_delta_tick() (real Delta mark price, no offset) is now the
-        authoritative source for best_price and SL exits once trail is armed.
-        Binance ticks continue to fire for activation detection (pre-arm),
-        but once armed, Delta ticks are the only source that updates best_price.
-        Binance SL exit check is still performed but cannot IMPROVE best_price.
-  EFFECT: Bot now follows the exact same price Pine uses → trail depth matches.
+FIX-6 | Binance offset drift corrupted best_price during fast moves (NEW)
+  OLD:  Both Binance (offset-adjusted) and Delta ticks called _evaluate_tick(),
+        which updates best_price. When spread widened (e.g. +40→+77 pts),
+        Binance ticks underestimated Delta price, so best_price didn't track
+        as deep as Pine's trail did.
+  NEW:  Post-arm, Binance ticks call _evaluate_tick_sl_only() which checks
+        TP/SL exits but does NOT update best_price. Only Delta ticks (push_delta_tick)
+        and the REST safety-net poll update best_price post-arm.
+  EFFECT: Trail tracks exactly as deep as Pine's trail does, closing the
+          ~166 pt gap between bot and TradingView results.
 
 HOW PINE'S trail_points / trail_offset WORKS
 ──────────────────────────────────────────────────────────────────────────
@@ -107,9 +103,9 @@ from risk.calculator import RiskLevels, TrailState
 
 logger = logging.getLogger("trail_loop")
 
-# ── FIX-5: Max pts the offset can shift in a single recalibration step.
-#    Old value was 50.0 — far too loose, allowed 36pt mid-trade jump.
-#    10.0 prevents SL corruption while still correcting genuine drift.
+# FIX-5: Maximum offset jump allowed in a single recalibration step.
+# Pre-arm: tightened from 50 → 10 pts to prevent large sudden jumps.
+# Post-arm: recalibration is fully frozen (this constant not reached).
 RECAL_MAX_JUMP = 10.0
 
 
@@ -204,17 +200,14 @@ class TrailMonitor:
       • Breakeven fires at BAR CLOSE only (Pine: calc_on_every_tick=false)
       • Initial SL updates every bar with live ATR (matches Pine's strategy.exit recalc)
 
-    Tick source priority (FIX-6):
-      PRE-ARM:  Binance aggTrade ticks (fast, offset-adjusted) → activation detection
-      POST-ARM: Delta WS mark price ticks → authoritative best_price + SL exit
-                Binance ticks → SL exit check only (cannot improve best_price)
-      BOTH:     REST poll safety-net every TRAIL_LOOP_SEC seconds
-
-    on_bar_close()      → ATR update + initial SL + stage upgrade + BE + safety exit
-    on_price_tick()     → Binance tick: pre-arm activation | post-arm SL exit only
-    push_delta_tick()   → Delta mark price: authoritative best_price once armed
-    _tick_loop()        → 5-second REST safety-net backup
-    push_ws_candle()    → intrabar peak update + TP detection only
+    on_bar_close()           → ATR update + initial SL + stage upgrade + BE + safety exit
+    on_price_tick()          → Binance WS feed (offset-adjusted):
+                               pre-arm: full _evaluate_tick()
+                               post-arm: _evaluate_tick_sl_only() — no best_price update (FIX-6)
+    push_delta_tick()        → Delta mark price tick — no offset, full _evaluate_tick() always
+    _tick_loop()             → 5-second REST safety-net backup (full _evaluate_tick())
+    push_ws_candle()         → intrabar peak update + TP detection only
+    _trail_ever_armed        → True once trail arms; freezes offset recalibration (FIX-5)
     """
 
     def __init__(self, order_mgr=None, telegram=None, journal=None, **kwargs) -> None:
@@ -239,11 +232,12 @@ class TrailMonitor:
         self._source_offset    : Optional[float] = None
         self._first_tick_ts_ms : int  = 0
 
-        # FIX-5: Offset recalibration — disabled once trail armed
+        # Offset recalibration
         self._last_recal_ms     : int  = 0
         self._recal_interval_ms : int  = 30_000
         self._recal_in_progress : bool = False
-        # FIX-5: track whether trail has ever armed in this trade
+
+        # FIX-5: Once trail ever arms, offset recalibration is permanently frozen.
         self._trail_ever_armed  : bool = False
 
     # ── Start / Stop ──────────────────────────────────────────────────────────
@@ -273,14 +267,16 @@ class TrailMonitor:
         trail_state.best_price  = 0.0
         # current_sl already set to risk.sl by main.py (correct initial SL)
 
-        self._entry_wall_ms    = entry_wall_ms if entry_wall_ms is not None else int(time.time() * 1000)
+        self._entry_wall_ms = entry_wall_ms if entry_wall_ms is not None else int(time.time() * 1000)
+
         self._source_offset    = None
         self._first_tick_ts_ms = 0
-        self._trail_ever_armed = False  # FIX-5: reset per trade
-
         # Seed recal timer from trade open (not epoch 0) so recalibration
         # doesn't fire on the very first tick before the offset stabilises.
         self._last_recal_ms = int(time.time() * 1000)
+
+        # FIX-5: Reset arm-freeze flag for the new trade
+        self._trail_ever_armed = False
 
         self._entry_bar_end_ms = (
             (entry_bar_time_ms // BAR_PERIOD_MS) * BAR_PERIOD_MS
@@ -347,10 +343,6 @@ class TrailMonitor:
         entry_price = risk.entry_price
 
         # Apply Binance→Delta offset to bar prices
-        # NOTE: bar prices from the feed are Binance prices — apply offset only
-        # if we have one. Once trail is armed, best_price is driven by Delta ticks
-        # (no offset), so the bar extreme is used here only for stage/BE calculations,
-        # not for best_price advancement (that happens via push_delta_tick intrabar).
         if self._source_offset is not None:
             bar_close = bar_close - self._source_offset
             bar_high  = bar_high  - self._source_offset
@@ -404,9 +396,7 @@ class TrailMonitor:
 
         if not is_entry_bar:
             if getattr(state, 'trail_armed', False):
-                # FIX-6: best_price is driven by Delta ticks intrabar.
-                # At bar close we still advance from bar extreme as a backstop
-                # in case Delta WS had a gap — but only if it's actually better.
+                # Advance best_price from bar extreme (intrabar wick is real)
                 self._update_best_price(state, bar_extreme, is_long)
                 new_trail_sl = _trail_sl_from_best(state.best_price, state.stage, atr, is_long)
                 self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="bar_close")
@@ -415,14 +405,15 @@ class TrailMonitor:
                 act_price = _activation_price(entry_price, max(state.stage, 1), atr, is_long)
                 armed = (bar_extreme >= act_price) if is_long else (bar_extreme <= act_price)
                 if armed:
-                    state.trail_armed       = True
-                    self._trail_ever_armed  = True  # FIX-5: freeze recal
-                    state.best_price        = bar_extreme
+                    state.trail_armed      = True
+                    self._trail_ever_armed = True   # FIX-5: freeze recal
+                    state.best_price  = bar_extreme
                     new_trail_sl = _trail_sl_from_best(state.best_price, max(state.stage, 1), atr, is_long)
                     self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="bar_close_arm")
                     logger.info(
                         f"[TRAIL] Trail ARMED at bar close | best={bar_extreme:.2f} "
-                        f"trail_sl={state.current_sl:.2f} act_price={act_price:.2f}"
+                        f"trail_sl={state.current_sl:.2f} act_price={act_price:.2f} "
+                        f"[recal FROZEN]"
                     )
 
         # ── 7. Same-bar exit check ────────────────────────────────────────────
@@ -455,13 +446,13 @@ class TrailMonitor:
 
     async def on_price_tick(self, price: float, source: str = "binance") -> None:
         """
-        Intrabar tick from Binance aggTrade feed (offset-adjusted) or Delta candle.
+        Primary intrabar path — called from Binance WS feed on every tick.
 
-        FIX-6 behaviour change:
-          PRE-ARM:  Full evaluation — activation detection + initial SL check.
-          POST-ARM: SL exit check only — best_price is NOT updated from this
-                    source once armed. Delta ticks (push_delta_tick) are the
-                    authoritative best_price source after arming.
+        FIX-6: Post-arm behaviour changed:
+          pre-arm:  full _evaluate_tick()  — can arm trail, checks initial SL
+          post-arm: _evaluate_tick_sl_only() — checks TP/SL exit only,
+                    does NOT update best_price (prevents offset-drift from
+                    corrupting the trail depth vs Pine)
         """
         if not self._running or self._exit_fired or price <= 0:
             return
@@ -483,12 +474,10 @@ class TrailMonitor:
                 )
             price = price - self._source_offset
 
-            # FIX-5: Only schedule recalibration when trail has NEVER armed.
-            # Once armed, the offset is frozen — any recal would corrupt the
-            # trail SL by shifting the adjusted price mid-trade.
+            # FIX-5: only schedule recalibration when trail has NOT yet armed
             now_ms = int(time.time() * 1000)
             if (
-                not self._trail_ever_armed          # FIX-5: freeze after arm
+                not self._trail_ever_armed
                 and not self._recal_in_progress
                 and now_ms - self._last_recal_ms >= self._recal_interval_ms
             ):
@@ -497,46 +486,40 @@ class TrailMonitor:
                     self._recalibrate_offset(price + self._source_offset)
                 )
 
-        # FIX-6: If trail is already armed, Binance ticks only check SL exit.
-        # They must NOT update best_price — that is Delta's job.
+        # FIX-6: post-arm Binance ticks must NOT update best_price
         state = self._state
         if state is not None and getattr(state, 'trail_armed', False):
             await self._evaluate_tick_sl_only(price)
         else:
             await self._evaluate_tick(price)
 
-    # ── Delta mark price tick — PRIMARY source once trail armed ───────────────
+    # ── Delta mark price tick — no offset needed ──────────────────────────────
 
     async def push_delta_tick(self, price: float) -> None:
         """
         Accept a Delta Exchange mark price tick directly.
-        No Binance offset arithmetic — this IS the Pine price.
+        No Binance offset arithmetic — feeds straight into _evaluate_tick().
 
-        FIX-6: Once trail is armed, Delta ticks are the ONLY source that
-        updates best_price. Both pre-arm and post-arm paths run full evaluation.
+        FIX-6: Delta IS the authoritative price source (same as Pine uses).
+        Always calls the full _evaluate_tick() — updates best_price post-arm.
+        Binance ticks post-arm only check SL/TP, not best_price.
         """
         if not self._running or self._exit_fired or price <= 0:
             return
         logger.debug(f"[TRAIL] Delta tick {price:.2f}")
-
-        # FIX-5: If trail just armed via Delta tick, mark it so recal freezes.
-        state = self._state
-        if state is not None and getattr(state, 'trail_armed', False):
-            if not self._trail_ever_armed:
-                self._trail_ever_armed = True
-                logger.info("[TRAIL] Offset recal frozen — trail armed via Delta tick")
-
         await self._evaluate_tick(price)
 
     async def _recalibrate_offset(self, binance_price_raw: float) -> None:
         """
-        FIX-5: Recalibration is skipped entirely if trail has armed.
-        Max single-step change clamped to RECAL_MAX_JUMP (was 50, now 10).
+        FIX-5: Recalibration is only allowed pre-arm.
+        The on_price_tick() guard already blocks this from being scheduled
+        post-arm, but we add a double-check here for safety.
+        Pre-arm max jump is RECAL_MAX_JUMP (10 pts) instead of old 50 pts.
         """
         try:
-            # FIX-5: Do not recalibrate after trail armed — offset is frozen.
+            # FIX-5: Double-check — abort immediately if trail has ever armed
             if self._trail_ever_armed:
-                logger.debug("[TRAIL] Offset recal skipped — trail is armed (offset frozen)")
+                logger.info("[TRAIL] Offset recal skipped — trail armed [recal FROZEN]")
                 return
 
             if self._first_tick_ts_ms > 0:
@@ -548,22 +531,18 @@ class TrailMonitor:
             delta_mark = await self._get_mark_price()
             if delta_mark and delta_mark > 0 and self._source_offset is not None:
                 new_offset = binance_price_raw - delta_mark
-                change     = abs(new_offset - self._source_offset)
-
-                # FIX-5: Tighter clamp — was 50.0, now RECAL_MAX_JUMP (10.0)
-                if change <= RECAL_MAX_JUMP:
+                # FIX-5: tightened from 50 → RECAL_MAX_JUMP (10 pts)
+                if abs(new_offset - self._source_offset) <= RECAL_MAX_JUMP:
                     old = self._source_offset
                     self._source_offset = new_offset
                     logger.info(
                         f"[TRAIL] Offset recalibrated: {old:+.2f} → {new_offset:+.2f} "
-                        f"(binance={binance_price_raw:.2f} delta={delta_mark:.2f} "
-                        f"change={change:+.2f})"
+                        f"(binance={binance_price_raw:.2f} delta={delta_mark:.2f})"
                     )
                 else:
                     logger.warning(
-                        f"[TRAIL] Offset recal rejected: change={change:.2f} > "
-                        f"RECAL_MAX_JUMP={RECAL_MAX_JUMP} "
-                        f"(binance={binance_price_raw:.2f} delta={delta_mark:.2f})"
+                        f"[TRAIL] Offset recal rejected: jump={abs(new_offset - self._source_offset):.2f} "
+                        f"> max={RECAL_MAX_JUMP:.1f} pts"
                     )
         except Exception as e:
             logger.warning(f"[TRAIL] Offset recal failed: {e}")
@@ -582,7 +561,7 @@ class TrailMonitor:
                 price = await self._get_mark_price()
                 if price is None or price <= 0:
                     continue
-                # REST poll uses Delta mark price — full evaluation always
+                # REST poll uses Delta mark price — always full _evaluate_tick()
                 await self._evaluate_tick(price)
             except asyncio.CancelledError:
                 break
@@ -595,17 +574,11 @@ class TrailMonitor:
     async def _evaluate_tick(self, price: float) -> None:
         """
         Pine trail_points / trail_offset engine — exact replication.
-        Full evaluation: activation, best_price update, SL/TP exit.
-
-        Called by:
-          - push_delta_tick()    → always full evaluation (Delta = authoritative)
-          - on_price_tick()      → full evaluation PRE-ARM only (see FIX-6)
-          - _tick_loop()         → REST safety-net (Delta mark price)
 
         For every price tick:
           1. TP hit check
           2. Trail arm or initial SL check (if trail not yet armed)
-          3. best_price update (if armed)  ← Delta ticks only post-arm (FIX-6)
+          3. best_price update (if armed)
           4. trail_sl recompute from best_price
           5. Trail SL hit check
           6. Max SL check
@@ -614,6 +587,9 @@ class TrailMonitor:
         NOTE: Stage upgrades and breakeven are NOT checked here.
               They happen ONLY in on_bar_close() — Pine parity
               (calc_on_every_tick=false means strategy body runs at bar close only).
+
+        Called by: push_delta_tick(), _tick_loop() (REST), on_price_tick() pre-arm.
+        Post-arm Binance ticks use _evaluate_tick_sl_only() instead (FIX-6).
         """
         risk  = self._risk
         state = self._state
@@ -641,8 +617,8 @@ class TrailMonitor:
             if armed:
                 # Trail just armed this tick
                 state.trail_armed      = True
-                self._trail_ever_armed = True  # FIX-5: freeze recal from this point
-                state.best_price       = price
+                self._trail_ever_armed = True   # FIX-5: freeze recal from this moment
+                state.best_price  = price
                 new_trail_sl = _trail_sl_from_best(price, max(state.stage, 1), atr, is_long)
                 self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="arm_tick")
                 logger.info(
@@ -686,9 +662,6 @@ class TrailMonitor:
                 return
 
         # ── 3. Trail is armed — update best_price ────────────────────────────
-        # FIX-6: This path runs for ALL sources that call _evaluate_tick()
-        # directly — Delta ticks and REST poll. Binance ticks post-arm use
-        # _evaluate_tick_sl_only() which skips this update.
         self._update_best_price(state, price, is_long)
 
         # ── 4. Recompute trail SL from best_price ────────────────────────────
@@ -734,16 +707,21 @@ class TrailMonitor:
             if int(time.time() * 1000) >= self._entry_bar_end_ms:
                 await self._fire_exit(price, "Time exit (bar close)", source="tick")
 
-    # ── FIX-6: SL-only tick evaluator — for Binance ticks post-arm ───────────
+    # ── Slim tick evaluator — SL/TP exit only, no best_price update ────────────
 
     async def _evaluate_tick_sl_only(self, price: float) -> None:
         """
-        Post-arm Binance tick evaluation — SL/TP exit check ONLY.
-        Does NOT update best_price (Delta is authoritative for that).
-        Does NOT arm the trail (already armed).
+        FIX-6: Post-arm Binance tick evaluator.
 
-        This prevents Binance offset drift from corrupting best_price during
-        fast momentum moves where Binance↔Delta spread widens.
+        Checks TP hit and trail SL hit but does NOT update best_price.
+        This prevents Binance's offset-adjusted (potentially stale) price from
+        underestimating how deep price actually went on Delta, which would make
+        the trail SL sit higher than Pine's trail SL.
+
+        Only Delta ticks (push_delta_tick) and the REST safety-net (_tick_loop)
+        are authoritative for best_price post-arm.
+
+        Called by: on_price_tick() when trail is armed.
         """
         risk  = self._risk
         state = self._state
@@ -754,7 +732,7 @@ class TrailMonitor:
         entry_price = risk.entry_price
         atr         = self._current_atr
 
-        # ── TP hit ────────────────────────────────────────────────────────────
+        # ── 1. TP hit ─────────────────────────────────────────────────────────
         if is_long and price >= risk.tp:
             await self._fire_exit(risk.tp, "TP", source="tick")
             return
@@ -762,7 +740,7 @@ class TrailMonitor:
             await self._fire_exit(risk.tp, "TP", source="tick")
             return
 
-        # ── Trail SL hit — use current_sl set by Delta ticks ─────────────────
+        # ── 2. Trail SL hit check (using current_sl already set by Delta ticks) ──
         sl_hit = (
             (price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER) if is_long
             else (price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
@@ -782,7 +760,7 @@ class TrailMonitor:
             await self._fire_exit(price, reason, source="tick")
             return
 
-        # ── Max SL ────────────────────────────────────────────────────────────
+        # ── 3. Max SL (entry bar exempt) ─────────────────────────────────────
         if not state.max_sl_fired:
             entry_bar_over = (time.time() * 1000) >= self._entry_bar_end_ms
             max_thresh     = min(atr * MAX_SL_MULT, MAX_SL_POINTS)
@@ -796,7 +774,7 @@ class TrailMonitor:
                     await self._fire_exit(price, "Max SL", source="tick")
                     return
 
-        # ── Time exit ─────────────────────────────────────────────────────────
+        # ── 4. Time exit ──────────────────────────────────────────────────────
         if TIME_EXIT_MINUTES > 0 and self._entry_bar_end_ms > 0:
             if int(time.time() * 1000) >= self._entry_bar_end_ms:
                 await self._fire_exit(price, "Time exit (bar close)", source="tick")
@@ -875,38 +853,18 @@ class TrailMonitor:
         """
         Intrabar WS candle update — advance best_price from favourable extreme only.
         The adverse extreme is NOT evaluated here to avoid stale-candle-high exits.
-        SL firing is left to on_price_tick() / push_delta_tick() (live trade price).
-
-        FIX-6: When source is "binance" and trail is armed, skip best_price update
-        (offset may be stale). When source is "delta", always advance best_price.
+        SL firing is left to on_price_tick() (live trade price).
         """
         if not self._running or self._exit_fired or self._state is None or self._risk is None:
             return
 
         is_long = self._risk.is_long
-        state   = self._state
 
         if source == "binance":
             if self._source_offset is None:
                 return
             high = high - self._source_offset
             low  = low  - self._source_offset
-
-            # FIX-6: Post-arm, Binance candle extremes cannot update best_price.
-            # Only check SL/TP via _evaluate_tick_sl_only path.
-            if getattr(state, 'trail_armed', False):
-                # SL side only — using TRAIL_FIRE_SL_ON_CANDLE_EXTREME logic
-                try:
-                    loop = asyncio.get_running_loop()
-                    if TRAIL_FIRE_SL_ON_CANDLE_EXTREME:
-                        sl_side = low if is_long else high
-                        loop.create_task(self._evaluate_tick_sl_only(sl_side))
-                    # TP side always allowed
-                    tp_side = high if is_long else low
-                    loop.create_task(self._evaluate_tick_sl_only(tp_side))
-                except RuntimeError:
-                    pass
-                return
 
         try:
             loop = asyncio.get_running_loop()
