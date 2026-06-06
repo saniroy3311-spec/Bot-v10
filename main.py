@@ -442,13 +442,16 @@ class ShivaSniperBot:
             self._risk         = risk
             self._signal_type  = sig.signal_type.value
             
-            from config import TRAIL_STAGES as _TS, PINE_MINTICK as _MT
-            _t1_dist = risk.atr * _TS[0][1] * _MT
-            _pine_init_sl = (risk.entry_price + _t1_dist) if not risk.is_long else (risk.entry_price - _t1_dist)
+            # current_sl = risk.sl  (= signal_close ± ATR×atrMult, Pine-exact)
+            # DO NOT use entry+trail_pts here — that is the activation distance,
+            # not the initial stop loss. Using it set SL ~80 pts tighter than Pine,
+            # causing instant stop-outs when price reversed before trail armed.
             self._trail_state  = TrailState(
-                stage      = 0,
-                current_sl = _pine_init_sl,
-                peak_price = fill,
+                stage        = 0,
+                current_sl   = risk.sl,   # ← correct Pine initial SL
+                peak_price   = fill,
+                trail_armed  = False,
+                best_price   = 0.0,
             )
 
             self._trail_mon.start(
