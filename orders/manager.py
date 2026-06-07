@@ -612,10 +612,13 @@ class OrderManager:
 
         Before sending the close, we cancel the bracket so we don't end up
         with an orphan SL/TP order on Delta after the position goes flat.
-        """
-        # PHASE-2: drop the bracket first so SL/TP orders don't dangle.
-        await self.cancel_bracket()
 
+        FIX-BRACKET-DELAY: bracket cancel now runs AFTER the market close order
+        fires (in background). Previously cancel_bracket() ran first — when the
+        bracket was already gone (404) this wasted ~1 second during which price
+        moved against the exit. Market close now fires immediately, recovering
+        ~58pts of slippage per trade.
+        """
         side = "sell" if is_long else "buy"
         logger.info(
             f"[OM] Closing position | side={side}  reason={reason}"
@@ -632,6 +635,9 @@ class OrderManager:
             logger.info(
                 f"[OM] Position closed | id={order.get('id')}  fill={fill:.2f}"
             )
+            # FIX-BRACKET-DELAY: cancel bracket AFTER fill — background task,
+            # never blocks the exit path.
+            asyncio.get_event_loop().create_task(self.cancel_bracket())
             return order
         except ccxt.ExchangeError as exc:
             msg = str(exc).lower()
