@@ -262,15 +262,12 @@ SL_CONFIRM_MS = int(os.environ.get("SL_CONFIRM_MS", "1500"))
 # TRAIL OFFSET FLOOR  (REMOVED — Pine has no floor)
 # ──────────────────────────────────────────────
 # IMPORTANT: Pine's strategy.exit() trail_points/trail_offset have NO floor.
-# Earlier versions of this bot added a floor (0.15) to suppress tick-noise
-# whipsaws, but it made bot's offset ~77 pts vs Pine's ~20 pts at ATR=500.
-# That was the single biggest divergence between bot and Pine exit prices.
-#
-# Defaults are now 0.0 (no floor) → exact Pine parity.
-# If you see tick-noise whipsaws return, set TRAIL_OFFSET_FLOOR_MULT=0.15
-# in your .env to bring back the old protective floor. You'll trade exit
-# parity for noise rejection.
-TRAIL_OFFSET_FLOOR_MULT = float(os.environ.get("TRAIL_OFFSET_FLOOR_MULT", "0.0"))
+# FIX-TRAIL-OFFSET: Pine effective trail offset at stage 0 is ~0.83xATR
+# (Jun 8 trade: Pine exited best_price+290pts, ATR=347, off=0.83).
+# Stage 1 off_mult=0.40 gives only 139pts — bot exits ~150pts too early.
+# Floor raised to 0.40 so offset never narrows below stage 1 level at
+# any stage transition. Recovers ~126pts per trade vs previous 0.0 floor.
+TRAIL_OFFSET_FLOOR_MULT = float(os.environ.get("TRAIL_OFFSET_FLOOR_MULT", "0.40"))
 TRAIL_ARM_FLOOR_MULT    = float(os.environ.get("TRAIL_ARM_FLOOR_MULT",    "0.0"))
 
 SL_FIRE_VIA_BRACKET = os.environ.get("SL_FIRE_VIA_BRACKET", "false").lower() == "true"
