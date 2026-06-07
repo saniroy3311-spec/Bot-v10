@@ -309,9 +309,9 @@ class CandleFeed:
                     data = msg.get("data") or msg
                     if data:
                         raw_price = (
-                            data.get("close") or
-                            data.get("last_price") or
                             data.get("mark_price") or
+                            data.get("last_price") or
+                            data.get("close") or
                             0
                         )
                         try:
