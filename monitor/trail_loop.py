@@ -98,6 +98,7 @@ from config import (
     TREND_ATR_MULT, RANGE_ATR_MULT,
     TRAIL_OFFSET_FLOOR_MULT,
     TRAIL_FIRE_SL_ON_CANDLE_EXTREME,
+    SL_CONFIRM_MS,
 )
 from risk.calculator import RiskLevels, TrailState
 
@@ -240,6 +241,14 @@ class TrailMonitor:
         # FIX-5: Once trail ever arms, offset recalibration is permanently frozen.
         self._trail_ever_armed  : bool = False
 
+        # FIX-7: Trail-SL spike debounce. A momentary real tick can poke the
+        # trail SL by a fraction of a point and then immediately retreat.
+        # TradingView/Pine never sees these sub-bar spikes, so it keeps trailing
+        # while the bot exits early. We require the SL to stay breached for
+        # SL_CONFIRM_MS before firing the trailing/initial stop. TP and Max SL
+        # are NOT debounced (they fire instantly).
+        self._pending_sl_since_ms : int = 0
+
     # ── Start / Stop ──────────────────────────────────────────────────────────
 
     def start(
@@ -277,6 +286,9 @@ class TrailMonitor:
 
         # FIX-5: Reset arm-freeze flag for the new trade
         self._trail_ever_armed = False
+
+        # FIX-7: Reset spike-debounce state for the new trade
+        self._pending_sl_since_ms = 0
 
         self._entry_bar_end_ms = (
             (entry_bar_time_ms // BAR_PERIOD_MS) * BAR_PERIOD_MS
@@ -631,11 +643,9 @@ class TrailMonitor:
                 )
             else:
                 # Trail not armed — check initial / BE SL only
-                sl_hit = (
-                    (price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER) if is_long
-                    else (price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
-                )
-                if sl_hit:
+                sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
+                    else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
+                if self._sl_confirmed(price, sl_level, is_long):
                     reason = "Breakeven SL" if state.be_done else "Initial SL"
                     await self._fire_exit(price, reason, source="tick")
                     return
@@ -669,11 +679,9 @@ class TrailMonitor:
         self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="tick")
 
         # ── 5. Trail SL hit check ─────────────────────────────────────────────
-        sl_hit = (
-            (price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER) if is_long
-            else (price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
-        )
-        if sl_hit:
+        sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
+            else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
+        if self._sl_confirmed(price, sl_level, is_long):
             trail_improved = (
                 (state.current_sl > risk.sl) if is_long
                 else (state.current_sl < risk.sl)
@@ -741,11 +749,9 @@ class TrailMonitor:
             return
 
         # ── 2. Trail SL hit check (using current_sl already set by Delta ticks) ──
-        sl_hit = (
-            (price <= state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER) if is_long
-            else (price >= state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER)
-        )
-        if sl_hit:
+        sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
+            else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
+        if self._sl_confirmed(price, sl_level, is_long):
             trail_improved = (
                 (state.current_sl > risk.sl) if is_long
                 else (state.current_sl < risk.sl)
@@ -884,6 +890,55 @@ class TrailMonitor:
         await self._evaluate_tick(tp_side)
         if not self._exit_fired:
             await self._evaluate_tick(sl_side)
+
+    # ── Spike-debounce for trailing / initial SL ───────────────────────────────
+
+    def _sl_confirmed(self, price: float, sl_level: float, is_long: bool) -> bool:
+        """
+        FIX-7: Return True only when an SL breach is *confirmed*.
+
+        Pine/TradingView evaluates exits on (simulated) bar data, so a real
+        live tick that pokes the stop for a few hundred ms and then retreats is
+        invisible to it — Pine keeps trailing and captures the rest of the move.
+        The live bot sees that tick and would exit immediately.
+
+        To match TV, we require the price to stay beyond `sl_level` for
+        SL_CONFIRM_MS before firing. If a later tick comes back inside the stop,
+        the pending exit is cancelled and trailing continues.
+
+        TP and Max SL do NOT call this — they must fire instantly.
+        """
+        breached = (price <= sl_level) if is_long else (price >= sl_level)
+        now_ms   = int(time.time() * 1000)
+
+        if not breached:
+            if self._pending_sl_since_ms:
+                logger.info(
+                    f"[TRAIL] SL spike ignored — price {price:.2f} retreated "
+                    f"inside SL {sl_level:.2f} (no confirm)"
+                )
+            self._pending_sl_since_ms = 0
+            return False
+
+        if SL_CONFIRM_MS <= 0:
+            return True
+
+        if self._pending_sl_since_ms == 0:
+            self._pending_sl_since_ms = now_ms
+            logger.info(
+                f"[TRAIL] SL breach pending confirm | price={price:.2f} "
+                f"sl={sl_level:.2f} need={SL_CONFIRM_MS}ms"
+            )
+            return False
+
+        if now_ms - self._pending_sl_since_ms >= SL_CONFIRM_MS:
+            logger.info(
+                f"[TRAIL] SL breach confirmed after "
+                f"{now_ms - self._pending_sl_since_ms}ms — firing"
+            )
+            return True
+
+        return False
 
     # ── Exit helper ───────────────────────────────────────────────────────────
 
