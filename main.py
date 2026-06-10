@@ -416,6 +416,27 @@ class ShivaSniperBot:
 
             fill = float(order.get("average") or order.get("price") or snap.close)
 
+            # FIX-QTY: Read actual filled contracts from the order response.
+            # self._qty_lots is pre-computed from POSITION_BTC_SIZE (e.g. 3 lots),
+            # but Delta may fill a different size (e.g. ALERT_QTY=13 contracts).
+            # The order response carries the real filled amount under "amount",
+            # "filled", or "contracts". Use that if > 0, else fall back to the
+            # pre-computed value so recovery/manual trades still work.
+            _filled_contracts = (
+                float(order.get("filled") or order.get("amount") or order.get("contracts") or 0)
+            )
+            if _filled_contracts > 0 and abs(_filled_contracts - self._qty_lots) > 0.01:
+                logger.info(
+                    f"[QTY-FIX] Using actual fill qty={_filled_contracts:.0f} contracts "
+                    f"(pre-computed was {self._qty_lots} lots from POSITION_BTC_SIZE)"
+                )
+                self._qty_lots = int(round(_filled_contracts))
+            else:
+                logger.debug(
+                    f"[QTY-FIX] Fill qty={_filled_contracts:.0f} matches pre-computed "
+                    f"{self._qty_lots} lots — no correction needed"
+                )
+
             slip = (fill - snap.close) if sig.is_long else (snap.close - fill)
             slip_limit = snap.atr * MAX_ENTRY_SLIP_ATR_FRAC
 
