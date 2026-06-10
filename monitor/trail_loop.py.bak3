@@ -437,16 +437,6 @@ class TrailMonitor:
                         f"trail_sl={state.current_sl:.2f} act_price={act_price:.2f} "
                         f"[recal FROZEN]"
                     )
-                    # FIX-ARM-BREACH: check if trail SL already breached this bar
-                    arm_breached = (bar_low <= new_trail_sl) if not is_long else (bar_high >= new_trail_sl)
-                    if arm_breached and not is_entry_bar:
-                        logger.info(
-                            f"[TRAIL] Trail armed AND breached same bar | "
-                            f"exit={new_trail_sl:.2f} bar_low={bar_low:.2f}"
-                        )
-                        asyncio.get_running_loop().create_task(
-                            self._fire_exit(new_trail_sl, "Trail SL", source="bar_close_arm_breach")
-                        )
 
         # ── 7. Same-bar exit check ────────────────────────────────────────────
         # Skip for entry bar — Pine never exits on the signal bar
