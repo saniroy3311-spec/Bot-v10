@@ -91,6 +91,7 @@ import hmac
 import json
 import logging
 import time
+import socket
 from typing import Any, Optional
 
 import aiohttp
@@ -134,6 +135,10 @@ def build_exchange() -> ccxt.delta:
     Called once at startup; the same session is reused throughout.
     """
     base_url = _INDIA_TESTNET if DELTA_TESTNET else _INDIA_LIVE
+    # FIX-IPV6: Force IPv4 — VPS has dual-stack; without this, Python resolves
+    # api.india.delta.exchange to IPv6 (2a02:...) which is not whitelisted.
+    # TCPConnector(family=AF_INET) pins DNS resolution to IPv4 only.
+    _ipv4_connector = aiohttp.TCPConnector(family=socket.AF_INET)
     return ccxt.delta({
         "apiKey":          DELTA_API_KEY,
         "secret":          DELTA_API_SECRET,
@@ -144,6 +149,7 @@ def build_exchange() -> ccxt.delta:
                 "private": base_url,
             }
         },
+        "aiohttp_kwargs": {"connector": _ipv4_connector},
     })
 
 
@@ -375,7 +381,11 @@ class OrderManager:
     async def _http_session(self) -> aiohttp.ClientSession:
         """Lazily create the aiohttp session for bracket endpoints."""
         if self._http is None or self._http.closed:
-            self._http = aiohttp.ClientSession()
+            # FIX-IPV6: Force IPv4 for bracket endpoint raw HTTP session too.
+            # Without this the signed REST calls (cancel_all, place_bracket)
+            # also route via IPv6 and hit ip_not_whitelisted on Delta India.
+            _connector = aiohttp.TCPConnector(family=socket.AF_INET)
+            self._http = aiohttp.ClientSession(connector=_connector)
         return self._http
 
     # ── Position query ────────────────────────────────────────────────────────
