@@ -259,6 +259,28 @@ TRAIL_SL_PRE_FIRE_BUFFER = float(os.environ.get("TRAIL_SL_PRE_FIRE_BUFFER", "0.0
 SL_CONFIRM_MS = int(os.environ.get("SL_CONFIRM_MS", "1500"))
 
 # ──────────────────────────────────────────────
+# SL CONFIRMATION — CONSECUTIVE DELTA TICK COUNT  (FIX-8 / Option 1+3)
+# ──────────────────────────────────────────────
+# When SL_CONFIRM_TICKS > 0, the time-based SL_CONFIRM_MS window is REPLACED
+# by a consecutive-tick counter. The bot requires this many consecutive Delta
+# Exchange ticks above the SL before firing the exit. Any single Delta tick
+# below the SL resets the counter to 0. Binance ticks are completely ignored
+# for the breach count — they can never trigger or advance the counter.
+#
+# Why tick-count > time-based:
+#   • Immune to Binance/Delta feed interleaving (the main early-exit cause).
+#   • Stable across all market conditions — doesn't speed up in fast markets.
+#   • Simpler to tune: 1 number, no ms estimation needed.
+#
+# Recommended starting value: 5
+#   At ~1 Delta tick/second, 5 ticks ≈ 5 seconds confirmation.
+#   Cost on a real SL hit: ~5 extra ticks of slippage (typically <10 pts).
+#   Gain: eliminates premature exits from the Binance/Delta fight.
+#
+# Set to 0 to disable and fall back to SL_CONFIRM_MS time-based mode.
+SL_CONFIRM_TICKS = int(os.environ.get("SL_CONFIRM_TICKS", "5"))
+
+# ──────────────────────────────────────────────
 # TRAIL OFFSET FLOOR  (REMOVED — Pine has no floor)
 # ──────────────────────────────────────────────
 # IMPORTANT: Pine's strategy.exit() trail_points/trail_offset have NO floor.
