@@ -99,6 +99,7 @@ from config import (
     TRAIL_OFFSET_FLOOR_MULT,
     TRAIL_FIRE_SL_ON_CANDLE_EXTREME,
     SL_CONFIRM_MS,
+    SL_CONFIRM_TICKS,
 )
 from risk.calculator import RiskLevels, TrailState
 
@@ -249,6 +250,12 @@ class TrailMonitor:
         # are NOT debounced (they fire instantly).
         self._pending_sl_since_ms : int = 0
 
+        # FIX-8 (Option 1+3): Consecutive Delta-tick breach counter.
+        # When SL_CONFIRM_TICKS > 0, we require this many consecutive Delta-source
+        # ticks above the SL before firing — replaces the time-based window.
+        # Resets to 0 on ANY tick below the SL. Immune to Binance feed interleaving.
+        self._breach_delta_count  : int = 0
+
     # ── Start / Stop ──────────────────────────────────────────────────────────
 
     def start(
@@ -289,6 +296,9 @@ class TrailMonitor:
 
         # FIX-7: Reset spike-debounce state for the new trade
         self._pending_sl_since_ms = 0
+
+        # FIX-8: Reset Delta-tick breach counter for the new trade
+        self._breach_delta_count = 0
 
         self._entry_bar_end_ms = (
             (entry_bar_time_ms // BAR_PERIOD_MS) * BAR_PERIOD_MS
@@ -515,11 +525,14 @@ class TrailMonitor:
         FIX-6: Delta IS the authoritative price source (same as Pine uses).
         Always calls the full _evaluate_tick() — updates best_price post-arm.
         Binance ticks post-arm only check SL/TP, not best_price.
+
+        FIX-8 (Option 1): tagged source="delta" so _sl_confirmed() counts
+        only Delta ticks toward the breach confirmation counter.
         """
         if not self._running or self._exit_fired or price <= 0:
             return
         logger.debug(f"[TRAIL] Delta tick {price:.2f}")
-        await self._evaluate_tick(price)
+        await self._evaluate_tick(price, source="delta")
 
     async def _recalibrate_offset(self, binance_price_raw: float) -> None:
         """
@@ -574,7 +587,9 @@ class TrailMonitor:
                 if price is None or price <= 0:
                     continue
                 # REST poll uses Delta mark price — always full _evaluate_tick()
-                await self._evaluate_tick(price)
+                # FIX-8: tagged source="delta" — REST polls Delta mark price,
+                # so these count toward the breach tick counter too.
+                await self._evaluate_tick(price, source="delta")
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -583,7 +598,7 @@ class TrailMonitor:
 
     # ── Core tick evaluator — Pine trail engine ────────────────────────────────
 
-    async def _evaluate_tick(self, price: float) -> None:
+    async def _evaluate_tick(self, price: float, source: str = "other") -> None:
         """
         Pine trail_points / trail_offset engine — exact replication.
 
@@ -602,6 +617,9 @@ class TrailMonitor:
 
         Called by: push_delta_tick(), _tick_loop() (REST), on_price_tick() pre-arm.
         Post-arm Binance ticks use _evaluate_tick_sl_only() instead (FIX-6).
+
+        FIX-8 (Option 1+3): source="delta" ticks count toward breach confirmation.
+        source="other" (Binance pre-arm path) resets the counter on retreat.
         """
         risk  = self._risk
         state = self._state
@@ -645,7 +663,7 @@ class TrailMonitor:
                 # Trail not armed — check initial / BE SL only
                 sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
                     else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
-                if self._sl_confirmed(price, sl_level, is_long):
+                if self._sl_confirmed(price, sl_level, is_long, source=source):
                     reason = "Breakeven SL" if state.be_done else "Initial SL"
                     await self._fire_exit(price, reason, source="tick")
                     return
@@ -681,7 +699,7 @@ class TrailMonitor:
         # ── 5. Trail SL hit check ─────────────────────────────────────────────
         sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
             else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
-        if self._sl_confirmed(price, sl_level, is_long):
+        if self._sl_confirmed(price, sl_level, is_long, source=source):
             trail_improved = (
                 (state.current_sl > risk.sl) if is_long
                 else (state.current_sl < risk.sl)
@@ -751,7 +769,9 @@ class TrailMonitor:
         # ── 2. Trail SL hit check (using current_sl already set by Delta ticks) ──
         sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
             else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
-        if self._sl_confirmed(price, sl_level, is_long):
+        # FIX-8: Binance ticks (source="other") never count toward breach counter.
+        # They can still fire the exit if tick-count confirm is disabled (SL_CONFIRM_TICKS=0).
+        if self._sl_confirmed(price, sl_level, is_long, source="other"):
             trail_improved = (
                 (state.current_sl > risk.sl) if is_long
                 else (state.current_sl < risk.sl)
@@ -893,24 +913,85 @@ class TrailMonitor:
 
     # ── Spike-debounce for trailing / initial SL ───────────────────────────────
 
-    def _sl_confirmed(self, price: float, sl_level: float, is_long: bool) -> bool:
+    def _sl_confirmed(self, price: float, sl_level: float, is_long: bool,
+                      source: str = "other") -> bool:
         """
-        FIX-7: Return True only when an SL breach is *confirmed*.
+        FIX-7 + FIX-8 (Option 1 + Option 3): Dual-mode SL breach confirmation.
 
-        Pine/TradingView evaluates exits on (simulated) bar data, so a real
-        live tick that pokes the stop for a few hundred ms and then retreats is
-        invisible to it — Pine keeps trailing and captures the rest of the move.
-        The live bot sees that tick and would exit immediately.
+        MODE A — Tick-count mode (SL_CONFIRM_TICKS > 0, RECOMMENDED):
+        ──────────────────────────────────────────────────────────────
+        Requires SL_CONFIRM_TICKS consecutive Delta-source ticks above the
+        SL before firing. Any single tick from Delta below the SL resets the
+        counter to 0. Binance ticks (source="other") are completely ignored
+        for breach counting — they can never trigger or sustain a breach.
 
-        To match TV, we require the price to stay beyond `sl_level` for
-        SL_CONFIRM_MS before firing. If a later tick comes back inside the stop,
-        the pending exit is cancelled and trailing continues.
+        This is Option 1 (feed isolation) + Option 3 (tick-count) combined:
+          • Option 1: only source="delta" ticks advance the counter.
+          • Option 3: need REQUIRED_TICKS clean Delta ticks above SL.
 
-        TP and Max SL do NOT call this — they must fire instantly.
+        Result: the 47-second fight between Binance (61,249) and Delta (61,179)
+        that caused the early exit collapses completely — Delta ticks below SL
+        reset the counter, Binance ticks above SL are ignored.
+
+        MODE B — Time-based mode (SL_CONFIRM_TICKS == 0, legacy):
+        ──────────────────────────────────────────────────────────
+        Falls back to original SL_CONFIRM_MS time-window behaviour for
+        backward compatibility. All tick sources participate (original logic).
+
+        TP and Max SL do NOT call this — they fire instantly regardless.
         """
         breached = (price <= sl_level) if is_long else (price >= sl_level)
         now_ms   = int(time.time() * 1000)
 
+        # ── MODE A: Tick-count confirm (Option 1 + 3) ─────────────────────────
+        if SL_CONFIRM_TICKS > 0:
+            if not breached:
+                # Price is inside SL — reset counter regardless of source
+                if self._breach_delta_count > 0:
+                    logger.info(
+                        f"[TRAIL] SL spike ignored — price {price:.2f} retreated "
+                        f"inside SL {sl_level:.2f} (src={source}, "
+                        f"counter reset {self._breach_delta_count}→0)"
+                    )
+                self._breach_delta_count  = 0
+                self._pending_sl_since_ms = 0
+                return False
+
+            # Price is breached — only Delta ticks advance the counter
+            if source != "delta":
+                # Binance (or other) tick above SL — ignored for counting (Option 1)
+                logger.debug(
+                    f"[TRAIL] SL breach tick ignored (non-delta src={source}) "
+                    f"price={price:.2f} sl={sl_level:.2f} "
+                    f"count={self._breach_delta_count}/{SL_CONFIRM_TICKS}"
+                )
+                return False
+
+            # Delta tick above SL — increment counter
+            self._breach_delta_count += 1
+            if self._breach_delta_count == 1:
+                logger.info(
+                    f"[TRAIL] SL breach — Delta tick 1/{SL_CONFIRM_TICKS} | "
+                    f"price={price:.2f} sl={sl_level:.2f}"
+                )
+            else:
+                logger.info(
+                    f"[TRAIL] SL breach — Delta tick {self._breach_delta_count}/{SL_CONFIRM_TICKS} | "
+                    f"price={price:.2f} sl={sl_level:.2f}"
+                )
+
+            if self._breach_delta_count >= SL_CONFIRM_TICKS:
+                logger.info(
+                    f"[TRAIL] SL breach confirmed — {self._breach_delta_count} consecutive "
+                    f"Delta ticks above SL {sl_level:.2f} — firing"
+                )
+                self._breach_delta_count  = 0
+                self._pending_sl_since_ms = 0
+                return True
+
+            return False
+
+        # ── MODE B: Time-based confirm (legacy, SL_CONFIRM_TICKS == 0) ────────
         if not breached:
             if self._pending_sl_since_ms:
                 logger.info(
