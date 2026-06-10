@@ -90,6 +90,7 @@ import hashlib
 import hmac
 import json
 import logging
+import ssl
 import time
 import socket
 from typing import Any, Optional
@@ -133,13 +134,17 @@ def build_exchange() -> ccxt.delta:
     """
     Build a ccxt.delta async instance pointed at Delta India.
     Called once at startup; the same session is reused throughout.
+
+    FIX-IPV6 (real fix):
+    ccxt.Exchange.open() always creates its own TCPConnector without
+    family=AF_INET, so passing aiohttp_kwargs does nothing — ccxt ignores it.
+    The only reliable fix is to pre-inject an AF_INET session BEFORE open()
+    runs. ccxt's open() checks `if self.session is None` before creating its
+    own, so a pre-set session is used as-is. We set own_session=False so ccxt
+    does not try to close our session on exchange.close() (we own its lifecycle).
     """
     base_url = _INDIA_TESTNET if DELTA_TESTNET else _INDIA_LIVE
-    # FIX-IPV6: Force IPv4 — VPS has dual-stack; without this, Python resolves
-    # api.india.delta.exchange to IPv6 (2a02:...) which is not whitelisted.
-    # TCPConnector(family=AF_INET) pins DNS resolution to IPv4 only.
-    _ipv4_connector = aiohttp.TCPConnector(family=socket.AF_INET)
-    return ccxt.delta({
+    ex = ccxt.delta({
         "apiKey":          DELTA_API_KEY,
         "secret":          DELTA_API_SECRET,
         "enableRateLimit": True,
@@ -149,8 +154,17 @@ def build_exchange() -> ccxt.delta:
                 "private": base_url,
             }
         },
-        "aiohttp_kwargs": {"connector": _ipv4_connector},
     })
+    # Pre-inject IPv4-only aiohttp session so ccxt never creates a dual-stack one.
+    _ssl_ctx   = ssl.create_default_context()
+    _connector = aiohttp.TCPConnector(
+        family=socket.AF_INET,
+        ssl=_ssl_ctx,
+        enable_cleanup_closed=True,
+    )
+    ex.session    = aiohttp.ClientSession(connector=_connector)
+    ex.own_session = False   # we own the session; ccxt must not close it
+    return ex
 
 
 # ─── Retry helper ─────────────────────────────────────────────────────────────
