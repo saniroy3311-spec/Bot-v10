@@ -702,6 +702,21 @@ class TrailMonitor:
         # ── 3. Trail is armed — update best_price ────────────────────────────
         self._update_best_price(state, price, is_long)
 
+        # ── 3b. Intrabar stage upgrade ────────────────────────────────────────
+        # Check stage upgrade on every tick (intrabar) using current best_price.
+        # profit_dist = how far best_price has moved from entry in profit direction.
+        if is_long:
+            intrabar_profit = state.best_price - risk.entry_price
+        else:
+            intrabar_profit = risk.entry_price - state.best_price
+        new_stage = _upgrade_stage(state.stage, intrabar_profit, atr)
+        if new_stage > state.stage:
+            logger.info(
+                f"[TRAIL] Stage {state.stage} → {new_stage} INTRABAR | "
+                f"profit={intrabar_profit:.2f} best={state.best_price:.2f}"
+            )
+            state.stage = new_stage
+
         # ── 4. Recompute trail SL from best_price ────────────────────────────
         new_trail_sl = _trail_sl_from_best(state.best_price, state.stage, atr, is_long)
         self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="tick")
