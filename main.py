@@ -128,6 +128,7 @@ class ShivaSniperBot:
         self._risk        : Optional[RiskLevels]  = None
         self._trail_state : Optional[TrailState]  = None
         self._signal_type : str                   = "None"
+        self._entry_bar_boundary_ms : int         = 0   # FIX-9: next bar open after entry
 
         # Guards
         self._entry_lock  = asyncio.Lock()
@@ -290,12 +291,19 @@ class ShivaSniperBot:
         # ── 2. Trail update for open position ─────────────────────────────────
         if self._in_position:
             if self._trail_mon._running:
+                # FIX-9: is_entry_bar=True on the bar where entry was taken.
+                # Pine never evaluates SL/TP on the signal bar itself.
+                _is_entry_bar = (
+                    self._entry_bar_boundary_ms > 0
+                    and int(snap.timestamp) + 1 <= self._entry_bar_boundary_ms
+                )
                 self._trail_mon.on_bar_close(
                     bar_close   = snap.close,
                     bar_high    = snap.high,
                     bar_low     = snap.low,
                     bar_open    = snap.open,
                     current_atr = snap.atr,
+                    is_entry_bar = _is_entry_bar,
                 )
             else:
                 if self._risk is not None and self._risk.stop_dist == 0.0:
@@ -493,6 +501,7 @@ class ShivaSniperBot:
                 _mult_ms = {"m": 60_000, "h": 3_600_000, "d": 86_400_000}.get(_unit, 60_000)
                 _period_ms      = _n * _mult_ms
                 _next_bar_open  = int(snap.timestamp) + _period_ms
+                self._entry_bar_boundary_ms = _next_bar_open  # FIX-9: track for is_entry_bar
                 self._trail_mon.set_entry_bar_boundary(_next_bar_open)
             except Exception as _gge:
                 pass
