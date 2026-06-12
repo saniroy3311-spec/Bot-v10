@@ -336,6 +336,9 @@ TRAIL_T4_TRIG, TRAIL_T4_PTS, TRAIL_T4_OFF = TRAIL_STAGES[3]
 TRAIL_T5_TRIG, TRAIL_T5_PTS, TRAIL_T5_OFF = TRAIL_STAGES[4]
 
 # Bar-close SL evaluation mode
-BAR_CLOSE_SL_EVAL = False
+# True  = Pine-exact: Initial SL only fires at bar close (calc_on_every_tick=false)
+# False = legacy:     Initial SL fires on every live tick (can exit on intrabar wicks)
+# RECOMMENDED: True — this is the single biggest cause of bot-vs-TV divergence.
+BAR_CLOSE_SL_EVAL = os.environ.get("BAR_CLOSE_SL_EVAL", "true").lower() == "true"
 
 # Bar-close SL evaluation mode
