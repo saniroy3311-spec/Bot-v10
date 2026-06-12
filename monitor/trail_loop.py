@@ -100,6 +100,7 @@ from config import (
     TRAIL_FIRE_SL_ON_CANDLE_EXTREME,
     SL_CONFIRM_MS,
     SL_CONFIRM_TICKS,
+    BAR_CLOSE_SL_EVAL,
 )
 from risk.calculator import RiskLevels, TrailState
 
@@ -256,6 +257,13 @@ class TrailMonitor:
         # Resets to 0 on ANY tick below the SL. Immune to Binance feed interleaving.
         self._breach_delta_count  : int = 0
 
+        # FIX-9 (BAR_CLOSE_SL_EVAL): Pine-exact Initial SL behaviour.
+        # When True, the Initial SL (pre-trail-arm) is ONLY evaluated at bar close,
+        # not on live ticks. This matches Pine's calc_on_every_tick=false exactly.
+        # Trail SL (post-arm), TP, and Max SL continue to fire on live ticks.
+        # Tracks whether the current bar's close has been evaluated for Initial SL.
+        self._last_initial_sl_bar_ms : int = 0
+
     # ── Start / Stop ──────────────────────────────────────────────────────────
 
     def start(
@@ -299,6 +307,9 @@ class TrailMonitor:
 
         # FIX-8: Reset Delta-tick breach counter for the new trade
         self._breach_delta_count = 0
+
+        # FIX-9: Reset bar-close Initial SL tracker for the new trade
+        self._last_initial_sl_bar_ms = 0
 
         self._entry_bar_end_ms = (
             (entry_bar_time_ms // BAR_PERIOD_MS) * BAR_PERIOD_MS
@@ -378,6 +389,11 @@ class TrailMonitor:
 
         atr = self._current_atr
 
+        # FIX-9: Record that this bar has now been evaluated at bar close.
+        # _evaluate_tick() uses this to skip Initial SL checks on ticks that
+        # arrive within the same bar as a bar-close evaluation — Pine-exact.
+        self._last_initial_sl_bar_ms = self._entry_bar_end_ms
+
         # ── 2. Initial SL update (Pine recalcs stop= every bar) ─────────────
         # Only when trail not yet armed — once trail arms, current_sl is trail SL
         if not getattr(state, 'trail_armed', False) and not state.be_done:
@@ -402,8 +418,18 @@ class TrailMonitor:
             )
             state.stage = new_stage
             if getattr(state, 'trail_armed', False):
+                # Trail is live — immediately recompute trail SL at the tighter offset
                 new_trail_sl = _trail_sl_from_best(state.best_price, state.stage, atr, is_long)
                 self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="stage_upgrade_bar")
+            else:
+                # Trail not yet armed — log the new activation price so next ticks
+                # use the upgraded stage's trail_pts to arm (closer to entry = arms sooner)
+                new_act = _activation_price(entry_price, state.stage, atr, is_long)
+                logger.info(
+                    f"[TRAIL] Stage upgrade pre-arm: new activation_price={new_act:.2f} "
+                    f"trail_pts={_trail_pts(state.stage, atr):.2f} "
+                    f"trail_off={_trail_off(state.stage, atr):.2f}"
+                )
 
         # ── 4. Breakeven check (BAR-CLOSE ONLY) ─────────────────────────────
         if not state.be_done and close_profit > atr * BE_MULT:
@@ -673,7 +699,15 @@ class TrailMonitor:
                 # Trail not armed — check initial / BE SL only
                 sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
                     else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
-                if self._sl_confirmed(price, sl_level, is_long, source=source):
+
+                # FIX-9 (BAR_CLOSE_SL_EVAL): Pine uses calc_on_every_tick=false,
+                # which means the Initial SL is ONLY evaluated at bar close.
+                # When this flag is True, skip tick-level Initial SL checks entirely.
+                # The Initial SL will be caught by on_bar_close() same-bar exit check.
+                # Trail SL (post-arm), TP, and Max SL still fire on every tick.
+                _skip_initial_sl = BAR_CLOSE_SL_EVAL and not state.be_done
+
+                if not _skip_initial_sl and self._sl_confirmed(price, sl_level, is_long, source=source):
                     reason = "Breakeven SL" if state.be_done else "Initial SL"
                     await self._fire_exit(price, reason, source="tick")
                     return
@@ -711,11 +745,15 @@ class TrailMonitor:
             intrabar_profit = risk.entry_price - state.best_price
         new_stage = _upgrade_stage(state.stage, intrabar_profit, atr)
         if new_stage > state.stage:
-            logger.info(
-                f"[TRAIL] Stage {state.stage} → {new_stage} INTRABAR | "
-                f"profit={intrabar_profit:.2f} best={state.best_price:.2f}"
-            )
+            old_stage = state.stage
             state.stage = new_stage
+            new_trail_sl_preview = _trail_sl_from_best(state.best_price, state.stage, atr, is_long)
+            logger.info(
+                f"[TRAIL] Stage {old_stage} → {new_stage} INTRABAR | "
+                f"profit={intrabar_profit:.2f} best={state.best_price:.2f} "
+                f"new_trail_sl={new_trail_sl_preview:.2f} "
+                f"trail_off={_trail_off(new_stage, atr):.2f}"
+            )
 
         # ── 4. Recompute trail SL from best_price ────────────────────────────
         new_trail_sl = _trail_sl_from_best(state.best_price, state.stage, atr, is_long)
