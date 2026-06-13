@@ -40,7 +40,7 @@ def init_databases():
     # Check if trades table is empty; if so, populate mock data
     cursor_journal.execute("SELECT COUNT(*) FROM trades")
     if cursor_journal.fetchone()[0] == 0:
-        seed_mock_trades(cursor_journal)
+        #seed_mock_trades(cursor_journal)
         conn_journal.commit()
     conn_journal.close()
 

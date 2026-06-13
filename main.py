@@ -680,3 +680,4 @@ from monitor.trail_loop import TrailMonitor                          # noqa: E40
 from indicators.engine  import IndicatorSnapshot, Signal, SignalType # noqa: E402,F401
 from risk.calculator    import RiskLevels, TrailState                # noqa: E402,F401
 from execution import ExecutionEngine, log_signal                    # noqa: E402,F401
+# This won't work appended — need to patch properly

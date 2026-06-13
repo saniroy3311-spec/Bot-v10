@@ -8,7 +8,7 @@ import json
 import httpx
 from datetime import datetime, timedelta
 from typing import Optional, List
-import database
+from dashboard import database
 
 # Resolve runtime file paths to repo root (parent of dashboard/)
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -248,7 +248,7 @@ def get_trades(
         query += " AND entry_time >= ?"
         params.append(start_date)
     if end_date:
-        query += " AND exit_time <= ?"
+        query += " AND ts <= ?"
         params.append(end_date)
     if side and side != "ALL":
         query += " AND side = ?"
@@ -271,7 +271,7 @@ def get_trades(
         query += " AND tag LIKE ?"
         params.append(f"%{tag}%")
         
-    query += " ORDER BY exit_time DESC"
+    query += " ORDER BY ts DESC"
     trades = get_db_rows(database.JOURNAL_DB, query, params)
     return trades
 
@@ -429,3 +429,18 @@ def update_settings(settings: SettingsUpdateSchema):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
+@app.get("/api/candles")
+async def get_candles(limit: int = 200):
+    import httpx
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=30m&limit={limit}",
+                timeout=5.0
+            )
+            data = res.json()
+            candles = [{"time": int(d[0]/1000), "open": float(d[1]), "high": float(d[2]), "low": float(d[3]), "close": float(d[4])} for d in data]
+            return candles
+    except:
+        return []

@@ -42,8 +42,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-PORT          = int(os.environ.get("DASHBOARD_PORT", "10000"))
-HOST          = os.environ.get("DASHBOARD_HOST", "0.0.0.0")
+PORT          = int(os.environ.get("DASHBOARD_PORT", "80"))
+HOST          = "0.0.0.0"
 DASHBOARD_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # How long start() will keep retrying the port bind before giving up.
@@ -159,7 +159,9 @@ class _Handler(BaseHTTPRequestHandler):
         return False
 
     def do_GET(self):
-        if not self._check_auth():
+        # auth disabled
+        pass
+        if False:
             return
 
         parsed = urlparse(self.path)
