@@ -170,6 +170,19 @@ MAX_SL_MULT    = float(os.environ.get("MAX_SL_MULT",    "1.5"))
 MAX_SL_POINTS  = float(os.environ.get("MAX_SL_POINTS",  "500.0"))
 
 # ──────────────────────────────────────────────
+# EMERGENCY BRACKET WIDENING  (FIX-BRACKET-INTRABAR)
+# ──────────────────────────────────────────────
+# The exchange-side bracket SL is a RESTING stop order on Delta. It fires on
+# ANY intrabar touch of last_traded_price. Pine (calc_on_every_tick=false) only
+# evaluates the stop at BAR CLOSE. If the bracket sits at the Pine initial SL,
+# every intrabar wick that Pine would ignore closes the bot's position early.
+# So the bracket must be a CATASTROPHE-ONLY net, placed far beyond the Pine SL.
+# Python (TrailMonitor) still owns the real, Pine-exact bar-close SL.
+#   bracket_dist = clamp(pine_sl_dist * WIDEN_MULT, MIN_PTS, MAX_SL_POINTS)
+BRACKET_SL_WIDEN_MULT = float(os.environ.get("BRACKET_SL_WIDEN_MULT", "3.0"))
+BRACKET_SL_MIN_PTS    = float(os.environ.get("BRACKET_SL_MIN_PTS",    "300.0"))
+
+# ──────────────────────────────────────────────
 # PINE MINTICK  — BUG-FIX-3/BUG-2: DEFAULT IS NOW 1.0
 # ──────────────────────────────────────────────
 # Pine's strategy.exit(trail_points=X, trail_offset=Y) takes X and Y as
@@ -279,6 +292,21 @@ SL_CONFIRM_MS = int(os.environ.get("SL_CONFIRM_MS", "1500"))
 #
 # Set to 0 to disable and fall back to SL_CONFIRM_MS time-based mode.
 SL_CONFIRM_TICKS = int(os.environ.get("SL_CONFIRM_TICKS", "5"))
+
+# ─────────────────────────────────────────────────────────────────
+# TRAIL SL CONFIRMATION — POST-ARM  (FIX-TRAIL-INTRABAR)
+# ─────────────────────────────────────────────────────────────────
+# Once the trail has ARMED the SL is already in profit territory.
+# Using SL_CONFIRM_TICKS=5 here means the bot waits ~5 seconds before
+# firing a trail exit — Pine fires instantly on the first simulated tick.
+# This causes the bot to miss fast intrabar trail exits.
+#
+# Use a LOWER threshold post-arm so the trail fires quickly like Pine,
+# while the initial SL still gets full spike protection (SL_CONFIRM_TICKS=5).
+#   2 = 2 consecutive Delta ticks (~2s)  ← recommended
+#   1 = first Delta tick below trail SL  ← closest to Pine, riskier
+#   0 = use SL_CONFIRM_TICKS (no separate post-arm threshold)
+TRAIL_SL_CONFIRM_TICKS = int(os.environ.get("TRAIL_SL_CONFIRM_TICKS", "2"))
 
 # ──────────────────────────────────────────────
 # TRAIL OFFSET FLOOR  (REMOVED — Pine has no floor)
