@@ -63,7 +63,7 @@ from orders.manager     import OrderManager
 from infra.telegram            import Telegram
 from infra.telegram_controller import TelegramController, EngineState
 from infra.whatsapp            import WhatsApp
-from infra.whatsapp_controller import WhatsAppController
+# from infra.whatsapp_controller import WhatsAppController  # disabled
 from infra.journal             import Journal
 from risk.lot_sizing           import btc_to_lots
 import server as _dashboard
@@ -102,12 +102,12 @@ class ShivaSniperBot:
             journal      = self._journal,
             order_mgr    = self._order_mgr,
         )
-        self._wa_ctrl  = WhatsAppController(
-            engine_state = self._state,
-            whatsapp     = self._whatsapp,
-            journal      = self._journal,
-            order_mgr    = self._order_mgr,
-        )
+        # self._wa_ctrl  = WhatsAppController(  # disabled
+        #     engine_state = self._state,
+        #     whatsapp     = self._whatsapp,
+        #     journal      = self._journal,
+        #     order_mgr    = self._order_mgr,
+        # )
 
         try:
             self._qty_lots = btc_to_lots(POSITION_BTC_SIZE) if POSITION_BTC_SIZE > 0 else ALERT_QTY
@@ -594,7 +594,7 @@ class ShivaSniperBot:
         await self.initialize()
 
         self._tg_ctrl_task = asyncio.create_task(self._tg_ctrl.run())
-        self._wa_ctrl_task = asyncio.create_task(self._wa_ctrl.run())
+        # self._wa_ctrl_task = asyncio.create_task(self._wa_ctrl.run())  # disabled
 
         feed = CandleFeed(
             on_bar_close  = self._on_bar_close,
