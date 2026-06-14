@@ -626,12 +626,11 @@
                             <input type="number" step="0.01" id="set-usd-inr" class="filter-input" inputmode="decimal" required>
                         </div>
                         <div class="filter-group">
-                            <label for="set-webhook">WhatsApp Alert Webhook</label>
+
                             <input type="text" id="set-webhook" class="filter-input" required>
                         </div>
                         <div class="filter-group">
-                            <label for="set-drawdown">Alert Max Drawdown Limit ($)</label>
-                            <input type="number" id="set-drawdown" class="filter-input" inputmode="numeric" pattern="[0-9]*" required>
+
                         </div>
                         <div class="filter-group">
                             <label for="set-heartbeat">Heartbeat Alert Timeout (seconds)</label>
@@ -1140,8 +1139,8 @@
                 document.getElementById('set-total-lots').value = settings.total_bot_lots || 100;
                 document.getElementById('set-billing-cycle').value = settings.default_billing_cycle || 'Monthly';
                 document.getElementById('set-usd-inr').value = settings.usd_inr_rate || 83.50;
-                document.getElementById('set-webhook').value = settings.whatsapp_webhook || '';
-                document.getElementById('set-drawdown').value = settings.daily_drawdown_limit || 500;
+
+
                 document.getElementById('set-heartbeat').value = settings.heartbeat_timeout || 120;
                 
                 // Update brand name in header dynamically
