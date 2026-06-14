@@ -627,7 +627,7 @@
                         </div>
                         <div class="filter-group">
 
-                            <input type="text" id="set-webhook" class="filter-input" required>
+
                         </div>
                         <div class="filter-group">
 
@@ -2758,8 +2758,8 @@
             document.getElementById('set-total-lots').value = 100;
             document.getElementById('set-billing-cycle').value = "Monthly";
             document.getElementById('set-usd-inr').value = 85.00;
-            document.getElementById('set-webhook').value = "https://api.whatsapp.com/send?phone=1234567";
-            document.getElementById('set-drawdown').value = 500;
+
+
             document.getElementById('set-heartbeat').value = 120;
             
             // Trigger save via form dispatch submit event
@@ -2777,8 +2777,8 @@
                 total_bot_lots: parseInt(document.getElementById('set-total-lots').value),
                 default_billing_cycle: document.getElementById('set-billing-cycle').value,
                 usd_inr_rate: parseFloat(document.getElementById('set-usd-inr').value),
-                whatsapp_webhook: document.getElementById('set-webhook').value,
-                daily_drawdown_limit: parseFloat(document.getElementById('set-drawdown').value),
+
+
                 heartbeat_timeout: parseInt(document.getElementById('set-heartbeat').value)
             };
             
