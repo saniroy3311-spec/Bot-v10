@@ -33,18 +33,16 @@ def startup_event():
     database.init_databases()
 
 # Helper to fetch database connection dict rows
-def get_db_rows(db_name, query, params=()):
+def get_db_rows(db_name=None, query="", params=()):
     conn = database.get_db_connection(db_name)
-    cursor = conn.cursor()
-    cursor.execute(query, params)
-    rows = [dict(row) for row in cursor.fetchall()]
+    cursor = conn.execute(query, tuple(params))
+    rows = [dict(zip([d[0] for d in cursor.description], row)) for row in cursor.fetchall()]
     conn.close()
     return rows
 
-def execute_db_write(db_name, query, params=()):
+def execute_db_write(db_name=None, query="", params=()):
     conn = database.get_db_connection(db_name)
-    cursor = conn.cursor()
-    cursor.execute(query, params)
+    cursor = conn.execute(query, tuple(params))
     conn.commit()
     last_id = cursor.lastrowid
     conn.close()
@@ -248,7 +246,7 @@ def get_trades(
         query += " AND entry_time >= ?"
         params.append(start_date)
     if end_date:
-        query += " AND ts <= ?"
+        query += " AND exit_time <= ?"
         params.append(end_date)
     if side and side != "ALL":
         query += " AND side = ?"
@@ -271,7 +269,7 @@ def get_trades(
         query += " AND tag LIKE ?"
         params.append(f"%{tag}%")
         
-    query += " ORDER BY ts DESC"
+    query += " ORDER BY exit_time DESC"
     trades = get_db_rows(database.JOURNAL_DB, query, params)
     return trades
 
