@@ -100,6 +100,7 @@ from config import (
     TRAIL_FIRE_SL_ON_CANDLE_EXTREME,
     SL_CONFIRM_MS,
     SL_CONFIRM_TICKS,
+    TRAIL_SL_CONFIRM_TICKS,
     BAR_CLOSE_SL_EVAL,
 )
 from risk.calculator import RiskLevels, TrailState
@@ -762,7 +763,8 @@ class TrailMonitor:
         # ── 5. Trail SL hit check ─────────────────────────────────────────────
         sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
             else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
-        if self._sl_confirmed(price, sl_level, is_long, source=source):
+        # trail_armed=True → uses TRAIL_SL_CONFIRM_TICKS (lower) for fast intrabar exit
+        if self._sl_confirmed(price, sl_level, is_long, source=source, trail_armed=True):
             trail_improved = (
                 (state.current_sl > risk.sl) if is_long
                 else (state.current_sl < risk.sl)
@@ -834,7 +836,8 @@ class TrailMonitor:
             else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
         # FIX-8: Binance ticks (source="other") never count toward breach counter.
         # They can still fire the exit if tick-count confirm is disabled (SL_CONFIRM_TICKS=0).
-        if self._sl_confirmed(price, sl_level, is_long, source="other"):
+        # trail_armed=True → uses TRAIL_SL_CONFIRM_TICKS for fast intrabar exit
+        if self._sl_confirmed(price, sl_level, is_long, source="other", trail_armed=True):
             trail_improved = (
                 (state.current_sl > risk.sl) if is_long
                 else (state.current_sl < risk.sl)
@@ -977,9 +980,13 @@ class TrailMonitor:
     # ── Spike-debounce for trailing / initial SL ───────────────────────────────
 
     def _sl_confirmed(self, price: float, sl_level: float, is_long: bool,
-                      source: str = "other") -> bool:
+                      source: str = "other", trail_armed: bool = False) -> bool:
         """
         FIX-7 + FIX-8 (Option 1 + Option 3): Dual-mode SL breach confirmation.
+
+        trail_armed=True uses TRAIL_SL_CONFIRM_TICKS (lower) instead of
+        SL_CONFIRM_TICKS so trail exits fire quickly like Pine's intrabar
+        simulation, while the initial SL keeps full spike protection.
 
         MODE A — Tick-count mode (SL_CONFIRM_TICKS > 0, RECOMMENDED):
         ──────────────────────────────────────────────────────────────
@@ -1008,6 +1015,14 @@ class TrailMonitor:
 
         # ── MODE A: Tick-count confirm (Option 1 + 3) ─────────────────────────
         if SL_CONFIRM_TICKS > 0:
+            # FIX-TRAIL-INTRABAR: use a lower threshold once trail is armed so
+            # trail exits fire quickly (matching Pine intrabar), while the initial
+            # SL still requires full SL_CONFIRM_TICKS spike protection.
+            _required = (
+                (TRAIL_SL_CONFIRM_TICKS if TRAIL_SL_CONFIRM_TICKS > 0 else SL_CONFIRM_TICKS)
+                if trail_armed else SL_CONFIRM_TICKS
+            )
+
             if not breached and source == "delta":
                 # Price is inside SL — reset counter regardless of source
                 if self._breach_delta_count > 0:
@@ -1026,7 +1041,7 @@ class TrailMonitor:
                 logger.debug(
                     f"[TRAIL] SL breach tick ignored (non-delta src={source}) "
                     f"price={price:.2f} sl={sl_level:.2f} "
-                    f"count={self._breach_delta_count}/{SL_CONFIRM_TICKS}"
+                    f"count={self._breach_delta_count}/{_required}"
                 )
                 return False
 
@@ -1034,19 +1049,22 @@ class TrailMonitor:
             self._breach_delta_count += 1
             if self._breach_delta_count == 1:
                 logger.info(
-                    f"[TRAIL] SL breach — Delta tick 1/{SL_CONFIRM_TICKS} | "
+                    f"[TRAIL] SL breach — Delta tick 1/{_required} "
+                    f"({'trail' if trail_armed else 'initial'}) | "
                     f"price={price:.2f} sl={sl_level:.2f}"
                 )
             else:
                 logger.info(
-                    f"[TRAIL] SL breach — Delta tick {self._breach_delta_count}/{SL_CONFIRM_TICKS} | "
+                    f"[TRAIL] SL breach — Delta tick {self._breach_delta_count}/{_required} "
+                    f"({'trail' if trail_armed else 'initial'}) | "
                     f"price={price:.2f} sl={sl_level:.2f}"
                 )
 
-            if self._breach_delta_count >= SL_CONFIRM_TICKS:
+            if self._breach_delta_count >= _required:
                 logger.info(
                     f"[TRAIL] SL breach confirmed — {self._breach_delta_count} consecutive "
-                    f"Delta ticks above SL {sl_level:.2f} — firing"
+                    f"Delta ticks above SL {sl_level:.2f} "
+                    f"({'trail-armed' if trail_armed else 'initial'}) — firing"
                 )
                 self._breach_delta_count  = 0
                 self._pending_sl_since_ms = 0
