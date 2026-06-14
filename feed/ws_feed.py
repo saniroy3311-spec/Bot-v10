@@ -415,6 +415,25 @@ class CandleFeed:
                         f"using WS-accumulated high/low: {e}"
                     )
 
+                # FIX-DELTA-VOL: Pine uses Delta India volume for vol filter
+                # Binance volume (written by FIX-PEAK-REST) ≠ Delta volume → wrong filter result
+                if BINANCE_SIGNAL_FEED:
+                    try:
+                        _dvol = await asyncio.to_thread(
+                            self._exchange.fetch_ohlcv,
+                            SYMBOL, CANDLE_TIMEFRAME, None, 3,
+                        )
+                        if _dvol and len(_dvol) >= 2:
+                            _delta_vol = float(_dvol[-2][5])
+                            _idx = self._df.index[-1]
+                            self._df.at[_idx, "volume"] = _delta_vol
+                            logger.info(
+                                f"[FEED] FIX-DELTA-VOL: volume={_delta_vol:.0f} "
+                                f"(Delta India — Pine vol filter parity ✅)"
+                            )
+                    except Exception as _e:
+                        logger.warning(f"[FEED] FIX-DELTA-VOL: Delta vol fetch failed — {_e}")
+
             logger.info(
                 f"✅ Bar confirmed [WS] | "
                 f"closed_boundary={self._last_candle_boundary} | "
