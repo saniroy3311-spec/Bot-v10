@@ -244,16 +244,31 @@ class ShivaSniperBot:
                         "[BAR] State drift detected: in_position=True but Delta "
                         "is flat. Bracket SL/TP fired silently — recovering exit."
                     )
-                    exit_price: float
-                    if self._trail_state is not None:
+
+                    # FIX-10: Try to get the real fill price from Delta order/fill
+                    # history before falling back to the bracket trigger price.
+                    # This corrects the journal entry (was off by ~3-4 pts per lot).
+                    real_fill: Optional[float] = None
+                    try:
+                        real_fill = await self._order_mgr.fetch_bracket_fill_price()
+                    except Exception as fill_err:
+                        logger.warning(f"[BAR] fetch_bracket_fill_price failed: {fill_err}")
+
+                    if real_fill is not None:
+                        exit_price = real_fill
+                        logger.info(f"[BAR] Drift recovery: using real fill price {exit_price:.2f}")
+                    elif self._trail_state is not None:
                         exit_price = float(self._trail_state.current_sl)
+                        logger.info(f"[BAR] Drift recovery: using trail SL as exit price {exit_price:.2f}")
                     elif self._risk is not None and self._risk.sl > 0:
                         exit_price = float(self._risk.sl)
+                        logger.info(f"[BAR] Drift recovery: using risk.sl as exit price {exit_price:.2f}")
                     else:
                         try:
                             exit_price = float(df["close"].iloc[-1])
                         except Exception:
                             exit_price = 0.0
+                        logger.info(f"[BAR] Drift recovery: using bar close as exit price {exit_price:.2f}")
 
                     if self._trail_mon._running:
                         self._trail_mon.stop()
