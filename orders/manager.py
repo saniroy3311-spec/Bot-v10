@@ -693,3 +693,96 @@ class OrderManager:
         except Exception as exc:
             logger.warning(f"[OM] fetch_ticker failed: {exc}")
             return None
+
+    async def fetch_bracket_fill_price(self) -> Optional[float]:
+        """
+        FIX-10 (GHOST-TRAIL): Fetch the real fill price of the bracket SL order
+        that fired silently on Delta.
+
+        Called from the bar-close drift recovery path in main.py when
+        in_position=True but Delta is flat — meaning the bracket SL/TP fired
+        while the Python trail loop was running as a ghost.
+
+        Two-layer lookup (automatic fallback):
+          1. GET /v2/fills?product_symbol=BTCUSD&page_size=5
+             → scan last 5 fills, pick the most recent sell fill
+             → most reliable: gives exact executed price
+          2. GET /v2/history/orders?product_symbol=BTCUSD&order_types=market_order&page_size=10
+             → scan for last filled close-side (sell for long) order
+             → fallback if fills endpoint is unavailable
+
+        Returns the actual fill price (float) or None if both layers fail.
+        In the None case the caller should fall back to current_sl as before.
+        """
+        if self._product_symbol is None:
+            logger.warning("[OM] fetch_bracket_fill_price: no product_symbol cached, skipping")
+            return None
+
+        session = await self._http_session()
+        close_side = "sell" if (self._is_long is not False) else "buy"
+
+        # ── Layer 1: fills endpoint ──────────────────────────────────────────
+        try:
+            fills_path = f"/v2/fills?product_symbol={self._product_symbol}&page_size=5"
+            data = await _signed_request(session, "GET", fills_path)
+            fills = (data.get("result") or [])
+            if isinstance(fills, dict):
+                fills = fills.get("data") or fills.get("fills") or []
+            for fill in fills:
+                if not isinstance(fill, dict):
+                    continue
+                fill_side = str(fill.get("side") or "").lower()
+                if fill_side == close_side:
+                    price_raw = (
+                        fill.get("fill_price")
+                        or fill.get("price")
+                        or fill.get("average")
+                    )
+                    if price_raw and float(price_raw) > 0:
+                        price = float(price_raw)
+                        logger.info(
+                            f"[OM] FIX-10: Bracket fill price from /fills: "
+                            f"{price:.2f} (side={fill_side})"
+                        )
+                        return price
+        except Exception as exc:
+            logger.warning(f"[OM] fetch_bracket_fill_price layer-1 failed: {exc}")
+
+        # ── Layer 2: order history endpoint ──────────────────────────────────
+        try:
+            hist_path = (
+                f"/v2/history/orders"
+                f"?product_symbol={self._product_symbol}"
+                f"&states=filled"
+                f"&page_size=10"
+            )
+            data = await _signed_request(session, "GET", hist_path)
+            orders = (data.get("result") or [])
+            if isinstance(orders, dict):
+                orders = orders.get("data") or orders.get("orders") or []
+            for order in orders:
+                if not isinstance(order, dict):
+                    continue
+                order_side  = str(order.get("side") or "").lower()
+                order_state = str(order.get("state") or order.get("status") or "").lower()
+                if order_side == close_side and "fill" in order_state:
+                    price_raw = (
+                        order.get("average_fill_price")
+                        or order.get("average")
+                        or order.get("price")
+                    )
+                    if price_raw and float(price_raw) > 0:
+                        price = float(price_raw)
+                        logger.info(
+                            f"[OM] FIX-10: Bracket fill price from /history/orders: "
+                            f"{price:.2f} (side={order_side})"
+                        )
+                        return price
+        except Exception as exc:
+            logger.warning(f"[OM] fetch_bracket_fill_price layer-2 failed: {exc}")
+
+        logger.warning(
+            "[OM] FIX-10: fetch_bracket_fill_price: both layers failed — "
+            "caller will use bracket trigger price as fallback"
+        )
+        return None
