@@ -49,6 +49,7 @@ import ccxt.async_support as ccxt
 from config import (
     DELTA_API_KEY, DELTA_API_SECRET, DELTA_TESTNET,
     SYMBOL, ALERT_QTY,
+    BRACKET_SL_WIDEN_MULT, BRACKET_SL_MIN_PTS, MAX_SL_POINTS,
 )
 
 logger = logging.getLogger("orders.manager")
@@ -304,14 +305,18 @@ class OrderManager:
             return order
 
         try:
-            buffer = 300.0
-            emergency_sl = (sl - buffer) if is_long else (sl + buffer)
+            # Dynamic emergency bracket: clamp(sl_dist * WIDEN_MULT, MIN_PTS, MAX_SL_POINTS)
+            # Uses config.py values so it scales with volatility and is tunable via .env
+            sl_dist = abs(sl - fill) if fill > 0 else BRACKET_SL_MIN_PTS
+            bracket_dist = max(sl_dist * BRACKET_SL_WIDEN_MULT, BRACKET_SL_MIN_PTS)
+            bracket_dist = min(bracket_dist, MAX_SL_POINTS)
+            emergency_sl = (fill - bracket_dist) if is_long else (fill + bracket_dist)
             
             await self._place_bracket(sl=emergency_sl)
             self._bracket_active = True
             logger.info(
                 f"[OM] ✅ Emergency bracket SL placed on Delta | "
-                f"sl={emergency_sl:.2f} (Calculated Pine SL was {sl:.2f} - 300pt Buffer added)"
+                f"sl={emergency_sl:.2f}  (fill={fill:.2f}  pine_sl={sl:.2f}  "                f"sl_dist={sl_dist:.1f}  bracket_dist={bracket_dist:.1f}  "                f"widen={BRACKET_SL_WIDEN_MULT}x  min={BRACKET_SL_MIN_PTS}  max={MAX_SL_POINTS})"
             )
         except Exception as exc:
             logger.error(
