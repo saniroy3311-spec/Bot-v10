@@ -343,7 +343,7 @@ CANDLE_TIMEFRAME = os.environ.get("CANDLE_TIMEFRAME", "30m")
 BINANCE_SIGNAL_FEED = os.environ.get("BINANCE_SIGNAL_FEED", "true").lower() == "true"
 BINANCE_SYMBOL      = os.environ.get("BINANCE_SYMBOL", "BTC/USDT")
 
-TRAIL_LOOP_SEC   = float(os.environ.get("TRAIL_LOOP_SEC", "5.0"))
+TRAIL_LOOP_SEC   = float(os.environ.get("TRAIL_LOOP_SEC", "2.0"))  # FIX-10: 2s for position poll
 WS_RECONNECT_SEC = 5
 
 # ──────────────────────────────────────────────
