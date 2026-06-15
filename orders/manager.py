@@ -502,11 +502,15 @@ class OrderManager:
             return order
 
         try:
-            bracket_resp = await self._place_bracket(sl=sl)
+            # WIDEN THE EMERGENCY STOP so Delta matching engine ignores normal wicks
+            buffer = 300.0
+            emergency_sl = (sl - buffer) if is_long else (sl + buffer)
+            
+            bracket_resp = await self._place_bracket(sl=emergency_sl)
             self._bracket_active = True
             logger.info(
                 f"[OM] ✅ Emergency bracket SL placed on Delta | "
-                f"sl={sl:.2f}  (never amended — Python trail owns exits)"
+                f"sl={emergency_sl:.2f} (Calculated Pine SL was {sl:.2f} - 300pt Buffer added)"
             )
         except Exception as exc:
             logger.error(
