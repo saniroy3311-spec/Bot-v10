@@ -376,16 +376,17 @@ class CandleFeed:
                         bar_idx = -2 if len(closed_ohlcv) >= 2 else -1
                         feed_name = "Binance"
                     else:
+                        # FIX-DELTA-CACHE: Delta REST caches bar data briefly after close.
+                        # Wait 2s to ensure the exchange has finalised the closed bar's volume.
+                        await asyncio.sleep(2)
                         closed_ohlcv = await asyncio.to_thread(
                             self._exchange.fetch_ohlcv,
                             SYMBOL,
                             CANDLE_TIMEFRAME,
-                            None,  
-                            3,     
+                            None,
+                            5,
                         )
-                        # FIX-VOL-BAR-IDX: Delta REST returns [older, closed, forming].
-                        # -1 = still-forming bar (wrong — duplicates volume across bars).
-                        # -2 = just-closed bar (correct, mirrors Binance path logic).
+                        # FIX-VOL-BAR-IDX: -2 = just-closed bar (correct).
                         bar_idx = -2 if len(closed_ohlcv) >= 2 else -1
                         feed_name = "Delta"
 
