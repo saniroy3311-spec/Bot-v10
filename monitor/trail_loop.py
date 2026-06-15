@@ -265,6 +265,16 @@ class TrailMonitor:
         # Tracks whether the current bar's close has been evaluated for Initial SL.
         self._last_initial_sl_bar_ms : int = 0
 
+        # FIX-10 (GHOST-TRAIL): Position existence guard.
+        # Every POSITION_POLL_TICKS iterations of _tick_loop (i.e. every
+        # POSITION_POLL_TICKS * TRAIL_LOOP_SEC seconds) we call fetch_open_position()
+        # to confirm the position still exists on Delta. If Delta is flat, the bracket
+        # SL fired silently — we stop the trail immediately and recover the exit.
+        # At TRAIL_LOOP_SEC=5 and POSITION_POLL_TICKS=1 this checks every 5 seconds
+        # (max ghost exposure = 5 s instead of 27 minutes from today's incident).
+        self._pos_poll_ticks   : int = 0
+        POSITION_POLL_TICKS    = 1   # check every tick-loop iteration (5s)
+
     # ── Start / Stop ──────────────────────────────────────────────────────────
 
     def start(
@@ -311,6 +321,9 @@ class TrailMonitor:
 
         # FIX-9: Reset bar-close Initial SL tracker for the new trade
         self._last_initial_sl_bar_ms = 0
+
+        # FIX-10: Reset position poll counter for the new trade
+        self._pos_poll_ticks = 0
 
         self._entry_bar_end_ms = (
             (entry_bar_time_ms // BAR_PERIOD_MS) * BAR_PERIOD_MS
@@ -615,11 +628,48 @@ class TrailMonitor:
     # ── Safety-net REST poll ───────────────────────────────────────────────────
 
     async def _tick_loop(self) -> None:
+        # FIX-10 (GHOST-TRAIL): How many _tick_loop iterations between each
+        # position-existence poll. 1 = every iteration (every TRAIL_LOOP_SEC seconds).
+        # Keep at 1 — the position poll is a single cheap REST call and catches
+        # a bracket-SL fire within TRAIL_LOOP_SEC seconds instead of 27 minutes.
+        POSITION_POLL_TICKS = 1
+
         while self._running and not self._exit_fired:
             try:
                 await asyncio.sleep(TRAIL_LOOP_SEC)
                 if not self._running or self._exit_fired:
                     break
+
+                # ── FIX-10: POSITION EXISTENCE GUARD ─────────────────────────
+                # Only poll when we believe we're in a position (self._risk set).
+                # If Delta says flat, the bracket SL fired while Python was
+                # unaware — stop the ghost trail and recover the exit.
+                self._pos_poll_ticks += 1
+                if self._risk is not None and self._pos_poll_ticks >= POSITION_POLL_TICKS:
+                    self._pos_poll_ticks = 0
+                    try:
+                        pos = await self._order_mgr.fetch_open_position()
+                        if pos is None:
+                            logger.warning(
+                                "[TRAIL] FIX-10: Position no longer exists on Delta — "
+                                "bracket SL fired silently. Stopping ghost trail."
+                            )
+                            # Use current_sl as best approximation of exit price;
+                            # the bar-close drift check will reconcile with the real fill.
+                            bracket_exit_price = float(self._state.current_sl) \
+                                if self._state is not None else float(self._risk.sl)
+                            await self._fire_exit(
+                                bracket_exit_price,
+                                "Bracket SL/TP (ghost-trail-guard)",
+                                source="pos-poll",
+                            )
+                            break
+                    except Exception as poll_err:
+                        # Network blip — do NOT exit on a failed poll.
+                        # Only exit on a confirmed size==0. Keep trailing.
+                        logger.warning(f"[TRAIL] FIX-10: Position poll failed (keeping trail): {poll_err}")
+                # ── END POSITION GUARD ────────────────────────────────────────
+
                 price = await self._get_mark_price()
                 if price is None or price <= 0:
                     continue
