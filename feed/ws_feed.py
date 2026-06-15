@@ -383,10 +383,13 @@ class CandleFeed:
                             None,  
                             3,     
                         )
-                        bar_idx = -1
+                        # FIX-VOL-BAR-IDX: Delta REST returns [older, closed, forming].
+                        # -1 = still-forming bar (wrong — duplicates volume across bars).
+                        # -2 = just-closed bar (correct, mirrors Binance path logic).
+                        bar_idx = -2 if len(closed_ohlcv) >= 2 else -1
                         feed_name = "Delta"
 
-                    if closed_ohlcv and len(closed_ohlcv) >= 1:
+                    if closed_ohlcv and len(closed_ohlcv) >= 2:
                         cb  = closed_ohlcv[bar_idx]
                         idx = self._df.index[-1]
                         self._df.at[idx, "open"]   = float(cb[1])
@@ -415,8 +418,11 @@ class CandleFeed:
                         f"using WS-accumulated high/low: {e}"
                     )
 
-                # FIX-DELTA-VOL: Pine uses Delta India volume for vol filter
-                # Binance volume (written by FIX-PEAK-REST) ≠ Delta volume → wrong filter result
+                # FIX-DELTA-VOL: Pine uses Delta India volume for vol filter.
+                # When BINANCE_SIGNAL_FEED=true: Binance OHLCV written above has Binance vol
+                #   → must re-fetch Delta vol and overwrite.
+                # When BINANCE_SIGNAL_FEED=false: Delta OHLCV already written above with bar_idx=-2
+                #   → volume is already correct; just log it for observability.
                 if BINANCE_SIGNAL_FEED:
                     try:
                         _dvol = await asyncio.to_thread(
@@ -433,6 +439,14 @@ class CandleFeed:
                             )
                     except Exception as _e:
                         logger.warning(f"[FEED] FIX-DELTA-VOL: Delta vol fetch failed — {_e}")
+                else:
+                    # Delta path — volume already set correctly via bar_idx=-2 above.
+                    _idx = self._df.index[-1]
+                    _delta_vol = float(self._df.at[_idx, "volume"])
+                    logger.info(
+                        f"[FEED] FIX-DELTA-VOL: volume={_delta_vol:.0f} "
+                        f"(Delta India — Pine vol filter parity ✅)"
+                    )
 
             logger.info(
                 f"✅ Bar confirmed [WS] | "
