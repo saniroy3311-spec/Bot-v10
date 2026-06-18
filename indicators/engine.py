@@ -329,6 +329,12 @@ def compute(df: pd.DataFrame) -> IndicatorSnapshot:
     atr     = float(atr_s.iloc[-1])
     atr_sma = float(atr_s.rolling(50).mean().iloc[-1])
 
+    logger.info(
+        f"[ATR-DIAG] computed_atr={atr:.2f} atr_sma={atr_sma:.2f} "
+        f"bar_open={float(last['open']):.2f} bar_high={float(last['high']):.2f} "
+        f"bar_low={float(last['low']):.2f} bar_close={float(last['close']):.2f}"
+    )
+
     rsi = float(_rsi_series(close, RSI_LEN).iloc[-1])
 
     plus_di_s, minus_di_s, adx_raw_s = _dmi_series(high, low, close, DI_LEN, ADX_SMOOTH)
