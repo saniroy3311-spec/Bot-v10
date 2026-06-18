@@ -403,6 +403,10 @@ class CandleFeed:
                             f"true_high={cb[2]:.2f} true_low={cb[3]:.2f} "
                             f"true_close={cb[4]:.2f}"
                         )
+                        logger.info(
+                            f"[ATR-DIAG] feed={feed_name} bar_open={cb[1]:.2f} "
+                            f"bar_high={cb[2]:.2f} bar_low={cb[3]:.2f} bar_close={cb[4]:.2f}"
+                        )
                         if self.trail_monitor is not None:
                             self.trail_monitor.push_ws_candle(
                                 float(cb[2]), float(cb[3]),
