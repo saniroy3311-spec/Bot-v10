@@ -1232,6 +1232,19 @@ class TrailMonitor:
                 f"actual={actual_fill_price:.2f} diff={actual_fill_price - exit_price:+.2f}"
             )
 
+        # ── Slippage guard ────────────────────────────────────────────────────
+        if actual_fill_price is not None and self._current_atr > 0:
+            slip = abs(actual_fill_price - exit_price)
+            slip_atr_pct = slip / self._current_atr * 100
+            MAX_SLIP_ATR_PCT = 15.0  # alert threshold: 15% of ATR
+            if slip_atr_pct > MAX_SLIP_ATR_PCT:
+                logger.critical(
+                    f"[TRAIL] ⚠️ EXCESS SLIPPAGE: signal={exit_price:.2f} "
+                    f"fill={actual_fill_price:.2f} slip={slip:.2f}pts "
+                    f"({slip_atr_pct:.1f}% of ATR={self._current_atr:.2f}) "
+                    f"reason={reason} — check bracket/order state!"
+                )
+
         self._running = False
         if self._on_exit_cb is not None:
             try:
