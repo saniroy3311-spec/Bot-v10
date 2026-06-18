@@ -411,12 +411,9 @@ class OrderManager:
             ))
             fill = float(order.get("average") or order.get("price") or 0.0)
             logger.info(f"[OM] Position closed | id={order.get('id')}  fill={fill:.2f}")
-            
-            # Strong reference background task tracking to bypass GC pruning
-            task = asyncio.create_task(self.cancel_bracket())
-            self._background_tasks.add(task)
-            task.add_done_callback(self._background_tasks.discard)
-            
+            # NOTE: bracket is already cancelled by cancel_all_orders() in _fire_exit
+            # before close_position() is called. Do NOT cancel again here — that causes
+            # a spurious 404 "cancel_bracket failed (ignored)" on every clean trail exit.
             return order
         except ccxt.ExchangeError as exc:
             msg = str(exc).lower()
