@@ -86,6 +86,7 @@ POSITION_BTC_SIZE = float(os.environ.get("POSITION_BTC_SIZE", "0.001"))
 # ──────────────────────────────────────────────
 # TELEGRAM
 # ──────────────────────────────────────────────
+TELEGRAM_ENABLED    = os.environ.get("TELEGRAM_ENABLED", "true").lower() == "true"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID",   "YOUR_CHAT_ID")
 

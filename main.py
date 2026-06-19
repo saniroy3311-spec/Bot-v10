@@ -46,6 +46,7 @@ from typing import Optional
 
 # ── Canonical module imports ───────────────────────────────────────────────────
 from config import (
+    TELEGRAM_ENABLED,
     SYMBOL, ALERT_QTY, CANDLE_TIMEFRAME, FILTER_VOL_ENABLED,
     POSITION_BTC_SIZE, TREND_ATR_MULT, RANGE_ATR_MULT,
 )
@@ -96,12 +97,15 @@ class ShivaSniperBot:
         self._journal   = Journal()
 
         self._state    = EngineState(running=True)
-        self._tg_ctrl  = TelegramController(
-            engine_state = self._state,
-            telegram     = self._telegram,
-            journal      = self._journal,
-            order_mgr    = self._order_mgr,
-        )
+        if TELEGRAM_ENABLED:
+            self._tg_ctrl = TelegramController(
+                engine_state = self._state,
+                telegram     = self._telegram,
+                journal      = self._journal,
+                order_mgr    = self._order_mgr,
+            )
+        else:
+            self._tg_ctrl = None
         # self._wa_ctrl  = WhatsAppController(  # disabled
         #     engine_state = self._state,
         #     whatsapp     = self._whatsapp,
@@ -209,7 +213,7 @@ class ShivaSniperBot:
             pass
         self._trail_mon.stop()
         try:
-            self._tg_ctrl.stop()
+            if self._tg_ctrl: self._tg_ctrl.stop()
         except Exception:
             pass
         if self._binance_px_feed is not None:
@@ -608,7 +612,7 @@ class ShivaSniperBot:
     async def run(self) -> None:
         await self.initialize()
 
-        self._tg_ctrl_task = asyncio.create_task(self._tg_ctrl.run())
+        if self._tg_ctrl: self._tg_ctrl_task = asyncio.create_task(self._tg_ctrl.run())
         # self._wa_ctrl_task = asyncio.create_task(self._wa_ctrl.run())  # disabled
 
         feed = CandleFeed(
