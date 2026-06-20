@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, Request, Query
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import FastAPI, HTTPException, Request, Query, Response
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+import secrets
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import sqlite3
@@ -17,6 +18,101 @@ def _repo(filename: str) -> str:
     return os.path.join(_REPO_ROOT, filename)
 
 app = FastAPI(title="Shiva Sniper Bot Dashboard API")
+
+DASHBOARD_USER = os.environ.get("DASHBOARD_USER", "admin")
+DASHBOARD_PASS = os.environ.get("DASHBOARD_PASS", "Sani@3010")
+SESSIONS = {}
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    open_paths = ["/login", "/logout"]
+    if request.url.path in open_paths or request.url.path.startswith("/static"):
+        return await call_next(request)
+    token = request.cookies.get("session")
+    if not (token and SESSIONS.get(token)):
+        if request.url.path.startswith("/api"):
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return RedirectResponse(url="/login", status_code=302)
+    return await call_next(request)
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, error: str = ""):
+    err_html = "<div class=\"error\"><span>&#9888;</span> Invalid user ID or password</div>" if error else ""
+    return HTMLResponse(f"""<!DOCTYPE html>
+<html>
+<head>
+<title>The Greeks &#8212; Login</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:#F7F9F8;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Inter',sans-serif;}}
+.wrapper{{width:100%;max-width:420px;padding:20px;}}
+.card{{background:#fff;border:1px solid #E8EDEB;border-radius:20px;padding:48px 40px;}}
+.logo-wrap{{display:flex;align-items:center;gap:14px;margin-bottom:32px;}}
+.logo-text{{font-size:20px;font-weight:600;color:#0F1C17;}}
+.logo-sub{{font-size:12px;color:#9BADA6;margin-top:3px;}}
+.divider{{height:1px;background:#E8EDEB;margin-bottom:28px;}}
+h2{{font-size:20px;font-weight:600;color:#0F1C17;margin-bottom:6px;}}
+.subtitle{{font-size:13px;color:#6B7C75;margin-bottom:28px;}}
+label{{font-size:11px;font-weight:600;color:#6B7C75;display:block;margin-bottom:6px;letter-spacing:0.5px;text-transform:uppercase;}}
+input{{width:100%;background:#F7F9F8;border:1px solid #E8EDEB;border-radius:10px;padding:12px 14px;color:#0F1C17;font-size:14px;outline:none;margin-bottom:16px;}}
+input:focus{{border-color:#00A878;background:#fff;}}
+.error{{background:#fff5f5;border:1px solid #fca5a5;color:#dc2626;padding:11px 14px;border-radius:10px;font-size:13px;margin-bottom:16px;}}
+button{{width:100%;background:#00A878;color:#fff;font-weight:600;font-size:14px;padding:13px;border:none;border-radius:10px;cursor:pointer;margin-top:4px;}}
+button:hover{{background:#008f65;}}
+.footer{{text-align:center;margin-top:20px;font-size:12px;color:#9BADA6;}}
+</style>
+</head>
+<body>
+<div class="wrapper"><div class="card">
+  <div class="logo-wrap">
+    <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="48" height="48" rx="12" fill="#00A878"/>
+      <path d="M14 30L19 16L24 26L29 12L34 30" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="24" cy="35" r="2.5" fill="white"/>
+    </svg>
+    <div><div class="logo-text">The Greeks</div><div class="logo-sub">Trading Dashboard</div></div>
+  </div>
+  <div class="divider"></div>
+  <h2>Welcome back</h2>
+  <p class="subtitle">Sign in to access your trading dashboard</p>
+  {err_html}
+  <form method="POST" action="/login">
+    <label>User ID</label>
+    <input type="text" name="username" placeholder="Enter your user ID" autofocus required>
+    <label>Password</label>
+    <input type="password" name="password" placeholder="Enter your password" required>
+    <button type="submit">Sign In &rarr;</button>
+  </form>
+</div>
+<div class="footer">&copy; 2026 The Greeks &middot; Secured Dashboard</div>
+</div>
+</body></html>""")
+
+@app.post("/login")
+async def login(request: Request):
+    form = await request.form()
+    username = form.get("username", "")
+    password = form.get("password", "")
+    if username == DASHBOARD_USER and password == DASHBOARD_PASS:
+        token = secrets.token_hex(32)
+        SESSIONS[token] = True
+        response = RedirectResponse(url="/", status_code=302)
+        response.set_cookie("session", token, httponly=True, max_age=86400*7)
+        return response
+    return RedirectResponse(url="/login?error=1", status_code=302)
+
+@app.get("/logout")
+async def logout(request: Request):
+    token = request.cookies.get("session")
+    if token:
+        SESSIONS.pop(token, None)
+    resp = RedirectResponse(url="/login", status_code=302)
+    resp.delete_cookie("session")
+    return resp
+
 
 # Enable CORS for development
 app.add_middleware(
