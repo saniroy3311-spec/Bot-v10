@@ -130,6 +130,17 @@ logger = logging.getLogger("trail_loop")
 # Post-arm: recalibration is fully frozen (this constant not reached).
 RECAL_MAX_JUMP = 10.0
 
+# FIX-13: Maximum single-tick jump allowed on the raw Delta price feed before
+# a tick is treated as a noise wick and skipped entirely (not counted toward
+# breach, not used to reset the breach counter — just ignored, as if it never
+# arrived). Delta's own order book occasionally prints a single outlier tick
+# (thin liquidity flash) that is not present on Binance/TV's data source.
+# 20 pts ≈ a few seconds of normal BTC movement at typical volatility; a
+# single tick jumping more than this in one update is almost always noise,
+# not a genuine price move (genuine moves arrive as a sequence of smaller
+# consecutive ticks, which this filter does not block).
+MAX_DELTA_TICK_JUMP = 20.0
+
 
 # ─── Timeframe → milliseconds ──────────────────────────────────────────────────
 
@@ -276,6 +287,10 @@ class TrailMonitor:
         # Resets to 0 on ANY tick below the SL. Immune to Binance feed interleaving.
         self._breach_delta_count  : int = 0
 
+        # FIX-13: Last accepted Delta tick price, used to filter single-tick
+        # wicks before they ever reach the breach counter above.
+        self._last_delta_price    : Optional[float] = None
+
         # FIX-9 (BAR_CLOSE_SL_EVAL): Pine-exact Initial SL behaviour.
         # When True, the Initial SL (pre-trail-arm) is ONLY evaluated at bar close,
         # not on live ticks. This matches Pine's calc_on_every_tick=false exactly.
@@ -336,6 +351,9 @@ class TrailMonitor:
 
         # FIX-8: Reset Delta-tick breach counter for the new trade
         self._breach_delta_count = 0
+
+        # FIX-13: Reset last-accepted Delta price for the new trade
+        self._last_delta_price = None
 
         # FIX-9: Reset bar-close Initial SL tracker for the new trade
         self._last_initial_sl_bar_ms = 0
@@ -589,9 +607,28 @@ class TrailMonitor:
 
         FIX-8 (Option 1): tagged source="delta" so _sl_confirmed() counts
         only Delta ticks toward the breach confirmation counter.
+
+        FIX-13: Before anything else, reject single-tick wicks. If this tick
+        jumps more than MAX_DELTA_TICK_JUMP pts from the last accepted Delta
+        tick, treat it as exchange noise and drop it — it never reaches the
+        breach counter, never resets it, never updates best_price. A genuine
+        price move shows up as several ticks of this size in a row, so real
+        moves are unaffected; a single freak tick is.
         """
         if not self._running or self._exit_fired or price <= 0:
             return
+
+        if self._last_delta_price is not None:
+            jump = abs(price - self._last_delta_price)
+            if jump > MAX_DELTA_TICK_JUMP:
+                logger.warning(
+                    f"[TRAIL] Delta tick wick ignored — price {price:.2f} jumped "
+                    f"{jump:.2f} pts from last={self._last_delta_price:.2f} "
+                    f"(> max={MAX_DELTA_TICK_JUMP:.1f} pts) — dropped, not counted"
+                )
+                return
+
+        self._last_delta_price = price
         logger.debug(f"[TRAIL] Delta tick {price:.2f}")
         await self._evaluate_tick(price, source="delta")
 
