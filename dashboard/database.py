@@ -112,7 +112,7 @@ def init_databases():
             ("usd_inr_rate", "85.00"),
             ("whatsapp_webhook", ""),
             ("daily_drawdown_limit", "500"),
-            ("heartbeat_timeout", "120"),
+            ("heartbeat_timeout", "300"),
             ("timezone", "IST"),
         ]
         for key, val in defaults:
