@@ -274,45 +274,19 @@ async def get_status():
         except Exception:
             pass
     else:
-        # Simulate small position for interactive demo
-        minute = datetime.now().minute
-        if minute % 10 < 3: # 30% of the time, show active position
-            is_long = (minute % 2 == 0)
-            side = "LONG" if is_long else "SHORT"
-            entry_offset = -120 if is_long else 120
-            entry_price = round(btc_price + entry_offset, 2)
-            sl_offset = -250 if is_long else 250
-            sl = round(entry_price + sl_offset, 2)
-            tp_offset = 600 if is_long else -600
-            tp = round(entry_price + tp_offset, 2)
-            unrealised_pnl = round((btc_price - entry_price) * 10 * 0.1, 2) if is_long else round((entry_price - btc_price) * 10 * 0.1, 2)
-            open_position = {
-                "side": side,
-                "is_long": is_long,
-                "entry_price": entry_price,
-                "qty": 10,
-                "sl": sl,
-                "current_sl": sl,
-                "tp": tp,
-                "trail_stage": (minute % 5) + 1,
-                "signal_type": f"Trend {side.capitalize()}",
-                "opened_at": (datetime.now() - timedelta(minutes=45)).strftime("%Y-%m-%d %H:%M:%S"),
-                "unrealised_pnl": unrealised_pnl
-            }
-        else:
-            open_position = {
-                "side": "FLAT",
-                "is_long": True,
-                "entry_price": 0.0,
-                "qty": 0,
-                "sl": 0.0,
-                "current_sl": 0.0,
-                "tp": 0.0,
-                "trail_stage": 0,
-                "signal_type": "",
-                "opened_at": "",
-                "unrealised_pnl": 0.0
-            }
+        open_position = {
+            "side": "FLAT",
+            "is_long": True,
+            "entry_price": 0.0,
+            "qty": 0,
+            "sl": 0.0,
+            "current_sl": 0.0,
+            "tp": 0.0,
+            "trail_stage": 0,
+            "signal_type": "",
+            "opened_at": "",
+            "unrealised_pnl": 0.0
+        }
             
     return {
         "bot_status": status_text,
@@ -335,37 +309,37 @@ def get_trades(
     min_points: Optional[float] = None,
     tag: Optional[str] = None
 ):
-    query = "SELECT * FROM trades WHERE 1=1"
+    query = "SELECT id, ts as exit_time, ts as entry_time, CASE WHEN is_long=1 THEN 'LONG' ELSE 'SHORT' END as side, entry_price, exit_price, qty, real_pl as net_pnl, real_pl as gross_pnl, 0 as fee, points_captured, exit_reason, signal_type FROM trades WHERE 1=1"
     params = []
     
     if start_date:
-        query += " AND entry_time >= ?"
+        query += " AND ts >= ?"
         params.append(start_date)
     if end_date:
-        query += " AND exit_time <= ?"
+        query += " AND ts <= ?"
         params.append(end_date)
     if side and side != "ALL":
-        query += " AND side = ?"
+        query += " AND is_long = ?"
         params.append(side)
     if result:
         if result == "WINNERS":
-            query += " AND net_pnl > 0"
+            query += " AND real_pl > 0"
         elif result == "LOSERS":
-            query += " AND net_pnl <= 0"
+            query += " AND real_pl <= 0"
     if min_pnl is not None:
-        query += " AND net_pnl >= ?"
+        query += " AND real_pl >= ?"
         params.append(min_pnl)
     if max_pnl is not None:
-        query += " AND net_pnl <= ?"
+        query += " AND real_pl <= ?"
         params.append(max_pnl)
     if min_points is not None:
         query += " AND ABS(points_captured) >= ?"
         params.append(min_points)
     if tag:
-        query += " AND tag LIKE ?"
+        query += " AND exit_reason LIKE ?"
         params.append(f"%{tag}%")
         
-    query += " ORDER BY exit_time DESC"
+    query += " ORDER BY ts DESC"
     trades = get_db_rows(database.JOURNAL_DB, query, params)
     return trades
 
