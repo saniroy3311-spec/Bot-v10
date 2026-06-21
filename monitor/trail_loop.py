@@ -141,6 +141,27 @@ RECAL_MAX_JUMP = 10.0
 # consecutive ticks, which this filter does not block).
 MAX_DELTA_TICK_JUMP = 20.0
 
+# FIX-14: Recovery valves for FIX-13. The plain version of FIX-13 compares
+# every tick to the LAST ACCEPTED tick. If one tick is ever wrongly rejected,
+# that reference goes stale, and every following tick — even normal small
+# moves — now reads as ">20pts from a stale number" and gets rejected too.
+# The reference can lock up indefinitely with no way back, silently freezing
+# best_price/trail during a real, fast, multi-tick rally (seen live on
+# 2026-06-21, trade #350: ~70 real ticks rejected over 75s while price ran
+# 64217→64267, costing ~35pts vs the TradingView trail exit on the same trade).
+#
+# Two independent recovery paths, either one re-syncs the reference:
+#   1) STREAK: if N consecutive rejected ticks all move the SAME direction,
+#      that's a real run, not repeated noise — accept the latest one and
+#      resume normal tracking from there. A genuine single wick (jumps away
+#      then snaps back) never satisfies "same direction N times in a row",
+#      so the original FIX-13 protection is untouched.
+#   2) STALE TIMEOUT: if no tick has been accepted for this many seconds,
+#      the next tick is accepted unconditionally — covers feed gaps /
+#      reconnects where price legitimately moved while we weren't listening.
+WICK_STREAK_CONFIRM   = 3      # consecutive same-direction rejects before override
+WICK_STALE_TIMEOUT_S  = 5.0    # force-accept next tick after this long with none accepted
+
 
 # ─── Timeframe → milliseconds ──────────────────────────────────────────────────
 
@@ -291,6 +312,14 @@ class TrailMonitor:
         # wicks before they ever reach the breach counter above.
         self._last_delta_price    : Optional[float] = None
 
+        # FIX-14: Recovery state for the FIX-13 wick filter (see constants
+        # above). Tracks a run of consecutive same-direction rejections and
+        # the wall-clock time of the last accepted tick, so a real multi-tick
+        # move or a feed gap can never lock the filter up indefinitely.
+        self._last_delta_accept_wall_s : float = 0.0
+        self._wick_reject_streak       : int   = 0
+        self._wick_reject_dir          : int   = 0   # +1 up, -1 down, 0 none yet
+
         # FIX-9 (BAR_CLOSE_SL_EVAL): Pine-exact Initial SL behaviour.
         # When True, the Initial SL (pre-trail-arm) is ONLY evaluated at bar close,
         # not on live ticks. This matches Pine's calc_on_every_tick=false exactly.
@@ -354,6 +383,11 @@ class TrailMonitor:
 
         # FIX-13: Reset last-accepted Delta price for the new trade
         self._last_delta_price = None
+
+        # FIX-14: Reset wick-filter recovery state for the new trade
+        self._last_delta_accept_wall_s = time.time()
+        self._wick_reject_streak       = 0
+        self._wick_reject_dir          = 0
 
         # FIX-9: Reset bar-close Initial SL tracker for the new trade
         self._last_initial_sl_bar_ms = 0
@@ -614,21 +648,70 @@ class TrailMonitor:
         breach counter, never resets it, never updates best_price. A genuine
         price move shows up as several ticks of this size in a row, so real
         moves are unaffected; a single freak tick is.
+
+        FIX-14: FIX-13 alone has no way back if the reference ever goes
+        stale (e.g. one wrongly-rejected tick freezes _last_delta_price, and
+        every following real tick then also reads as "too far from a stale
+        number" forever). Two recovery paths re-sync the reference:
+          - STREAK: WICK_STREAK_CONFIRM consecutive rejects in the same
+            direction = a real run, not noise → accept and resume.
+          - STALE TIMEOUT: no tick accepted for WICK_STALE_TIMEOUT_S →
+            accept the next tick unconditionally (covers feed gaps).
         """
         if not self._running or self._exit_fired or price <= 0:
             return
 
+        now_s = time.time()
+
         if self._last_delta_price is not None:
-            jump = abs(price - self._last_delta_price)
-            if jump > MAX_DELTA_TICK_JUMP:
-                logger.warning(
-                    f"[TRAIL] Delta tick wick ignored — price {price:.2f} jumped "
-                    f"{jump:.2f} pts from last={self._last_delta_price:.2f} "
-                    f"(> max={MAX_DELTA_TICK_JUMP:.1f} pts) — dropped, not counted"
-                )
-                return
+            jump = price - self._last_delta_price
+            abs_jump = abs(jump)
+
+            if abs_jump > MAX_DELTA_TICK_JUMP:
+                stale_for = now_s - self._last_delta_accept_wall_s
+
+                # FIX-14a: feed gap recovery — too long since any accepted tick
+                if stale_for >= WICK_STALE_TIMEOUT_S:
+                    logger.info(
+                        f"[TRAIL] Wick filter stale-timeout override — no tick "
+                        f"accepted for {stale_for:.1f}s, force-accepting "
+                        f"price={price:.2f} (was last={self._last_delta_price:.2f})"
+                    )
+                    self._wick_reject_streak = 0
+                    self._wick_reject_dir = 0
+                    # falls through to acceptance below
+
+                else:
+                    direction = 1 if jump > 0 else -1
+                    if direction == self._wick_reject_dir:
+                        self._wick_reject_streak += 1
+                    else:
+                        self._wick_reject_streak = 1
+                        self._wick_reject_dir = direction
+
+                    if self._wick_reject_streak < WICK_STREAK_CONFIRM:
+                        logger.warning(
+                            f"[TRAIL] Delta tick wick ignored — price {price:.2f} jumped "
+                            f"{jump:+.2f} pts from last={self._last_delta_price:.2f} "
+                            f"(> max={MAX_DELTA_TICK_JUMP:.1f} pts) — dropped, not counted "
+                            f"[streak={self._wick_reject_streak}/{WICK_STREAK_CONFIRM}]"
+                        )
+                        return
+
+                    # FIX-14b: streak recovery — N consecutive same-direction
+                    # rejects means this is a real move, not repeated noise
+                    logger.info(
+                        f"[TRAIL] Wick filter streak override — "
+                        f"{self._wick_reject_streak} consecutive same-direction "
+                        f"ticks, accepting price={price:.2f} as a real move "
+                        f"(was last={self._last_delta_price:.2f})"
+                    )
+                    self._wick_reject_streak = 0
+                    self._wick_reject_dir = 0
+                    # falls through to acceptance below
 
         self._last_delta_price = price
+        self._last_delta_accept_wall_s = now_s
         logger.debug(f"[TRAIL] Delta tick {price:.2f}")
         await self._evaluate_tick(price, source="delta")
 
