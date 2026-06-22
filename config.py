@@ -319,6 +319,27 @@ TRAIL_SL_CONFIRM_TICKS = int(os.environ.get("TRAIL_SL_CONFIRM_TICKS", "2"))
 # Floor raised to 0.40 so offset never narrows below stage 1 level at
 # any stage transition. Recovers ~126pts per trade vs previous 0.0 floor.
 TRAIL_OFFSET_FLOOR_MULT = float(os.environ.get("TRAIL_OFFSET_FLOOR_MULT", "0.40"))
+
+# ──────────────────────────────────────────────
+# TP HARD EXIT  (FIX-TP-PARITY 2026-06-22)
+# ──────────────────────────────────────────────
+# Pine's LIVE strategy has NO strategy.exit(limit=tp) — confirmed by trade #353,
+# where TV ran straight through its plotted TP level (65,168) and kept trailing
+# another ~225pts to 64,949 before exiting via the trail. TP in Pine is plotted/
+# informational only (see phase2/tv_signal_exporter.pine entryTP plot) — it is
+# NOT wired to a hard market-close in the live strategy.
+#
+# The bot was treating TP as an instant market exit on every tick and on bar
+# close, cutting trades short every time they reached the TP distance instead
+# of letting the trail run further like TV does.
+#
+# false (default, THE FIX) = TP is ignored as an exit trigger entirely.
+#                             Only the trail / Initial SL / Max SL / Time exit
+#                             can close a trade — matches Pine exactly.
+# true                      = old behavior, TP fires a hard market close.
+#                             Only use this if you deliberately want the bot
+#                             to behave differently from Pine.
+TP_HARD_EXIT = os.environ.get("TP_HARD_EXIT", "false").lower() == "true"
 TRAIL_ARM_FLOOR_MULT    = float(os.environ.get("TRAIL_ARM_FLOOR_MULT",    "0.0"))
 
 SL_FIRE_VIA_BRACKET = os.environ.get("SL_FIRE_VIA_BRACKET", "false").lower() == "true"
