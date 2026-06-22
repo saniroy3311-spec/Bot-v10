@@ -120,6 +120,7 @@ from config import (
     SL_CONFIRM_TICKS,
     TRAIL_SL_CONFIRM_TICKS,
     BAR_CLOSE_SL_EVAL,
+    TP_HARD_EXIT,
 )
 from risk.calculator import RiskLevels, TrailState
 
@@ -556,7 +557,12 @@ class TrailMonitor:
         if is_entry_bar:
             return
 
-        tp_hit = (bar_high >= risk.tp)      if is_long else (bar_low  <= risk.tp)
+        # FIX-TP-PARITY: Pine's live strategy has NO strategy.exit(limit=tp).
+        # TP is informational only (used for plotting/journaling) — Pine never
+        # closes a trade at TP, it only ever exits via the trail. Gating this
+        # behind TP_HARD_EXIT (default false) stops the bot from cutting trades
+        # short ~150-250pts before TV's trail would actually let them run.
+        tp_hit = TP_HARD_EXIT and ((bar_high >= risk.tp) if is_long else (bar_low  <= risk.tp))
         sl_hit = (bar_low  <= pre_trail_sl) if is_long else (bar_high >= pre_trail_sl)
 
         if tp_hit or sl_hit:
@@ -849,12 +855,15 @@ class TrailMonitor:
         atr         = self._current_atr
 
         # ── 1. TP hit ─────────────────────────────────────────────────────────
-        if is_long and price >= risk.tp:
-            await self._fire_exit(risk.tp, "TP", source="tick")
-            return
-        if not is_long and price <= risk.tp:
-            await self._fire_exit(risk.tp, "TP", source="tick")
-            return
+        # FIX-TP-PARITY: Pine's live strategy has no limit=tp hard exit — TP is
+        # informational only. Gated behind TP_HARD_EXIT (default false).
+        if TP_HARD_EXIT:
+            if is_long and price >= risk.tp:
+                await self._fire_exit(risk.tp, "TP", source="tick")
+                return
+            if not is_long and price <= risk.tp:
+                await self._fire_exit(risk.tp, "TP", source="tick")
+                return
 
         # ── 2. Trail arm or initial SL ────────────────────────────────────────
         if not getattr(state, 'trail_armed', False):
@@ -1020,12 +1029,14 @@ class TrailMonitor:
         atr         = self._current_atr
 
         # ── 1. TP hit ─────────────────────────────────────────────────────────
-        if is_long and price >= risk.tp:
-            await self._fire_exit(risk.tp, "TP", source="tick")
-            return
-        if not is_long and price <= risk.tp:
-            await self._fire_exit(risk.tp, "TP", source="tick")
-            return
+        # FIX-TP-PARITY: gated behind TP_HARD_EXIT — see note above.
+        if TP_HARD_EXIT:
+            if is_long and price >= risk.tp:
+                await self._fire_exit(risk.tp, "TP", source="tick")
+                return
+            if not is_long and price <= risk.tp:
+                await self._fire_exit(risk.tp, "TP", source="tick")
+                return
 
         # ── 2. Trail SL hit check (using current_sl already set by Delta ticks) ──
         sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
