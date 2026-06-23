@@ -690,4 +690,680 @@ class TrailMonitor:
         FIX-5: Recalibration is only allowed pre-arm.
         The on_price_tick() guard already blocks this from being scheduled
         post-arm, but we add a double-check here for safety.
-        Pre-arm max jump is RECAL_MAX_JUMP (1
+        Pre-arm max jump is RECAL_MAX_JUMP (10 pts) instead of old 50 pts.
+        """
+        try:
+            # FIX-5: Double-check — abort immediately if trail has ever armed
+            if self._trail_ever_armed:
+                logger.info("[TRAIL] Offset recal skipped — trail armed [recal FROZEN]")
+                return
+
+            if self._first_tick_ts_ms  > 0:
+                elapsed = int(time.time() * 1000) - self._first_tick_ts_ms
+                if elapsed  < 20_000:
+                    logger.info(f"[TRAIL] Offset recal skipped — trade too new ({elapsed}ms  < 20s)")
+                    return
+
+            delta_mark = await self._get_mark_price()
+            if delta_mark and delta_mark  > 0 and self._source_offset is not None:
+                new_offset = binance_price_raw - delta_mark
+                # FIX-5: tightened from 50 → RECAL_MAX_JUMP (10 pts)
+                if abs(new_offset - self._source_offset)  <= RECAL_MAX_JUMP:
+                    old = self._source_offset
+                    self._source_offset = new_offset
+                    logger.info(
+                        f"[TRAIL] Offset recalibrated: {old:+.2f} → {new_offset:+.2f}  "
+                        f"(binance={binance_price_raw:.2f} delta={delta_mark:.2f}) "
+                    )
+                else:
+                    logger.warning(
+                        f"[TRAIL] Offset recal rejected: jump={abs(new_offset - self._source_offset):.2f}  "
+                        f"> max={RECAL_MAX_JUMP:.1f} pts "
+                    )
+        except Exception as e:
+            logger.warning(f"[TRAIL] Offset recal failed: {e}")
+        finally:
+            self._last_recal_ms     = int(time.time() * 1000)
+            self._recal_in_progress = False
+
+    # ── Safety-net REST poll ──────────────────────────────────────────────────
+    async def _tick_loop(self) -> None:
+        # FIX-10 (GHOST-TRAIL): How many _tick_loop iterations between each
+        # position-existence poll. 1 = every iteration (every TRAIL_LOOP_SEC seconds).
+        # Keep at 1 — the position poll is a single cheap REST call and catches
+        # a bracket-SL fire within TRAIL_LOOP_SEC seconds instead of 27 minutes.
+        POSITION_POLL_TICKS = 1
+
+        while self._running and not self._exit_fired:
+            try:
+                await asyncio.sleep(TRAIL_LOOP_SEC)
+                if not self._running or self._exit_fired:
+                    break
+
+                # ── FIX-10: POSITION EXISTENCE GUARD ─────────────────────────
+                # Only poll when we believe we're in a position (self._risk set).
+                # If Delta says flat, the bracket SL fired while Python was
+                # unaware — stop the ghost trail and recover the exit.
+                self._pos_poll_ticks += 1
+                if self._risk is not None and self._pos_poll_ticks  >= POSITION_POLL_TICKS:
+                    self._pos_poll_ticks = 0
+                    try:
+                        pos = await self._order_mgr.fetch_open_position()
+                        if pos is None:
+                            logger.warning(
+                                "[TRAIL] FIX-10: Position no longer exists on Delta —  "
+                                "bracket SL fired silently. Stopping ghost trail."
+                            )
+                            # Use current_sl as best approximation of exit price;
+                            # the bar-close drift check will reconcile with the real fill.
+                            bracket_exit_price = float(self._state.current_sl) \
+                                if self._state is not None else float(self._risk.sl)
+                            await self._fire_exit(
+                                bracket_exit_price,
+                                "Bracket SL/TP (ghost-trail-guard)",
+                                source="pos-poll",
+                            )
+                            break
+                    except Exception as poll_err:
+                        # Network blip — do NOT exit on a failed poll.
+                        # Only exit on a confirmed size==0. Keep trailing.
+                        logger.warning(f"[TRAIL] FIX-10: Position poll failed (keeping trail): {poll_err}")
+                # ── END POSITION GUARD ────────────────────────────────────────
+
+                price = await self._get_mark_price()
+                if price is None or price  <= 0:
+                    continue
+                # REST poll uses Delta mark price — always full _evaluate_tick()
+                # FIX-8: tagged source="delta" — REST polls Delta mark price,
+                # so these count toward the breach tick counter too.
+                await self._evaluate_tick(price, source="delta")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[TRAIL] Tick loop error: {e}", exc_info=True)
+                await asyncio.sleep(1.0)
+
+    # ── Core tick evaluator — Pine trail engine ────────────────────────────────
+    async def _evaluate_tick(self, price: float,  source: str = "other") -> None:
+        """
+        Pine trail_points / trail_offset engine — exact replication.
+
+        For every price tick:
+          1. TP hit check
+          2. Trail arm or initial SL check (if trail not yet armed)
+          3. best_price update (if armed)
+          4. trail_sl recompute from best_price
+          5. Trail SL hit check
+          6. Max SL check
+          7. Time exit check
+
+        NOTE: Stage upgrades and breakeven are NOT checked here.
+              They happen ONLY in on_bar_close() — Pine parity
+              (calc_on_every_tick=false means strategy body runs at bar close only).
+
+        Called by: push_delta_tick(), _tick_loop() (REST), on_price_tick() pre-arm.
+        Post-arm Binance ticks use _evaluate_tick_sl_only() instead (FIX-6).
+
+        FIX-8 (Option 1+3): source="delta" ticks count toward breach confirmation.
+        source="other" (Binance pre-arm path) resets the counter on retreat.
+        """
+        risk  = self._risk
+        state = self._state
+        if risk is None or state is None:
+            return
+
+        is_long     = risk.is_long
+        entry_price = risk.entry_price
+        atr          = self._current_atr
+
+        # ── 1. TP hit ─────────────────────────────────────────────────────────
+        # FIX-TP-PARITY: Pine's live strategy has no limit=tp hard exit — TP is
+        # informational only. Gated behind TP_HARD_EXIT (default false).
+        if TP_HARD_EXIT:
+            if is_long and price  >= risk.tp:
+                await self._fire_exit(risk.tp, "TP", source="tick")
+                return
+            if not is_long and price  <= risk.tp:
+                await self._fire_exit(risk.tp, "TP", source="tick")
+                return
+
+        # ── 2. Trail arm or initial SL ────────────────────────────────────────
+        if not getattr(state, 'trail_armed', False):
+            # Check activation: has price moved trail_pts in profit direction?
+            act_price = _activation_price(entry_price, max(state.stage, 1), atr, is_long)
+            armed = (price  >= act_price) if is_long else (price  <= act_price)
+
+            if armed:
+                # Trail just armed this tick
+                state.trail_armed      = True
+                self._trail_ever_armed = True   # FIX-5: freeze recal from this moment
+                state.best_price  = price
+                new_trail_sl = _trail_sl_from_best(price, max(state.stage, 1), atr, is_long)
+                self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="arm_tick")
+                logger.info(
+                    f"[TRAIL] Trail ARMED | price={price:.2f}  "
+                    f"act_price={act_price:.2f}  "
+                    f"trail_sl={state.current_sl:.2f}  "
+                    f"trail_pts={_trail_pts(max(state.stage,1), atr):.2f}  "
+                    f"trail_off={_trail_off(max(state.stage,1), atr):.2f}  "
+                    f"[recal FROZEN] "
+                )
+            else:
+                # Trail not armed — check initial / BE SL only
+                sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
+                     else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
+
+                # FIX-9 (BAR_CLOSE_SL_EVAL): Pine uses calc_on_every_tick=false,
+                # which means the Initial SL is ONLY evaluated at bar close.
+                # When this flag is True, skip tick-level Initial SL checks entirely.
+                # The Initial SL will be caught by on_bar_close() same-bar exit check.
+                # Trail SL (post-arm), TP, and Max SL still fire on every tick.
+                _skip_initial_sl = BAR_CLOSE_SL_EVAL and not state.be_done
+
+                if not _skip_initial_sl and self._sl_confirmed(price, sl_level, is_long, source=source):
+                    reason = "Breakeven SL" if state.be_done else "Initial SL"
+                    await self._fire_exit(price, reason, source="tick")
+                    return
+
+                # Max SL check (entry bar exempt)
+                if not state.max_sl_fired:
+                    entry_bar_over = (time.time() * 1000)  >= self._entry_bar_end_ms
+                    max_thresh     = min(atr * MAX_SL_MULT, MAX_SL_POINTS)
+                    if entry_bar_over:
+                        if is_long  and price  <= entry_price - max_thresh:
+                            state.max_sl_fired = True
+                            await self._fire_exit(price, "Max SL", source="tick")
+                            return
+                        if not is_long and price  >= entry_price + max_thresh:
+                            state.max_sl_fired = True
+                            await self._fire_exit(price, "Max SL", source="tick")
+                            return
+
+                # Time exit
+                if TIME_EXIT_MINUTES  > 0 and self._entry_bar_end_ms  > 0:
+                    if int(time.time() * 1000)  >= self._entry_bar_end_ms:
+                        await self._fire_exit(price, "Time exit (bar close)", source="tick")
+                        return
+                return
+
+        # ── 3. Trail is armed — update best_price ────────────────────────────
+        self._update_best_price(state, price, is_long)
+
+        # ── 3b. Intrabar stage upgrade ────────────────────────────────────────
+        # Stage upgrades fire on ticks (intrabar) so trail_sl tightens in real time.
+        # Pine's strategy.exit also tightens intrabar when profitDist threshold crossed.
+        # NOTE: stage upgrade uses best_price (running peak) not bar close profit.
+        if is_long:
+            intrabar_profit  = state.best_price - risk.entry_price
+        else:
+            intrabar_profit = risk.entry_price - state.best_price
+        new_stage = _upgrade_stage(state.stage, intrabar_profit, atr)
+        if new_stage  > state.stage:
+            old_stage = state.stage
+            state.stage = new_stage
+            new_trail_sl_preview = _trail_sl_from_best(state.best_price, state.stage, atr, is_long)
+            logger.info(
+                f"[TRAIL] Stage {old_stage} → {new_stage} INTRABAR |  "
+                f"profit={intrabar_profit:.2f} best={state.best_price:.2f}  "
+                f"new_trail_sl={new_trail_sl_preview:.2f}  "
+                f"trail_off={_trail_off(new_stage, atr):.2f} "
+            )
+
+        # ── 4. Recompute trail SL from best_price ────────────────────────────
+        new_trail_sl = _trail_sl_from_best(state.best_price, state.stage, atr, is_long)
+        self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="tick")
+
+        # ── 5. Trail SL hit check ─────────────────────────────────────────────
+        # FIX-TRAIL-BAR: When BAR_CLOSE_SL_EVAL=True, trail SL also only fires
+        # at bar close (same as initial SL). Pine's strategy.exit checks trail_sl
+        # against bar LOW at bar close — a tick dip below trail_sl that recovers
+        # before bar close will NOT fire in Pine, but the bot was firing on that tick.
+        # With this flag True: ticks only update best_price + trail_sl level.
+        # on_bar_close() step 7 fires the actual exit using bar_low vs trail_sl.
+        if BAR_CLOSE_SL_EVAL:
+            # Track only — do not fire exit on tick. on_bar_close() handles it.
+            logger.debug(
+                f"[TRAIL] Trail SL tracking (bar-close eval) |  "
+                f"price={price:.2f} trail_sl={state.current_sl:.2f}  "
+                f"best={state.best_price:.2f} src={source} "
+            )
+        else:
+            sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
+                else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
+            # trail_armed=True → uses TRAIL_SL_CONFIRM_TICKS (lower) for fast intrabar exit
+            if self._sl_confirmed(price, sl_level, is_long, source=source, trail_armed=True):
+                trail_improved = (
+                    (state.current_sl  > risk.sl) if is_long
+                    else (state.current_sl  < risk.sl)
+                )
+                be_at_entry = state.be_done and abs(state.current_sl - entry_price)  < 1e-6
+                if be_at_entry:
+                    reason = "Breakeven SL"
+                elif trail_improved:
+                    reason = f"Trail SL (stage {state.stage})"
+                else:
+                    reason = "Initial SL"
+                await self._fire_exit(price, reason, source="tick")
+                return
+
+        # ── 6. Max SL (entry bar exempt) ─────────────────────────────────────
+        if not state.max_sl_fired:
+            entry_bar_over = (time.time() * 1000)  >= self._entry_bar_end_ms
+            max_thresh     = min(atr * MAX_SL_MULT, MAX_SL_POINTS)
+            if entry_bar_over:
+                if is_long  and price  <= entry_price - max_thresh:
+                    state.max_sl_fired = True
+                    await self._fire_exit(price, "Max SL", source="tick")
+                    return
+                if not is_long and price  >= entry_price + max_thresh:
+                    state.max_sl_fired = True
+                    await self._fire_exit(price, "Max SL", source="tick")
+                    return
+
+        # ── 7. Time exit ──────────────────────────────────────────────────────
+        if TIME_EXIT_MINUTES  > 0 and self._entry_bar_end_ms  > 0:
+            if int(time.time() * 1000)  >= self._entry_bar_end_ms:
+                await self._fire_exit(price, "Time exit (bar close)", source="tick")
+
+    # ── Slim tick evaluator — SL/TP exit only, no best_price update ────────────
+    async def _evaluate_tick_sl_only(self, price: float) -> None:
+        """
+        FIX-6: Post-arm Binance tick evaluator.
+
+        Checks TP hit and trail SL hit but does NOT update best_price.
+        This prevents Binance's offset-adjusted (potentially stale) price from
+        underestimating how deep price actually went on Delta, which would make
+        the trail SL sit higher than Pine's trail SL.
+
+        Only Delta ticks (push_delta_tick) and the REST safety-net (_tick_loop)
+        are authoritative for best_price post-arm.
+
+        Called by: on_price_tick() when trail is armed.
+        """
+        risk  = self._risk
+        state = self._state
+        if risk is None or state is None:
+            return
+
+        is_long     = risk.is_long
+        entry_price = risk.entry_price
+        atr          = self._current_atr
+
+        # ── 1. TP hit ─────────────────────────────────────────────────────────
+        # FIX-TP-PARITY: gated behind TP_HARD_EXIT — see note above.
+        if TP_HARD_EXIT:
+            if is_long and price  >= risk.tp:
+                await self._fire_exit(risk.tp, "TP", source="tick")
+                return
+            if not is_long and price  <= risk.tp:
+                await self._fire_exit(risk.tp, "TP", source="tick")
+                return
+
+        # ── 2. Trail SL hit check (using current_sl already set by Delta ticks) ──
+        sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
+             else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
+        # FIX-8: Binance ticks (source="other") never count toward breach counter.
+        # They can still fire the exit if tick-count confirm is disabled (SL_CONFIRM_TICKS=0).
+        # trail_armed=True → uses TRAIL_SL_CONFIRM_TICKS for fast intrabar exit
+        if self._sl_confirmed(price, sl_level, is_long, source="other", trail_armed=True):
+            trail_improved = (
+                (state.current_sl  > risk.sl) if is_long
+                else (state.current_sl  < risk.sl)
+            )
+            be_at_entry = state.be_done and abs(state.current_sl - entry_price)  < 1e-6
+            if be_at_entry:
+                reason = "Breakeven SL"
+            elif trail_improved:
+                reason = f"Trail SL (stage {state.stage})"
+            else:
+                reason = "Initial SL"
+            await self._fire_exit(price, reason, source="tick")
+            return
+
+        # ── 3. Max SL (entry bar exempt) ─────────────────────────────────────
+        if not state.max_sl_fired:
+            entry_bar_over = (time.time() * 1000)  >= self._entry_bar_end_ms
+            max_thresh     = min(atr * MAX_SL_MULT, MAX_SL_POINTS)
+            if entry_bar_over:
+                if is_long  and price  <= entry_price - max_thresh:
+                    state.max_sl_fired = True
+                    await self._fire_exit(price, "Max SL", source="tick")
+                    return
+                if not is_long and price  >= entry_price + max_thresh:
+                    state.max_sl_fired = True
+                    await self._fire_exit(price, "Max SL", source="tick")
+                    return
+
+        # ── 4. Time exit ──────────────────────────────────────────────────────
+        if TIME_EXIT_MINUTES  > 0 and self._entry_bar_end_ms  > 0:
+            if int(time.time() * 1000)  >= self._entry_bar_end_ms:
+                await self._fire_exit(price, "Time exit (bar close)", source="tick")
+
+    # ── Trail helpers ──────────────────────────────────────────────────────────
+    def _update_best_price(self, state: TrailState, price: float, is_long: bool) -> None:
+        """Update best_price — highest for long, lowest for short."""
+        if is_long:
+            if price  > state.best_price:
+                state.best_price = price
+        else:
+            if state.best_price == 0.0 or price  < state.best_price:
+                state.best_price = price
+
+    def _apply_trail_sl(
+        self,
+        state   : TrailState,
+        risk    : RiskLevels,
+        new_sl  : float,
+        is_long : bool,
+        source  : str = "",
+    ) -> None:
+        """
+        Apply new_sl only if it improves (moves toward profit direction).
+        Long:  SL can only move up.   Short: SL can only move down.
+        Enforces BE floor if breakeven is active.
+        """
+        if state.be_done:
+            if is_long:
+                new_sl = max(new_sl, risk.entry_price)
+            else:
+                new_sl = min(new_sl, risk.entry_price)
+
+        if is_long and  new_sl  > state.current_sl:
+            logger.info(
+                f"[TRAIL] SL: {state.current_sl:.2f}→{new_sl:.2f}  "
+                f"(stage={state.stage} best={state.best_price:.2f} src={source}) "
+            )
+            state.current_sl = new_sl
+        elif not is_long and new_sl  < state.current_sl:
+            logger.info(
+                f"[TRAIL] SL: {state.current_sl:.2f}→{new_sl:.2f}  "
+                f"(stage={state.stage} best={state.best_price:.2f} src={source}) "
+            )
+            state.current_sl = new_sl
+
+    def _activate_be(
+        self,
+        state   : TrailState,
+        risk    : RiskLevels,
+        is_long : bool,
+        atr     : float,
+        source   : str = "",
+    ) -> None:
+        """Activate breakeven — set SL floor at entry_price."""
+        be_sl = risk.entry_price
+        improved = (be_sl  > state.current_sl) if is_long else (be_sl  < state.current_sl)
+        if improved:
+            state.current_sl = be_sl
+            state.be_done    = True
+            logger.info(
+                f"[TRAIL] Breakeven activated ({source}): SL → {be_sl:.2f}  "
+                f"(atr={atr:.2f}) "
+            )
+        else:
+            state.be_done = True
+            logger.info(
+                f"[TRAIL] Breakeven noted ({source}): trail SL {state.current_sl:.2f}  "
+                f"already past entry {be_sl:.2f} — no SL change "
+            )
+
+    # ── WS candle peak update ──────────────────────────────────────────────────
+    def push_ws_candle(self, high: float, low: float, source: str = "binance", close: float = 0.0, **kwargs) -> None:
+        """
+        Intrabar WS candle update — advance best_price from favourable extreme only.
+        The adverse extreme is NOT evaluated here to avoid stale-candle-high exits.
+        SL firing is left to on_price_tick() (live trade price).
+        """
+        if not self._running or self._exit_fired or self._state is None or self._risk is None:
+            return
+
+        is_long = self._risk.is_long
+
+        if source == "binance":
+            if self._source_offset is None:
+                return
+            high = high - self._source_offset
+            low  = low  - self._source_offset
+
+        try:
+            loop = asyncio.get_running_loop()
+            if TRAIL_FIRE_SL_ON_CANDLE_EXTREME:
+                # Old behaviour: evaluate both extremes (can fire on stale candle)
+                tp_side = high if is_long else low
+                sl_side = low  if is_long else high
+                loop.create_task(self._evaluate_tick_pair(tp_side, sl_side))
+            else:
+                # Default (FIX): evaluate only the favourable extreme
+                favourable = high if is_long else low
+                loop.create_task(self._evaluate_tick(favourable))
+        except RuntimeError:
+            pass
+
+    async def _evaluate_tick_pair(self, tp_side: float, sl_side: float) -> None:
+        await self._evaluate_tick(tp_side)
+        if not self._exit_fired:
+            await self._evaluate_tick(sl_side)
+
+    # ── Spike-debounce for trailing / initial SL ───────────────────────────────
+    def _sl_confirmed(self, price: float, sl_level: float, is_long: bool,
+                      source: str = "other", trail_armed: bool = False) -> bool:
+        """
+        FIX-7 + FIX-8 (Option 1 + Option 3): Dual-mode SL breach confirmation.
+
+        trail_armed=True uses TRAIL_SL_CONFIRM_TICKS (lower) instead of
+        SL_CONFIRM_TICKS so trail exits fire quickly like Pine's intrabar
+        simulation, while the initial SL keeps full spike protection.
+
+        MODE A — Tick-count mode (SL_CONFIRM_TICKS > 0, RECOMMENDED):
+        ─────────────────────────────────────────────────────────────
+        Requires SL_CONFIRM_TICKS consecutive Delta-source ticks above the
+        SL before firing. Any single tick from Delta below the SL resets the
+        counter to 0. Binance ticks (source="other") are completely ignored
+        for breach counting — they can never trigger or sustain a breach.
+
+        This is Option 1 (feed isolation) + Option 3 (tick-count) combined:
+          • Option 1: only source="delta" ticks advance the counter.
+          • Option 3: need REQUIRED_TICKS clean Delta ticks above SL.
+
+        Result: the 47-second fight between Binance (61,249) and Delta (61,179)
+        that caused the early exit collapses completely — Delta ticks below SL
+        reset the counter, Binance ticks above SL are ignored.
+
+        MODE B — Time-based mode (SL_CONFIRM_TICKS == 0, legacy):
+        ──────────────────────────────────────────────────────────
+        Falls back to original SL_CONFIRM_MS time-window behaviour for
+        backward compatibility. All tick sources participate (original logic).
+
+        TP and Max SL do NOT call this — they fire instantly regardless.
+        """
+        breached = (price  <= sl_level) if is_long else (price  >= sl_level)
+        now_ms   = int(time.time() * 1000)
+
+        # ── MODE A: Tick-count confirm (Option 1 + 3) ─────────────────────────
+        if SL_CONFIRM_TICKS  > 0:
+            # FIX-TRAIL-INTRABAR: use a lower threshold once trail is armed so
+            # trail exits fire quickly (matching Pine intrabar), while the initial
+            # SL still requires full SL_CONFIRM_TICKS spike protection.
+            _required = (
+                (TRAIL_SL_CONFIRM_TICKS if TRAIL_SL_CONFIRM_TICKS  > 0 else SL_CONFIRM_TICKS)
+                if trail_armed else SL_CONFIRM_TICKS
+            )
+
+            if not breached and source == "delta":
+                # Price is inside SL — reset counter regardless of source
+                if self._breach_delta_count  > 0:
+                    logger.info(
+                        f"[TRAIL] SL spike ignored — price {price:.2f} retreated  "
+                        f"inside SL {sl_level:.2f} (src={source},  "
+                        f"counter reset {self._breach_delta_count}→0) "
+                    )
+                self._breach_delta_count  = 0
+                self._pending_sl_since_ms = 0
+                return False
+
+            # Price is breached — only Delta ticks advance the counter
+            if source != "delta":
+                # Binance (or other) tick above SL — ignored for counting (Option 1)
+                logger.debug(
+                    f"[TRAIL] SL breach tick ignored (non-delta src={source})  "
+                    f"price={price:.2f} sl={sl_level:.2f}  "
+                    f"count={self._breach_delta_count}/{_required} "
+                )
+                return False
+
+            # Delta tick above SL — increment counter
+            self._breach_delta_count += 1
+            if self._breach_delta_count == 1:
+                logger.info(
+                    f"[TRAIL] SL breach — Delta tick 1/{_required}  "
+                    f"({'trail' if trail_armed else 'initial'}) |  "
+                    f"price={price:.2f} sl={sl_level:.2f} "
+                )
+            else:
+                logger.info(
+                    f"[TRAIL] SL breach — Delta tick {self._breach_delta_count}/{_required}  "
+                    f"({'trail' if trail_armed else 'initial'}) |  "
+                    f"price={price:.2f} sl={sl_level:.2f} "
+                )
+
+            if self._breach_delta_count  >= _required:
+                logger.info(
+                    f"[TRAIL] SL breach confirmed — {self._breach_delta_count} consecutive  "
+                    f"Delta ticks above SL {sl_level:.2f}  "
+                    f"({'trail-armed' if trail_armed else 'initial'}) — firing "
+                )
+                self._breach_delta_count  = 0
+                self._pending_sl_since_ms = 0
+                return True
+
+            return False
+
+        # ── MODE B: Time-based confirm (legacy, SL_CONFIRM_TICKS == 0) ────────
+        if not breached and source == "delta":
+            if self._pending_sl_since_ms:
+                logger.info(
+                    f"[TRAIL] SL spike ignored — price {price:.2f} retreated  "
+                    f"inside SL {sl_level:.2f} (no confirm) "
+                )
+            self._pending_sl_since_ms = 0
+            return False
+
+        if SL_CONFIRM_MS  <= 0:
+            return True
+
+        if self._pending_sl_since_ms == 0:
+            self._pending_sl_since_ms = now_ms
+            logger.info(
+                f"[TRAIL] SL breach pending confirm | price={price:.2f}  "
+                f"sl={sl_level:.2f} need={SL_CONFIRM_MS}ms "
+            )
+            return False
+
+        if now_ms - self._pending_sl_since_ms  >= SL_CONFIRM_MS:
+            logger.info(
+                f"[TRAIL] SL breach confirmed after  "
+                f"{now_ms - self._pending_sl_since_ms}ms — firing "
+            )
+            return True
+
+        return False
+
+    # ── Exit helper ───────────────────────────────────────────────────────────
+    async def _fire_exit(self, exit_price: float, reason: str, source: str = "tick") -> None:
+        """Fire exit once. Idempotent."""
+        if self._exit_fired:
+            return
+        self._exit_fired = True
+
+        logger.info(
+            f"[TRAIL] Exit fired: reason={reason} price={exit_price:.2f}  "
+            f"source={source} atr={self._current_atr:.2f} "
+        )
+
+        try:
+            await self._order_mgr.cancel_all_orders()
+        except Exception as e:
+            logger.warning(f"[TRAIL] cancel_all_orders failed: {e}")
+
+        is_long = self._risk.is_long if self._risk else True
+
+        MAX_ATTEMPTS = 3
+        success = False
+        actual_fill_price: Optional[float] = None
+        last_err: Optional[Exception] = None
+
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                # FIX: Pass expected_price for slippage tracking
+                result = await self._order_mgr.close_position(is_long=is_long, reason=reason, expected_price=exit_price)
+                success  = True
+                if isinstance(result, dict):
+                    fill = result.get("average") or result.get("price")
+                    if fill and float(fill)  > 0:
+                        actual_fill_price = float(fill)
+                    logger.info(f"[TRAIL] Exit order placed (attempt {attempt}) fill={actual_fill_price}")
+                break
+            except Exception as e:
+                last_err = e
+                logger.warning(f"[TRAIL] close_position attempt {attempt}/{MAX_ATTEMPTS}: {e}")
+                if attempt  < MAX_ATTEMPTS:
+                    await asyncio.sleep(0.5 * attempt)
+
+        if not success:
+            logger.error(
+                f"[TRAIL] close_position FAILED after {MAX_ATTEMPTS} attempts  "
+                f"(last: {last_err}). ⚠️ MANUAL CHECK REQUIRED."
+            )
+
+        reported_price = actual_fill_price if actual_fill_price is not None else exit_price
+        if actual_fill_price is not None and abs(actual_fill_price - exit_price)  > 1.0:
+            logger.info(
+                f"[TRAIL] Fill correction: signal={exit_price:.2f}  "
+                f"actual={actual_fill_price:.2f} diff={actual_fill_price - exit_price:+.2f} "
+            )
+
+        # ── Slippage guard ────────────────────────────────────────────────────
+        if actual_fill_price is not None and self._current_atr  > 0:
+            slip = abs(actual_fill_price - exit_price)
+            slip_atr_pct = slip / self._current_atr * 100
+            
+            if slip_atr_pct  > MAX_EXIT_SLIPPAGE_ATR_PCT:
+                logger.critical(
+                    f"[TRAIL] ⚠️ EXCESS SLIPPAGE: signal={exit_price:.2f}  "
+                    f"fill={actual_fill_price:.2f} slip={slip:.2f}pts  "
+                    f"({slip_atr_pct:.1f}% of ATR={self._current_atr:.2f})  "
+                    f"reason={reason} — check bracket/order state!"
+                )
+            else:
+                logger.info(
+                    f"[TRAIL] Slippage OK: {slip:.2f}pts ({slip_atr_pct:.1f}% of ATR)"
+                )
+
+        self._running = False
+        if self._on_exit_cb is not None:
+            try:
+                await self._on_exit_cb(
+                    reported_price,
+                    reason,
+                    source,
+                    True,   # position_already_closed
+                )
+            except Exception as e:
+                logger.error(f"[TRAIL] exit callback error: {e}", exc_info=True)
+
+    # ── Exchange price fetch ───────────────────────────────────────────────────
+    async def _get_mark_price(self) -> Optional[float]:
+        try:
+            ticker = await self._order_mgr.fetch_ticker()
+            if ticker is None:
+                return None
+            mark = (
+                ticker.get("markPrice")
+                or (ticker.get("info") or {}).get("mark_price")
+                or ticker.get("last")
+                or 0.0
+            )
+            price = float(mark) if mark else 0.0
+            return price if price  > 0 else None
+        except Exception as e:
+            logger.warning(f"[TRAIL] _get_mark_price failed: {e}")
+            return None
