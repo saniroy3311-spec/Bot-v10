@@ -24,15 +24,14 @@ hit the BE stop when Pine's BE wasn't yet active.
 FIX-4 | Initial SL update every bar (MEDIUM — trailing behind Pine)
 KEPT: on_bar_close() updates current_sl from live ATR each bar when trail
 not yet armed — matches Pine's strategy.exit(stop=) recalculation.
-FIX-11 | Trail SL fires on intrabar ticks — price dip/recovery causes early exit (NEW)
-OLD:  _evaluate_tick() fired trail SL exit whenever a Delta tick crossed trail_sl.
-NEW:  When BAR_CLOSE_SL_EVAL=True, ticks only UPDATE best_price + trail_sl level.
-Actual exit fires in on_bar_close() step 7 using bar_low vs trail_sl.
-EFFECT: A tick that dips below trail_sl but recovers before bar close no longer
-exits the trade. Pine checks bar_low at bar close — matches exactly.
-EXAMPLE: best=65930, trail_sl=65893. Tick dips to 65893 → bot was exiting.
-Bar_low=65897 (bar closed above trail_sl) → Pine held → ran to 66410.
-CONFIG:  BAR_CLOSE_SL_EVAL=true (already default) now covers trail SL too.
+FIX-11 | SUPERSEDED — Trail SL always fires intrabar (TV-exact)
+Pine's strategy.exit(trail_points=, trail_offset=) fires intrabar on the exact
+tick that breaches trail_sl — the Exit label plots mid-candle at that price.
+BAR_CLOSE_SL_EVAL does NOT suppress trail SL. It only applies to the Initial SL
+(pre-arm, from the strategy body which runs at bar close via calc_on_every_tick=false).
+Once trail arms, strategy.exit() takes over and always fires intrabar.
+The old FIX-11 was wrong — suppressing trail SL at bar close made the bot exit
+at bar_low (often 30-150 pts worse than TV's intrabar exit tick).
 FIX-12 | pre_trail_sl snapshot taken before trail arms — wrong exit level (NEW)
 OLD:  on_bar_close() snapshotted pre_trail_sl = state.current_sl BEFORE step 5&6
 (trail arm). When trail armed this bar, step 7 still used old initial_sl.
@@ -889,62 +888,43 @@ class TrailMonitor:
         # ── 3. Trail is armed — update best_price ────────────────────────────
         self._update_best_price(state, price, is_long)
 
-        # ── 3b. Intrabar stage upgrade ────────────────────────────────────────
-        # Stage upgrades fire on ticks (intrabar) so trail_sl tightens in real time.
-        # Pine's strategy.exit also tightens intrabar when profitDist threshold crossed.
-        # NOTE: stage upgrade uses best_price (running peak) not bar close profit.
-        if is_long:
-            intrabar_profit  = state.best_price - risk.entry_price
-        else:
-            intrabar_profit = risk.entry_price - state.best_price
-        new_stage = _upgrade_stage(state.stage, intrabar_profit, atr)
-        if new_stage  > state.stage:
-            old_stage = state.stage
-            state.stage = new_stage
-            new_trail_sl_preview = _trail_sl_from_best(state.best_price, state.stage, atr, is_long)
-            logger.info(
-                f"[TRAIL] Stage {old_stage} → {new_stage} INTRABAR |  "
-                f"profit={intrabar_profit:.2f} best={state.best_price:.2f}  "
-                f"new_trail_sl={new_trail_sl_preview:.2f}  "
-                f"trail_off={_trail_off(new_stage, atr):.2f} "
-            )
+        # ── 3b. Intrabar stage upgrade — REMOVED (FIX-2 restored) ────────────
+        # Pine upgrades trailStage AT BAR CLOSE only (calc_on_every_tick=false).
+        # Intrabar upgrades tighten the offset mid-bar → bot exits on a smaller
+        # price bounce than TV → less profit captured. Step 3b was re-added after
+        # FIX-2 and contradicts it. on_bar_close() step 3 handles stage upgrades.
 
         # ── 4. Recompute trail SL from best_price ────────────────────────────
         new_trail_sl = _trail_sl_from_best(state.best_price, state.stage, atr, is_long)
         self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="tick")
 
         # ── 5. Trail SL hit check ─────────────────────────────────────────────
-        # FIX-TRAIL-BAR: When BAR_CLOSE_SL_EVAL=True, trail SL also only fires
-        # at bar close (same as initial SL). Pine's strategy.exit checks trail_sl
-        # against bar LOW at bar close — a tick dip below trail_sl that recovers
-        # before bar close will NOT fire in Pine, but the bot was firing on that tick.
-        # With this flag True: ticks only update best_price + trail_sl level.
-        # on_bar_close() step 7 fires the actual exit using bar_low vs trail_sl.
-        if BAR_CLOSE_SL_EVAL:
-            # Track only — do not fire exit on tick. on_bar_close() handles it.
-            logger.debug(
-                f"[TRAIL] Trail SL tracking (bar-close eval) |  "
-                f"price={price:.2f} trail_sl={state.current_sl:.2f}  "
-                f"best={state.best_price:.2f} src={source} "
+        # FIX-TV-PARITY: Pine's strategy.exit(trail_points=, trail_offset=) ALWAYS
+        # fires intrabar on the tick that breaches trail_sl — the Exit label plots
+        # mid-candle at that exact price. BAR_CLOSE_SL_EVAL does NOT apply here.
+        # BAR_CLOSE_SL_EVAL only suppresses the Initial SL (pre-arm, step 2 above)
+        # because that comes from the strategy body which runs at bar close only.
+        # Once trail is armed, strategy.exit() takes over and fires intrabar always.
+        sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
+            else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
+        # trail_armed=True → uses TRAIL_SL_CONFIRM_TICKS (lower) for fast intrabar exit
+        if self._sl_confirmed(price, sl_level, is_long, source=source, trail_armed=True):
+            trail_improved = (
+                (state.current_sl  > risk.sl) if is_long
+                else (state.current_sl  < risk.sl)
             )
-        else:
-            sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
-                else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
-            # trail_armed=True → uses TRAIL_SL_CONFIRM_TICKS (lower) for fast intrabar exit
-            if self._sl_confirmed(price, sl_level, is_long, source=source, trail_armed=True):
-                trail_improved = (
-                    (state.current_sl  > risk.sl) if is_long
-                    else (state.current_sl  < risk.sl)
-                )
-                be_at_entry = state.be_done and abs(state.current_sl - entry_price)  < 1e-6
-                if be_at_entry:
-                    reason = "Breakeven SL"
-                elif trail_improved:
-                    reason = f"Trail SL (stage {state.stage})"
-                else:
-                    reason = "Initial SL"
-                await self._fire_exit(price, reason, source="tick")
-                return
+            be_at_entry = state.be_done and abs(state.current_sl - entry_price)  < 1e-6
+            if be_at_entry:
+                reason = "Breakeven SL"
+            elif trail_improved:
+                reason = f"Trail SL (stage {state.stage})"
+            else:
+                reason = "Initial SL"
+            # Fire at state.current_sl — this is the price TV's Exit label shows.
+            # Pine's strategy.exit fills at exactly trail_sl when breached, not the
+            # breach tick price. Market order fills near this level (5-20pt real slippage).
+            await self._fire_exit(state.current_sl, reason, source="tick")
+            return
 
         # ── 6. Max SL (entry bar exempt) ─────────────────────────────────────
         if not state.max_sl_fired:
