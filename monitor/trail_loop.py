@@ -39,6 +39,17 @@ NEW:  Snapshot moved to AFTER step 5&6 so pre_trail_sl = new trail_sl if armed.
 EFFECT: Trade 2: trail armed at bar_high=66263.5 → trail_sl=66225.
 Old code: pre_trail_sl=initial_sl=65855 → fired "Initial SL" at 65855.
 New code: pre_trail_sl=66225 → bar_low=65855 < 66225 → "Trail SL" at 66225.
+FIX-15 | Trail SL breach hold guard — 4-second wick filter (NEW)
+OLD:  Once TRAIL_SL_CONFIRM_TICKS consecutive Delta ticks breach the trail SL,
+      exit fires instantly.
+NEW:  After tick-count confirmation, a 4-second hold guard starts. The exit
+      only fires if price stays below the trail SL for the full 4 seconds.
+      If price recovers within the window (wick), the timer resets — no exit.
+EFFECT: Trade with trail peak=61,470, trail SL=61,337: wick hit 61,315 for
+      ~2 seconds then recovered to 61,374. Old code: exit at 61,337 (→ fill
+      61,266 with slippage). New code: wick recovers in <4s → hold cancelled
+      → bot holds and exits closer to TV's 61,374 level.
+      Applies to trail-armed exits only. Initial SL, Max SL, TP unaffected.
 FIX-5 | Offset recalibration mid-trade caused premature exit (NEW)
 OLD:  _recalibrate_offset() fires every 30s and could jump offset by up to
 50 pts in one step, instantly jerking the trail SL and causing exit.
@@ -140,6 +151,31 @@ MAX_DELTA_TICK_JUMP = 30.0
 #    reconnects where price legitimately moved while we weren't listening.
 WICK_STREAK_CONFIRM   = 3      # consecutive same-direction rejects before override
 WICK_STALE_TIMEOUT_S  = 5.0    # force-accept next tick after this long with none accepted
+
+# FIX-15: Trail SL breach hold guard.
+# Once tick-count confirmation fires (TRAIL_SL_CONFIRM_TICKS met), do NOT
+# exit immediately. Instead require the price to stay BELOW the trail SL for
+# this many wall-clock seconds before the exit fires.
+#
+# Problem it solves: the streak-override (FIX-14b) correctly identified a real
+# 3-tick directional move and accepted 61,315 as a "real" tick — but that tick
+# was still a wick (price recovered to 61,374 within ~2 seconds). Because the
+# tick-count confirmation fired the exit instantly, the bot closed at 61,266
+# (71pt slippage from 61,337 trail SL) while TV held and exited at 61,374.
+#
+# How it works:
+#   1. Tick count reaches TRAIL_SL_CONFIRM_TICKS → hold timer starts (no exit).
+#   2. Each subsequent confirming tick: checks how long price has stayed below SL.
+#   3. If price recovers above SL within the window → timer resets, no exit.
+#   4. If price stays below SL for >= TRAIL_SL_BREACH_HOLD_SECS → exit fires.
+#
+# Why 4 seconds: real wick spikes on BTC recover within 1-2 seconds. A genuine
+# break stays below for 5+ seconds. 4s is the safe midpoint — catches real
+# breaks while ignoring most wicks.
+#
+# Note: ONLY applies to trail-armed exits. Initial SL fires immediately as before
+# (it uses BAR_CLOSE_SL_EVAL anyway). Max SL and TP are also unaffected.
+TRAIL_SL_BREACH_HOLD_SECS = 4.0
 
 # ─── Timeframe → milliseconds ──────────────────────────────────────────────────
 def _tf_to_ms(tf: str) -> int:
@@ -288,6 +324,12 @@ class TrailMonitor:
         self._wick_reject_streak       : int   = 0
         self._wick_reject_dir          : int   = 0   # +1 up, -1 down, 0 none yet
 
+        # FIX-15: Trail SL breach hold guard.
+        # Wall-clock time (seconds) when tick-count confirmation first fired for
+        # a trail-armed breach. 0.0 = no breach in progress.
+        # Reset to 0.0 when price retreats above SL or when exit fires.
+        self._trail_breach_hold_since_s : float = 0.0
+
         # FIX-9 (BAR_CLOSE_SL_EVAL): Pine-exact Initial SL behaviour.
         # When True, the Initial SL (pre-trail-arm) is ONLY evaluated at bar close,
         # not on live ticks. This matches Pine's calc_on_every_tick=false exactly.
@@ -355,6 +397,9 @@ class TrailMonitor:
         self._last_delta_accept_wall_s = time.time()
         self._wick_reject_streak       = 0
         self._wick_reject_dir          = 0
+
+        # FIX-15: Reset trail SL breach hold timer for the new trade
+        self._trail_breach_hold_since_s = 0.0
 
         # FIX-9: Reset bar-close Initial SL tracker for the new trade
         self._last_initial_sl_bar_ms = 0
@@ -1178,6 +1223,13 @@ class TrailMonitor:
                     )
                 self._breach_delta_count  = 0
                 self._pending_sl_since_ms = 0
+                # FIX-15: reset hold timer — wick recovered, start fresh
+                if self._trail_breach_hold_since_s > 0.0:
+                    logger.info(
+                        f"[TRAIL] FIX-15: Trail SL hold cancelled — price {price:.2f} "
+                        f"recovered above SL {sl_level:.2f} "
+                    )
+                    self._trail_breach_hold_since_s = 0.0
                 return False
 
             # Price is breached — only Delta ticks advance the counter
@@ -1206,14 +1258,50 @@ class TrailMonitor:
                 )
 
             if self._breach_delta_count  >= _required:
-                logger.info(
-                    f"[TRAIL] SL breach confirmed — {self._breach_delta_count} consecutive  "
-                    f"Delta ticks above SL {sl_level:.2f}  "
-                    f"({'trail-armed' if trail_armed else 'initial'}) — firing "
-                )
-                self._breach_delta_count  = 0
-                self._pending_sl_since_ms = 0
-                return True
+                if trail_armed and TRAIL_SL_BREACH_HOLD_SECS > 0:
+                    # FIX-15: Trail SL breach hold guard.
+                    # Tick count confirmed — but don't fire yet. Require price
+                    # to stay below the trail SL for TRAIL_SL_BREACH_HOLD_SECS
+                    # continuous seconds. Wicks recover in 1-2s; real breaks don't.
+                    now_s = time.time()
+                    if self._trail_breach_hold_since_s == 0.0:
+                        # First confirmation — start the hold timer
+                        self._trail_breach_hold_since_s = now_s
+                        logger.info(
+                            f"[TRAIL] FIX-15: Trail SL breach confirmed "
+                            f"({self._breach_delta_count} ticks) — hold guard started, "
+                            f"need {TRAIL_SL_BREACH_HOLD_SECS:.0f}s continuous | "
+                            f"price={price:.2f} sl={sl_level:.2f} "
+                        )
+                        return False
+
+                    held = now_s - self._trail_breach_hold_since_s
+                    if held >= TRAIL_SL_BREACH_HOLD_SECS:
+                        logger.info(
+                            f"[TRAIL] FIX-15: Trail SL hold expired after {held:.1f}s "
+                            f"— firing | price={price:.2f} sl={sl_level:.2f} "
+                        )
+                        self._breach_delta_count = 0
+                        self._pending_sl_since_ms = 0
+                        self._trail_breach_hold_since_s = 0.0
+                        return True
+                    else:
+                        logger.debug(
+                            f"[TRAIL] FIX-15: Trail SL hold in progress "
+                            f"{held:.1f}/{TRAIL_SL_BREACH_HOLD_SECS:.0f}s | "
+                            f"price={price:.2f} sl={sl_level:.2f} "
+                        )
+                        return False
+                else:
+                    # Initial SL (trail_armed=False) or hold disabled — fire immediately
+                    logger.info(
+                        f"[TRAIL] SL breach confirmed — {self._breach_delta_count} consecutive  "
+                        f"Delta ticks above SL {sl_level:.2f}  "
+                        f"({'trail-armed' if trail_armed else 'initial'}) — firing "
+                    )
+                    self._breach_delta_count  = 0
+                    self._pending_sl_since_ms = 0
+                    return True
 
             return False
 
