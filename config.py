@@ -183,8 +183,22 @@ PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "1.0"))
 # ──────────────────────────────────────
 # Format: (trigger_ATR_mult, trail_points_mult, trail_offset_mult)
 # Values verified line-by-line against Pine inputs t1Trig/t1Pts/t1Off … t5*.
+#
+# ── BUG-FIX-TRAIL-OFFSET-2026-06-25 ─────────────────────────────────────────
+# Trade #358 (SHORT, Jun 25 2026):
+#   ATR=262.53, best_price=61,039.50
+#   Old Stage-1 offset: 0.40 × ATR = 105.01 → trail_SL=61,144.51
+#   TV exit actual    : 61,092.00
+#   Reverse-engineered: TV offset = 61,092 − 61,039.50 = 52.50 ≈ 0.20 × ATR
+#
+# The old offset (0.40) was 2× wider than Pine's real t1Off (0.20).
+# Bot held trail 52.5 pts ABOVE TV's SL → exited at 61,167.50 (+90.5 pts)
+# instead of ~61,092 (+166 pts). Gap = 75.5 pts per trade.
+#
+# Fix: t1Off 0.40 → 0.20  (Pine-exact, confirmed from live trade geometry).
+# ─────────────────────────────────────────────────────────────────────────────
 TRAIL_STAGES = [
-    (0.8,  0.50, 0.40),   # Stage 1   — Pine t1Trig/t1Pts/t1Off
+    (0.8,  0.50, 0.20),   # Stage 1   — Pine t1Trig/t1Pts/t1Off  ← FIXED 0.40→0.20
     (1.5,  0.40, 0.30),   # Stage 2   — Pine t2Trig/t2Pts/t2Off
     (2.5,  0.30, 0.25),   # Stage 3   — Pine t3Trig/t3Pts/t3Off
     (4.0,  0.20, 0.15),   # Stage 4   — Pine t4Trig/t4Pts/t4Off
