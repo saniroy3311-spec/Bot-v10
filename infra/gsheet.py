@@ -27,16 +27,18 @@ SETUP (one-time):
        GSHEET_CREDENTIALS_JSON = <one-line JSON>
        GSHEET_SPREADSHEET_ID   = <ID from sheet URL>
 
-COLUMNS in Trades tab:
-  A: Timestamp (IST)        J: TP
-  B: Signal Type            K: ATR
-  C: Direction              L: Gross P/L (USDT)
-  D: Entry Price            M: Commission (USDT)
-  E: Exit Price             N: Net P/L (USDT)
-  F: Price Move (pts)       O: Return %
-  G: Lots                   P: Exit Reason
-  H: BTC Qty                Q: Trail Stage
-  I: SL                     R: Points Captured  ← NEW v10
+COLUMNS in Trade Log tab (rows start at 6, headers at row 5):
+  A: Timestamp (IST)        L: ATR
+  B: Date                   M: Points Captured
+  C: Month                  N: Gross P&L (USD)
+  D: Signal Type            O: Commission (USD)
+  E: Direction              P: Net P&L (USD)
+  F: Qty Lots               Q: Exit Reason
+  G: BTC Qty                R: Trail Stage
+  H: Entry Price            S: Result
+  I: Exit Price             T: Cumulative Net P&L (USD)
+  J: SL
+  K: TP
 """
 
 import os
@@ -54,14 +56,9 @@ logger = logging.getLogger(__name__)
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
-TRADE_HEADERS = [
-    "Timestamp (IST)", "Signal Type", "Direction",
-    "Entry Price", "Exit Price", "Price Move (pts)",
-    "Lots", "BTC Qty", "SL", "TP", "ATR",
-    "Gross P/L (USDT)", "Commission (USDT)", "Net P/L (USDT)",
-    "Return %", "Exit Reason", "Trail Stage",
-    "Points Captured",   # v10
-]
+# Target tab name and data start row
+TRADE_LOG_TAB  = "Trade Log"
+DATA_START_ROW = 6   # headers are at row 5; data starts at row 6
 
 
 def _load_creds():
@@ -118,22 +115,14 @@ class GSheet:
     def _ensure_sheets(self):
         existing = [ws.title for ws in self._sh.worksheets()]
 
-        if "Trades" not in existing:
-            trades_ws = self._sh.add_worksheet(title="Trades", rows=5000, cols=20)
-            trades_ws.append_row(TRADE_HEADERS, value_input_option="RAW")
-            trades_ws.freeze(rows=1)
-            logger.info("Created 'Trades' tab with headers")
+        # Verify "Trade Log" tab exists — do NOT create or modify it
+        if TRADE_LOG_TAB not in existing:
+            logger.warning(
+                f"'{TRADE_LOG_TAB}' tab not found in sheet — "
+                "please create it manually. Trades will not be logged until it exists."
+            )
         else:
-            trades_ws = self._sh.worksheet("Trades")
-            first_row = trades_ws.row_values(1)
-            if not first_row:
-                trades_ws.append_row(TRADE_HEADERS, value_input_option="RAW")
-                trades_ws.freeze(rows=1)
-            elif "Points Captured" not in first_row:
-                # v10: append the new column header if upgrading from older sheet
-                col = len(first_row) + 1
-                trades_ws.update_cell(1, col, "Points Captured")
-                logger.info("Added 'Points Captured' header to existing Trades tab")
+            logger.info(f"'{TRADE_LOG_TAB}' tab found ✅")
 
         if "Dashboard" not in existing:
             dash_ws = self._sh.add_worksheet(title="Dashboard", rows=50, cols=10)
@@ -145,30 +134,30 @@ class GSheet:
             ["🤖 Shiva Sniper — Trade Dashboard", ""],
             ["", ""],
             ["📊 SUMMARY", "Value"],
-            ["Total Trades",            "=COUNTA(Trades!A2:A)-1"],
-            ["Wins",                    "=COUNTIF(Trades!N2:N,\">0\")"],
-            ["Losses",                  "=COUNTIF(Trades!N2:N,\"<0\")"],
+            ["Total Trades",            "=COUNTA('Trade Log'!A6:A)"],
+            ["Wins",                    "=COUNTIF('Trade Log'!P6:P,\">0\")"],
+            ["Losses",                  "=COUNTIF('Trade Log'!P6:P,\"<0\")"],
             ["Win Rate %",              "=IFERROR(B5/B4*100,0)"],
             ["", ""],
             ["💰 P/L SUMMARY", ""],
-            ["Total Net P/L (USDT)",    "=SUM(Trades!N2:N)"],
-            ["Best Trade (USDT)",       "=MAX(Trades!N2:N)"],
-            ["Worst Trade (USDT)",      "=MIN(Trades!N2:N)"],
-            ["Avg Win (USDT)",          "=AVERAGEIF(Trades!N2:N,\">0\")"],
-            ["Avg Loss (USDT)",         "=AVERAGEIF(Trades!N2:N,\"<0\")"],
-            ["Total Commission (USDT)", "=SUM(Trades!M2:M)"],
+            ["Total Net P/L (USDT)",    "=SUM('Trade Log'!P6:P)"],
+            ["Best Trade (USDT)",       "=MAX('Trade Log'!P6:P)"],
+            ["Worst Trade (USDT)",      "=MIN('Trade Log'!P6:P)"],
+            ["Avg Win (USDT)",          "=AVERAGEIF('Trade Log'!P6:P,\">0\")"],
+            ["Avg Loss (USDT)",         "=AVERAGEIF('Trade Log'!P6:P,\"<0\")"],
+            ["Total Commission (USDT)", "=SUM('Trade Log'!O6:O)"],
             ["", ""],
             ["📏 SIZE STATS", ""],
-            ["Total Lots Traded",       "=SUM(Trades!G2:G)"],
-            ["Total BTC Traded",        "=SUM(Trades!H2:H)"],
-            ["Total Points Captured",   "=SUM(Trades!R2:R)"],  # v10
+            ["Total Lots Traded",       "=SUM('Trade Log'!F6:F)"],
+            ["Total BTC Traded",        "=SUM('Trade Log'!G6:G)"],
+            ["Total Points Captured",   "=SUM('Trade Log'!M6:M)"],
             ["", ""],
             ["🏆 EXIT BREAKDOWN", ""],
-            ["Trail SL exits",          "=COUNTIF(Trades!P2:P,\"Trail*\")"],
-            ["Bracket TP exits",        "=COUNTIF(Trades!P2:P,\"Bracket-TP\")"],
-            ["Bracket SL exits",        "=COUNTIF(Trades!P2:P,\"Bracket-SL\")"],
+            ["Trail SL exits",          "=COUNTIF('Trade Log'!Q6:Q,\"Trail*\")"],
+            ["Bracket TP exits",        "=COUNTIF('Trade Log'!Q6:Q,\"Bracket-TP\")"],
+            ["Bracket SL exits",        "=COUNTIF('Trade Log'!Q6:Q,\"Bracket-SL\")"],
             ["", ""],
-            ["🕐 Last updated",         "=MAX(Trades!A2:A)"],
+            ["🕐 Last updated",         "=MAX('Trade Log'!A6:A)"],
         ]
         for i, row in enumerate(rows, start=1):
             ws.update(f"A{i}:B{i}", [row])
@@ -217,7 +206,7 @@ class GSheet:
         trail_stage:     int   = 0,
         points_captured: float = None,        # v10 — accepted from Journal
     ) -> bool:
-        """Append one closed-trade row. Returns True on success."""
+        """Append one closed-trade row to 'Trade Log' tab. Returns True on success."""
         if not self._enabled:
             return True  # silently skip
 
@@ -230,31 +219,39 @@ class GSheet:
             plb       = self._pl_breakdown(entry_price, exit_price, qty, is_long)
             points    = points_captured if points_captured is not None else plb["points"]
             net_pl    = real_pl if real_pl is not None else plb["net_pl"]
-            ts_ist    = datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST")
-            direction = "LONG" if is_long else "SHORT"
 
+            now_ist   = datetime.now(IST)
+            ts_ist    = now_ist.strftime("%Y-%m-%d %H:%M:%S IST")
+            date_str  = now_ist.strftime("%Y-%m-%d")
+            month_str = now_ist.strftime("%B %Y")   # e.g. "June 2026"
+            direction = "LONG" if is_long else "SHORT"
+            result    = "WIN" if net_pl > 0 else ("LOSS" if net_pl < 0 else "BE")
+
+            # Columns A–T matching your Trade Log tab layout
             row = [
-                ts_ist,
-                signal_type,
-                direction,
-                round(entry_price, 2),
-                round(exit_price, 2),
-                round(plb["points"], 2),
-                qty,
-                plb["qty_btc"],
-                round(sl, 2),
-                round(tp, 2),
-                round(atr, 2),
-                plb["gross_pl"],
-                plb["commission"],
-                round(net_pl, 4),
-                plb["net_pl_pct"],
-                exit_reason,
-                trail_stage,
-                round(points, 2),                 # v10: column R
+                ts_ist,                        # A: Timestamp (IST)
+                date_str,                      # B: Date
+                month_str,                     # C: Month
+                signal_type,                   # D: Signal Type
+                direction,                     # E: Direction
+                qty,                           # F: Qty Lots
+                plb["qty_btc"],                # G: BTC Qty
+                round(entry_price, 2),         # H: Entry Price
+                round(exit_price, 2),          # I: Exit Price
+                round(sl, 2),                  # J: SL
+                round(tp, 2),                  # K: TP
+                round(atr, 2),                 # L: ATR
+                round(points, 2),              # M: Points Captured
+                plb["gross_pl"],               # N: Gross P&L (USD)
+                plb["commission"],             # O: Commission (USD)
+                round(net_pl, 4),              # P: Net P&L (USD)
+                exit_reason,                   # Q: Exit Reason
+                trail_stage,                   # R: Trail Stage
+                result,                        # S: Result (WIN/LOSS/BE)
+                "",                            # T: Cumulative Net P&L (auto-calculated in sheet)
             ]
 
-            trades_ws = self._sh.worksheet("Trades")
+            trades_ws = self._sh.worksheet(TRADE_LOG_TAB)
             trades_ws.append_row(row, value_input_option="USER_ENTERED")
             logger.info(
                 f"GSheet: trade logged | {signal_type} {direction} "
