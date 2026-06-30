@@ -149,7 +149,7 @@ MAX_DELTA_TICK_JUMP = 30.0
 # 2) STALE TIMEOUT: if no tick has been accepted for this many seconds,
 #    the next tick is accepted unconditionally — covers feed gaps /
 #    reconnects where price legitimately moved while we weren't listening.
-WICK_STREAK_CONFIRM   = 3      # consecutive same-direction rejects before override
+WICK_STREAK_CONFIRM   = 5      # consecutive same-direction rejects before override
 WICK_STALE_TIMEOUT_S  = 5.0    # force-accept next tick after this long with none accepted
 
 # FIX-15: Trail SL breach hold guard.
@@ -175,7 +175,7 @@ WICK_STALE_TIMEOUT_S  = 5.0    # force-accept next tick after this long with non
 #
 # Note: ONLY applies to trail-armed exits. Initial SL fires immediately as before
 # (it uses BAR_CLOSE_SL_EVAL anyway). Max SL and TP are also unaffected.
-TRAIL_SL_BREACH_HOLD_SECS = 4.0
+TRAIL_SL_BREACH_HOLD_SECS = 7.0
 
 # ─── Timeframe → milliseconds ──────────────────────────────────────────────────
 def _tf_to_ms(tf: str) -> int:
