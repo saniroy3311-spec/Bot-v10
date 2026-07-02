@@ -10,6 +10,8 @@ import httpx
 from datetime import datetime, timedelta
 from typing import Optional, List
 from dashboard import database
+from risk.lot_sizing import btc_to_lots
+from config import POSITION_BTC_SIZE
 
 # Resolve runtime file paths to repo root (parent of dashboard/)
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -294,7 +296,8 @@ async def get_status():
         "health": health_data,
         "btc_price": btc_price,
         "open_position": open_position,
-        "settings": settings
+        "settings": settings,
+        "bot_qty_lots": btc_to_lots(POSITION_BTC_SIZE) if POSITION_BTC_SIZE > 0 else 1
     }
 
 # 2. Trades API

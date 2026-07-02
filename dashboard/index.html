@@ -1045,10 +1045,6 @@
             
             runningLotsBlock.querySelector('.status-value').innerText = `${activeLots} Lots`;
             runningLotsBlock.querySelector('.status-sub').innerText = `Active Allocation / ${totalLots} Max`;
-
-            // Sync header lot chip with total configured lots
-            const hLot = document.getElementById('header-lot-count');
-            if (hLot) hLot.innerText = `${totalLots} LOT`;
         }
 
         // Initialize App
@@ -1148,8 +1144,6 @@
                 if (headerBrandName) {
                     headerBrandName.innerText = settings.business_name || 'The Greeks';
                 }
-                const hLot = document.getElementById('header-lot-count');
-                if (hLot) hLot.innerText = (settings.total_bot_lots || '?') + ' LOT';
             } catch (err) {
                 console.error("Failed to load settings:", err);
             }
@@ -1202,6 +1196,10 @@
                 } else {
                     posBlock.querySelector('.status-value').innerText = 'FLAT';
                     posBlock.querySelector('.status-sub').innerText = 'No active position';
+
+                    // No open position — show the bot's real configured per-trade lot size
+                    const hLot = document.getElementById('header-lot-count');
+                    if (hLot && data.bot_qty_lots) hLot.innerText = `${data.bot_qty_lots} LOT`;
                 }
 
                 // 3. Running Lots Status

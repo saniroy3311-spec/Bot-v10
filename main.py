@@ -69,6 +69,7 @@ from infra.journal             import Journal
 from risk.lot_sizing           import btc_to_lots
 import server as _dashboard
 import threading as _threading
+import infra.heartbeat as _heartbeat
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 
@@ -674,6 +675,7 @@ def _start_client_dashboard() -> None:
 
 
 async def _main() -> None:
+    _heartbeat.start(os.path.dirname(os.path.abspath(__file__)))
     bot  = ShivaSniperBot()
     loop = asyncio.get_running_loop()
 
