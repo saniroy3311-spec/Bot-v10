@@ -1153,14 +1153,15 @@
             try {
                 const res = await fetch('/api/status');
                 const data = await res.json();
-                
-                // 1. Bot Status Indicator (card on dashboard page)
-                const statusBlock = document.getElementById('status-bot');
-                let dotClass = 'red';
-                if (data.bot_status === 'LIVE') dotClass = 'green';
-                else if (data.bot_status === 'ERROR') dotClass = 'yellow';
-                
-                if (statusBlock) { statusBlock.querySelector('.status-value').innerHTML = `<span class="dot ${dotClass}"></span> ${data.bot_status}`; statusBlock.querySelector('.status-sub').innerText = data.bot_status === 'LIVE' ? `Heartbeat ok` : `Heartbeat stale ${data.last_heartbeat_ago}s ago`; }
+
+                // 1. Bot Status Badge (BOT STATUS card on dashboard page)
+                const badgeContainer = document.getElementById('status-bot-badge-container');
+                const heartbeatSub = document.getElementById('status-bot-heartbeat');
+                let badgeClass = 'badge-stopped';
+                if (data.bot_status === 'LIVE') badgeClass = 'badge-running';
+                else if (data.bot_status === 'ERROR') badgeClass = 'badge-error';
+                if (badgeContainer) badgeContainer.innerHTML = `<span class="badge ${badgeClass}">${data.bot_status}</span>`;
+                if (heartbeatSub) heartbeatSub.innerText = data.bot_status === 'LIVE' ? `Heartbeat ok` : `Heartbeat stale ${data.last_heartbeat_ago}s ago`;
 
                 // 1b. Header Bot Status Chip
                 const hChip = document.getElementById('header-bot-status-chip');
@@ -1184,20 +1185,21 @@
 
                 // 2. Open Position Block
                 const pos = data.open_position;
-                const posBlock = document.getElementById('status-position');
+                const sideBadge = document.getElementById('status-pos-side-badge');
+                const qtyVal = document.getElementById('status-pos-qty-val');
+                const entryVal = document.getElementById('status-pos-entry-val');
                 if (pos.side !== 'FLAT') {
-                    const posColor = pos.side === 'LONG' ? 'var(--green-profit)' : 'var(--red-loss)';
-                    posBlock.querySelector('.status-value').innerHTML = `<span style="color: ${posColor}; font-weight: bold;">${pos.side}</span> | ${pos.qty} Lots`;
-                    posBlock.querySelector('.status-sub').innerHTML = `Entry: $${pos.entry_price.toLocaleString()}`;
+                    if (sideBadge) { sideBadge.innerText = pos.side; sideBadge.className = 'badge ' + (pos.side === 'LONG' ? 'badge-long' : 'badge-short'); }
+                    if (qtyVal) qtyVal.innerText = `${pos.qty} Lots`;
+                    if (entryVal) entryVal.innerText = `Entry: $${pos.entry_price.toLocaleString()}`;
 
-                    // Update header lot chip if position active
                     const hLot = document.getElementById('header-lot-count');
                     if (hLot && pos.qty) hLot.innerText = `${pos.qty} LOT`;
                 } else {
-                    posBlock.querySelector('.status-value').innerText = 'FLAT';
-                    posBlock.querySelector('.status-sub').innerText = 'No active position';
+                    if (sideBadge) { sideBadge.innerText = 'FLAT'; sideBadge.className = 'badge badge-flat'; }
+                    if (qtyVal) qtyVal.innerText = '0 Lots';
+                    if (entryVal) entryVal.innerText = 'Entry: $0.00';
 
-                    // No open position — show the bot's real configured per-trade lot size
                     const hLot = document.getElementById('header-lot-count');
                     if (hLot && data.bot_qty_lots) hLot.innerText = `${data.bot_qty_lots} LOT`;
                 }

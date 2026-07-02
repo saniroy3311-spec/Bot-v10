@@ -2811,6 +2811,11 @@ th.text-right .dual-currency-container {
     color: #00875A;
 }
 
+.badge-error {
+    background-color: #FFFBEC;
+    color: #B8860B;
+}
+
 .badge-long {
     background-color: #E6F4FF;
     color: #0066CC;
