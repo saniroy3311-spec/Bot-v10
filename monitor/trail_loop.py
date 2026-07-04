@@ -933,11 +933,16 @@ class TrailMonitor:
         # ── 3. Trail is armed — update best_price ────────────────────────────
         self._update_best_price(state, price, is_long)
 
-        # ── 3b. Intrabar stage upgrade — REMOVED (FIX-2 restored) ────────────
-        # Pine upgrades trailStage AT BAR CLOSE only (calc_on_every_tick=false).
-        # Intrabar upgrades tighten the offset mid-bar → bot exits on a smaller
-        # price bounce than TV → less profit captured. Step 3b was re-added after
-        # FIX-2 and contradicts it. on_bar_close() step 3 handles stage upgrades.
+        # ── 3b. Intrabar stage upgrade (RE-ENABLED by request) ───────────────
+        tick_profit = (state.best_price - entry_price) if is_long \
+            else (entry_price - state.best_price)
+        new_stage_tick = _upgrade_stage(state.stage, tick_profit, atr)
+        if new_stage_tick > state.stage:
+            logger.info(
+                f"[TRAIL] Stage {state.stage} → {new_stage_tick} intrabar |  "
+                f"profit={tick_profit:.2f} atr={atr:.2f} src=tick"
+            )
+            state.stage = new_stage_tick
 
         # ── 4. Recompute trail SL from best_price ────────────────────────────
         new_trail_sl = _trail_sl_from_best(state.best_price, state.stage, atr, is_long)
