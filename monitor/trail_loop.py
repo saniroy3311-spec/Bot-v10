@@ -176,6 +176,8 @@ WICK_STALE_TIMEOUT_S  = 5.0    # force-accept next tick after this long with non
 # Note: ONLY applies to trail-armed exits. Initial SL fires immediately as before
 # (it uses BAR_CLOSE_SL_EVAL anyway). Max SL and TP are also unaffected.
 TRAIL_SL_BREACH_HOLD_SECS = 7.0
+# FIX-16: Once stage has upgraded past 0, trust the move faster
+TRAIL_SL_BREACH_HOLD_SECS_STAGE_UP = 3.0
 
 # ─── Timeframe → milliseconds ──────────────────────────────────────────────────
 def _tf_to_ms(tf: str) -> int:
@@ -1263,7 +1265,12 @@ class TrailMonitor:
                 )
 
             if self._breach_delta_count  >= _required:
-                if trail_armed and TRAIL_SL_BREACH_HOLD_SECS > 0:
+                _cur_stage = self._state.stage if self._state is not None else 0
+                _effective_hold = (
+                    TRAIL_SL_BREACH_HOLD_SECS if _cur_stage == 0
+                    else TRAIL_SL_BREACH_HOLD_SECS_STAGE_UP
+                )
+                if trail_armed and _effective_hold > 0:
                     # FIX-15: Trail SL breach hold guard.
                     # Tick count confirmed — but don't fire yet. Require price
                     # to stay below the trail SL for TRAIL_SL_BREACH_HOLD_SECS
@@ -1275,15 +1282,15 @@ class TrailMonitor:
                         logger.info(
                             f"[TRAIL] FIX-15: Trail SL breach confirmed "
                             f"({self._breach_delta_count} ticks) — hold guard started, "
-                            f"need {TRAIL_SL_BREACH_HOLD_SECS:.0f}s continuous | "
+                            f"need {_effective_hold:.0f}s continuous (stage={_cur_stage}) | "
                             f"price={price:.2f} sl={sl_level:.2f} "
                         )
                         return False
 
                     held = now_s - self._trail_breach_hold_since_s
-                    if held >= TRAIL_SL_BREACH_HOLD_SECS:
+                    if held >= _effective_hold:
                         logger.info(
-                            f"[TRAIL] FIX-15: Trail SL hold expired after {held:.1f}s "
+                            f"[TRAIL] FIX-15: Trail SL hold expired after {held:.1f}s (stage={_cur_stage}) "
                             f"— firing | price={price:.2f} sl={sl_level:.2f} "
                         )
                         self._breach_delta_count = 0
@@ -1293,7 +1300,7 @@ class TrailMonitor:
                     else:
                         logger.debug(
                             f"[TRAIL] FIX-15: Trail SL hold in progress "
-                            f"{held:.1f}/{TRAIL_SL_BREACH_HOLD_SECS:.0f}s | "
+                            f"{held:.1f}/{_effective_hold:.0f}s (stage={_cur_stage}) | "
                             f"price={price:.2f} sl={sl_level:.2f} "
                         )
                         return False
