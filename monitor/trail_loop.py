@@ -179,6 +179,35 @@ TRAIL_SL_BREACH_HOLD_SECS = 7.0
 # FIX-16: Once stage has upgraded past 0, trust the move faster
 TRAIL_SL_BREACH_HOLD_SECS_STAGE_UP = 3.0
 
+# FIX-17: Large-breach fast exit (skip the hold guard on big, obvious moves).
+#
+# Problem it solves: FIX-15's hold guard is correct for small wicks (price
+# dips a few points past the trail SL, then recovers) — waiting protects
+# against false exits. But on a genuine fast move, price can keep falling
+# for the entire hold window before the exit fires, turning a small trail
+# breach into much larger slippage. Live example (2026-07-04, trade exit
+# 23:46:05): trail SL was 63,312.44; by the time the 7s hold expired, price
+# had fallen to 63,268.50 — a breach that had grown to ~44 points before the
+# bot was even allowed to react, then several more points of order-fill
+# slippage on top of that.
+#
+# Fix: as soon as tick-count confirmation fires, check how far price has
+# already moved past the trail SL. If that distance is "large" (defined as
+# a fraction of current ATR, so it auto-scales with volatility instead of
+# using one fixed point value), skip the hold guard entirely and fire the
+# exit immediately — same as the old "fire on tick confirm" behaviour, just
+# scoped only to breaches large enough that waiting can't help. Small
+# breaches (below this threshold) still go through the full FIX-15 hold
+# guard, completely unchanged.
+#
+# TRAIL_SL_LARGE_BREACH_ATR_PCT: breach distance, as a percent of current
+# ATR, above which the hold guard is skipped. Starting value below is a
+# rough estimate — tune this using actual trade history rather than leaving
+# it as a guess: look at how far genuine breakdowns vs. wicks that recovered
+# moved past the SL, as a % of ATR at the time, and set the threshold
+# between the two clusters.
+TRAIL_SL_LARGE_BREACH_ATR_PCT = 15.0
+
 # ─── Timeframe → milliseconds ──────────────────────────────────────────────────
 def _tf_to_ms(tf: str) -> int:
     tf = tf.strip().lower()
@@ -1270,6 +1299,29 @@ class TrailMonitor:
                     TRAIL_SL_BREACH_HOLD_SECS if _cur_stage == 0
                     else TRAIL_SL_BREACH_HOLD_SECS_STAGE_UP
                 )
+
+                # FIX-17: Large-breach fast exit. If price has already moved
+                # past the trail SL by more than TRAIL_SL_LARGE_BREACH_ATR_PCT
+                # of current ATR, this isn't a small wick the hold guard needs
+                # to filter — it's a real, fast move. Skip the hold entirely
+                # and fire now instead of waiting while price runs further.
+                breach_dist = abs(price - sl_level)
+                breach_atr_pct = (
+                    (breach_dist / self._current_atr * 100.0)
+                    if self._current_atr > 0 else 0.0
+                )
+                if trail_armed and breach_atr_pct >= TRAIL_SL_LARGE_BREACH_ATR_PCT:
+                    logger.info(
+                        f"[TRAIL] FIX-17: Large breach — {breach_dist:.2f}pts  "
+                        f"({breach_atr_pct:.1f}% of ATR={self._current_atr:.2f})  "
+                        f">= {TRAIL_SL_LARGE_BREACH_ATR_PCT:.1f}% threshold —  "
+                        f"skipping hold guard, firing now | price={price:.2f} sl={sl_level:.2f} "
+                    )
+                    self._breach_delta_count = 0
+                    self._pending_sl_since_ms = 0
+                    self._trail_breach_hold_since_s = 0.0
+                    return True
+
                 if trail_armed and _effective_hold > 0:
                     # FIX-15: Trail SL breach hold guard.
                     # Tick count confirmed — but don't fire yet. Require price
