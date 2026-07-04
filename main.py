@@ -437,6 +437,7 @@ class ShivaSniperBot:
                     is_long = sig.is_long,
                     sl      = risk_pre.sl,
                     tp      = risk_pre.tp,
+                    atr     = snap.atr,
                 )
             except Exception as e:
                 logger.error(f"[ENTRY] Order failed: {e}")
