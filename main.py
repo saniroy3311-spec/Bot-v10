@@ -309,6 +309,16 @@ class ShivaSniperBot:
             f"[atr={snap.atr_ok} body={snap.body_ok} vol={snap.vol_ok}]"
         )
 
+        # FIX-REV: Pre-compute the raw signal candidate regardless of whether
+        # we're in a position. Needed both for the normal flat-entry path
+        # (section 3) AND to detect an opposite-direction reversal signal
+        # while a trade is still open (section 2 below). Previously this was
+        # only ever computed with has_position gating it to NONE whenever
+        # in_position=True, so a genuine opposite signal from Pine's engine
+        # was silently dropped — the bot just kept waiting for SL/TP/trail
+        # while Pine had already auto-reversed the position on that bar.
+        _candidate_sig = evaluate(snap, has_position=False)
+
         # ── 2. Trail update for open position ─────────────────────────────────
         if self._in_position:
             if self._trail_mon._running:
@@ -326,6 +336,31 @@ class ShivaSniperBot:
                     current_atr = snap.atr,
                     is_entry_bar = _is_entry_bar,
                 )
+
+                # FIX-REV: Match Pine's strategy.entry() auto-reverse behaviour.
+                # If an opposite-direction signal fired on this bar close and
+                # we're still holding the old-direction trade (SL/trail hasn't
+                # closed it yet), force-close now and fall through to section 3
+                # so the new-direction entry can be taken on the SAME bar —
+                # exactly like Pine does. Same-direction or NONE signals are
+                # left alone (no pyramiding, matches existing behaviour).
+                if (
+                    not _is_entry_bar
+                    and self._risk is not None
+                    and _candidate_sig.signal_type != SignalType.NONE
+                    and _candidate_sig.is_long != self._risk.is_long
+                    and not self._entry_lock.locked()
+                ):
+                    logger.info(
+                        f"[REVERSAL] Opposite signal {_candidate_sig.signal_type.value} "
+                        f"detected while in {'LONG' if self._risk.is_long else 'SHORT'} "
+                        f"position — force-closing to match Pine's auto-reverse."
+                    )
+                    await self._force_close_for_reversal(snap)
+                    # Do NOT return — fall through to section 3 below so the
+                    # new-direction entry can be evaluated on this same bar.
+                else:
+                    return
             else:
                 if self._risk is not None and self._risk.stop_dist == 0.0:
                     open_row = None
@@ -399,7 +434,9 @@ class ShivaSniperBot:
             return
 
         # ── 3. Evaluate entry signals (only when flat) ────────────────────────
-        sig = evaluate(snap, has_position=False)
+        # Reuses _candidate_sig computed in section 1 (also used above for
+        # reversal detection) rather than recomputing — same result either way.
+        sig = _candidate_sig
 
         # FIX: Historical Boot Guard
         is_historical_boot = not self._historical_sync_done
@@ -555,6 +592,53 @@ class ShivaSniperBot:
                 atr         = snap.atr,
                 qty         = self._qty_lots,
             )
+
+    async def _force_close_for_reversal(self, snap) -> None:
+        """
+        FIX-REV: Force-close the current position on an opposite-direction
+        signal, mirroring Pine's strategy.entry() same-bar reversal.
+
+        Pine has no concept of "wait for SL/TP" when a new opposite signal
+        fires — it closes the existing trade at market and opens the new one,
+        same bar. Our bot only ever exited via TP/Trail-SL/Max-SL/BE, so a
+        reversal signal was previously invisible to it while in a position.
+        This restores that behaviour, reusing the existing close_position()
+        (reduce-only market order) and _on_trail_exit() bookkeeping path so
+        journaling/Telegram/state-reset all stay consistent with every other
+        exit reason.
+        """
+        if not self._in_position or self._risk is None:
+            return
+
+        was_long = self._risk.is_long
+
+        if self._trail_mon._running:
+            self._trail_mon.stop()
+
+        exit_price = snap.close
+        try:
+            order = await self._order_mgr.close_position(
+                is_long        = was_long,
+                reason         = "Reversal signal",
+                expected_price = snap.close,
+            )
+            _fill = order.get("average") or order.get("price")
+            if _fill:
+                exit_price = float(_fill)
+        except Exception as e:
+            logger.error(f"[REVERSAL] close_position failed: {e}", exc_info=True)
+            # Fall back to bar-close as the recorded exit price. If the
+            # exchange-side close actually failed (rather than just the fill
+            # lookup), the next bar's drift-check (section at top of
+            # _on_bar_close) will detect the exchange/journal mismatch and
+            # reconcile it — same safety net used for silent bracket fires.
+
+        await self._on_trail_exit(
+            exit_price = exit_price,
+            reason     = "Reversal Signal",
+            source     = "reversal",
+            position_already_closed = True,
+        )
 
     async def _on_trail_exit(self, exit_price: float, reason: str, source: str = "tick", position_already_closed: bool = False) -> None:
         if not self._in_position:
