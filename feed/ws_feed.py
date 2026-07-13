@@ -335,6 +335,64 @@ class CandleFeed:
 
                 await self._process_ws_candle(data)
 
+    async def _fetch_settled_delta_bar(self, limit: int = 5):
+        """
+        FIX-WICK-SETTLE: Delta India's REST OHLCV can still revise a
+        just-closed bar's high/low for a couple of seconds after the candle
+        boundary, as late trades settle. The old code trusted a single fetch
+        taken 2s after close — on a trade where price gets close to (but
+        doesn't clear) a trail-activation or SL level, that's enough for the
+        bot to lock in a slightly-too-shallow wick while Pine (which sees the
+        fully-settled candle) arms/exits on the real one. This showed up as
+        trade #394: bot's recorded low (61,812.00) was ~58pts short of
+        Stage-1 trail activation (61,754.51), yet TradingView closed the
+        trade same-bar near breakeven — consistent with the true wick having
+        gone lower than what the single early fetch captured.
+
+        Fix: fetch the closed bar twice, 2s apart, and take the more extreme
+        high/low across both polls. Late-settling trades only ever EXTEND a
+        wick, never shrink it, so the union of two polls is a safe lower
+        bound on the true settled range — never worse than the single-fetch
+        approach, and it catches exactly this kind of late-settling wick.
+        """
+        first = await asyncio.to_thread(
+            self._exchange.fetch_ohlcv, SYMBOL, CANDLE_TIMEFRAME, None, limit,
+        )
+        await asyncio.sleep(2)
+        second = await asyncio.to_thread(
+            self._exchange.fetch_ohlcv, SYMBOL, CANDLE_TIMEFRAME, None, limit,
+        )
+
+        if not second or len(second) < 2:
+            return first
+        if not first or len(first) < 2:
+            return second
+
+        idx1 = -2 if len(first)  >= 2 else -1
+        idx2 = -2 if len(second) >= 2 else -1
+        b1 = list(first[idx1])
+        b2 = list(second[idx2])
+
+        # Only merge if both polls are looking at the same closed bar
+        # (same open timestamp) — otherwise the boundary has already rolled
+        # and we just trust the second, later poll as-is.
+        if int(b1[0]) == int(b2[0]):
+            merged = list(b2)
+            merged[2] = max(b1[2], b2[2])   # high — widest
+            merged[3] = min(b1[3], b2[3])   # low  — widest
+            if abs(b1[2] - b2[2]) > 0.5 or abs(b1[3] - b2[3]) > 0.5:
+                logger.info(
+                    f"[FEED] FIX-WICK-SETTLE: wick revised between polls | "
+                    f"poll1 high={b1[2]:.2f} low={b1[3]:.2f} → "
+                    f"poll2 high={b2[2]:.2f} low={b2[3]:.2f} → "
+                    f"settled high={merged[2]:.2f} low={merged[3]:.2f}"
+                )
+            result = list(second)
+            result[idx2] = merged
+            return result
+
+        return second
+
     async def _process_ws_candle(self, data: dict) -> None:
         raw_ts = (
             data.get("timestamp") or
@@ -376,16 +434,12 @@ class CandleFeed:
                         bar_idx = -2 if len(closed_ohlcv) >= 2 else -1
                         feed_name = "Binance"
                     else:
-                        # FIX-DELTA-CACHE: Delta REST caches bar data briefly after close.
-                        # Wait 2s to ensure the exchange has finalised the closed bar's volume.
-                        await asyncio.sleep(2)
-                        closed_ohlcv = await asyncio.to_thread(
-                            self._exchange.fetch_ohlcv,
-                            SYMBOL,
-                            CANDLE_TIMEFRAME,
-                            None,
-                            5,
-                        )
+                        # FIX-DELTA-CACHE + FIX-WICK-SETTLE: Delta REST can
+                        # still revise a just-closed bar's high/low for a
+                        # couple seconds after close. Poll twice (2s apart)
+                        # and take the widest wick across both polls instead
+                        # of trusting a single early snapshot.
+                        closed_ohlcv = await self._fetch_settled_delta_bar(limit=5)
                         # FIX-VOL-BAR-IDX: -2 = just-closed bar (correct).
                         bar_idx = -2 if len(closed_ohlcv) >= 2 else -1
                         feed_name = "Delta"
