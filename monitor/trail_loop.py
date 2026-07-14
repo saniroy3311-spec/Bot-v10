@@ -99,6 +99,7 @@ Once BE fires, trail continues but SL can never go worse than entry.
 from __future__ import annotations
 import asyncio
 import logging
+import os
 import time
 from typing import Callable, Optional
 from config import (
@@ -175,9 +176,9 @@ WICK_STALE_TIMEOUT_S  = 5.0    # force-accept next tick after this long with non
 #
 # Note: ONLY applies to trail-armed exits. Initial SL fires immediately as before
 # (it uses BAR_CLOSE_SL_EVAL anyway). Max SL and TP are also unaffected.
-TRAIL_SL_BREACH_HOLD_SECS = 7.0
+TRAIL_SL_BREACH_HOLD_SECS = float(os.environ.get("TRAIL_SL_BREACH_HOLD_SECS", "4.0"))
 # FIX-16: Once stage has upgraded past 0, trust the move faster
-TRAIL_SL_BREACH_HOLD_SECS_STAGE_UP = 3.0
+TRAIL_SL_BREACH_HOLD_SECS_STAGE_UP = float(os.environ.get("TRAIL_SL_BREACH_HOLD_SECS_STAGE_UP", "2.0"))
 
 # FIX-17: Large-breach fast exit (skip the hold guard on big, obvious moves).
 #
@@ -206,7 +207,7 @@ TRAIL_SL_BREACH_HOLD_SECS_STAGE_UP = 3.0
 # it as a guess: look at how far genuine breakdowns vs. wicks that recovered
 # moved past the SL, as a % of ATR at the time, and set the threshold
 # between the two clusters.
-TRAIL_SL_LARGE_BREACH_ATR_PCT = 15.0
+TRAIL_SL_LARGE_BREACH_ATR_PCT = float(os.environ.get("TRAIL_SL_LARGE_BREACH_ATR_PCT", "10.0"))
 
 # ─── Timeframe → milliseconds ──────────────────────────────────────────────────
 def _tf_to_ms(tf: str) -> int:
