@@ -100,7 +100,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import statistics
 import time
+from collections import deque
 from typing import Callable, Optional
 from config import (
     TRAIL_STAGES, BE_MULT, MAX_SL_MULT, MAX_SL_POINTS,
@@ -208,6 +210,28 @@ TRAIL_SL_BREACH_HOLD_SECS_STAGE_UP = float(os.environ.get("TRAIL_SL_BREACH_HOLD_
 # moved past the SL, as a % of ATR at the time, and set the threshold
 # between the two clusters.
 TRAIL_SL_LARGE_BREACH_ATR_PCT = float(os.environ.get("TRAIL_SL_LARGE_BREACH_ATR_PCT", "10.0"))
+
+# FIX-18: Rolling median smoothing for accepted Delta ticks (additional,
+# optional wick defense — separate from and on top of FIX-13/14 above).
+#
+# FIX-13 rejects a tick if it jumps too far from the LAST tick. That catches
+# single-outlier spikes, but it still lets through a tick that is real-ish
+# but noisy — small feed jitter that isn't a "wick" by FIX-13's definition,
+# yet still shifts best_price and the trail SL around on every tick.
+#
+# This takes the last TRAIL_MEDIAN_WINDOW *accepted* (post FIX-13/14) ticks
+# and feeds _evaluate_tick() their median instead of the raw last tick. A
+# single noisy tick can't move a median of several ticks much, so best_price
+# / trail SL / breach checks all see a steadier number — without adding any
+# extra hold-time delay (this is a per-tick smoothing, not a timer).
+#
+# TRAIL_MEDIAN_WINDOW=1 (default) means "no smoothing" — median of one value
+# is just that value, so behavior is IDENTICAL to before this change unless
+# you explicitly raise it. Try 3 first; 5 is more aggressive smoothing at the
+# cost of reacting slightly slower to genuine fast moves. Wick-jump rejection
+# (FIX-13) still runs on the RAW tick before it enters this window, so the
+# two defenses stack rather than replace each other.
+TRAIL_MEDIAN_WINDOW = int(os.environ.get("TRAIL_MEDIAN_WINDOW", "1"))
 
 # ─── Timeframe → milliseconds ──────────────────────────────────────────────────
 def _tf_to_ms(tf: str) -> int:
@@ -356,6 +380,10 @@ class TrailMonitor:
         self._wick_reject_streak       : int   = 0
         self._wick_reject_dir          : int   = 0   # +1 up, -1 down, 0 none yet
 
+        # FIX-18: rolling window of accepted (post wick-filter) Delta ticks,
+        # used for median smoothing. maxlen=1 (default) makes this a no-op.
+        self._delta_median_window = deque(maxlen=max(TRAIL_MEDIAN_WINDOW, 1))
+
         # FIX-15: Trail SL breach hold guard.
         # Wall-clock time (seconds) when tick-count confirmation first fired for
         # a trail-armed breach. 0.0 = no breach in progress.
@@ -429,6 +457,9 @@ class TrailMonitor:
         self._last_delta_accept_wall_s = time.time()
         self._wick_reject_streak       = 0
         self._wick_reject_dir          = 0
+
+        # FIX-18: Reset median smoothing window for the new trade
+        self._delta_median_window.clear()
 
         # FIX-15: Reset trail SL breach hold timer for the new trade
         self._trail_breach_hold_since_s = 0.0
@@ -758,8 +789,23 @@ class TrailMonitor:
 
         self._last_delta_price = price
         self._last_delta_accept_wall_s = now_s
-        logger.debug(f"[TRAIL] Delta tick {price:.2f}")
-        await self._evaluate_tick(price, source="delta")
+
+        # FIX-18: feed the median of the last TRAIL_MEDIAN_WINDOW accepted
+        # ticks into evaluation, not the raw tick. With the default window
+        # of 1, median([price]) == price, so this changes nothing unless
+        # TRAIL_MEDIAN_WINDOW is raised above 1 in .env.
+        self._delta_median_window.append(price)
+        eval_price = statistics.median(self._delta_median_window)
+
+        if eval_price != price:
+            logger.debug(
+                f"[TRAIL] Delta tick {price:.2f} smoothed to {eval_price:.2f}  "
+                f"(median of last {len(self._delta_median_window)} ticks) "
+            )
+        else:
+            logger.debug(f"[TRAIL] Delta tick {price:.2f}")
+
+        await self._evaluate_tick(eval_price, source="delta")
 
     async def _recalibrate_offset(self, binance_price_raw: float) -> None:
         """
