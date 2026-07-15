@@ -226,8 +226,38 @@ class OrderManager:
             for pos in positions:
                 size = float(pos.get("contracts", 0) or 0)
                 if abs(size) > 0 and pos.get("symbol") == SYMBOL:
-                    side      = pos.get("side", "long").lower()
-                    is_long   = side == "long"
+                    # ── BUG-FIX-RECOVERY-DIRECTION-2026-07-15 ────────────
+                    # ccxt 4.4.57 delta.parse_position() emits side='buy'/'sell',
+                    # NEVER 'long'. So `side == "long"` was always False and
+                    # EVERY recovered position was adopted as SHORT.
+                    # Live damage: LONG 33 lots @ 64,922 re-adopted as SHORT;
+                    # activation_price flipped 65,033 -> 64,810 (arm on loss,
+                    # exit on profit). Signed size is the unambiguous truth.
+                    side = (pos.get("side") or "").strip().lower()
+                    if side in ("long", "buy"):
+                        is_long = True
+                    elif side in ("short", "sell"):
+                        is_long = False
+                    else:
+                        is_long = size > 0
+                    raw_size = (pos.get("info") or {}).get("size")
+                    if raw_size is not None:
+                        try:
+                            sign_long = float(raw_size) > 0
+                            if sign_long != is_long:
+                                logger.error(
+                                    f"[OM] POSITION DIRECTION MISMATCH - "
+                                    f"side={side!r} implies is_long={is_long} but "
+                                    f"raw size={raw_size} implies is_long={sign_long}. "
+                                    f"Trusting size."
+                                )
+                                is_long = sign_long
+                        except (TypeError, ValueError):
+                            pass
+                    logger.info(
+                        f"[OM] Open position found | is_long={is_long}  "
+                        f"side={side!r}  contracts={size}"
+                    )
                     entry_raw = (
                         pos.get("entryPrice")
                         or (pos.get("info") or {}).get("entry_price")
