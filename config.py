@@ -1,5 +1,22 @@
 """
 config.py - Shiva Sniper v10  (PINE-ALIGNED 2026-06-03 → TRADE-MATCH-FIX 2026-06-05)
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ CORRECTION 2026-07-15 — read this before trusting anything below          ║
+║                                                                           ║
+║ Two entries in the change log below are WRONG and have been reverted:     ║
+║   • "PINE_MINTICK 0.1→1.0"  — the correct value is 0.5 (Delta tick size). ║
+║   • "t1Off 0.40→0.20"       — Pine's real input is 0.4. Restored.         ║
+║                                                                           ║
+║ Both were derived by back-solving from live trade geometry instead of     ║
+║ reading the TradingView Inputs panel. All 20 trail values have now been   ║
+║ transcribed directly from that panel. See the PINE_MINTICK and            ║
+║ TRAIL_STAGES blocks below for the full derivation.                        ║
+║                                                                           ║
+║ RULE: values that exist as inputs in the Pine script are TRANSCRIBED,     ║
+║ never solved for. Solving for them is what produced this bug.             ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
 PREVIOUS CHANGES (2026-06-03)
 ADX_TREND_TH 17→22, FILTER_ATR_MULT 1.6→1.4, FILTER_BODY_MULT 0.4→0.5,
 TREND_RR 5→4, RANGE_RR 3→2.5, TREND_ATR_MULT 0.9→0.6, RANGE_ATR_MULT 0.7→0.5,
@@ -164,19 +181,40 @@ BRACKET_SL_WIDEN_MULT = float(os.environ.get("BRACKET_SL_WIDEN_MULT", "3.0"))
 BRACKET_SL_MIN_PTS    = float(os.environ.get("BRACKET_SL_MIN_PTS",    "300.0"))
 
 # ──────────────────────────────────────
-# PINE MINTICK  — BUG-FIX-3/BUG-2: DEFAULT IS NOW 1.0
+# PINE MINTICK  — CORRECTED 2026-07-15: 1.0 → 0.5
 # ──────────────────────────────────────
-# Pine's strategy.exit(trail_points=X, trail_offset=Y) takes X and Y as
-# dimensionless ATR multiples — they are NOT in exchange tick units.
-# The old default of 0.1 multiplied the offset by 0.1, making the bot's
-# trail 10× tighter than Pine's:
-# ATR=400, stage-1 offset (old): 400 × 0.40 × 0.1  =  16 pts  ← WRONG
-# ATR=400, stage-1 offset (new): 400 × 0.40 × 1.0  = 160 pts  ← Pine exact
-# With PINE_MINTICK=1.0:  offset_in_price = atr × stage_off_mult  (= Pine)
-# With PINE_MINTICK=0.1:  offset_in_price = atr × stage_off_mult × 0.1
-# Only change this if you have a concrete reason to scale the offsets
-# (e.g. a different instrument where Pine explicitly passes tick-unit values).
-PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "1.0"))
+# The old comment here claimed:
+#   "Pine's strategy.exit(trail_points=X, trail_offset=Y) takes X and Y as
+#    dimensionless ATR multiples — they are NOT in exchange tick units."
+# That claim is FALSE, and it is the root cause of the whole trail divergence.
+#
+# Pine's strategy.exit(trail_points=, trail_offset=) takes its arguments in
+# TICKS (syminfo.mintick units), not price units. Delta India BTCUSD has a
+# tick size of 0.5 — visible in every price the exchange prints: they all end
+# in .00 or .50 (61,039.50 / 61,092.00 / 62,778.50 / 66,263.50). Never .25.
+#
+# So the real price distance Pine uses is:
+#     offset_in_price = atr × off_mult × 0.5
+#
+# CONFIRMATION — trade #358 (SHORT, Jun 25 2026):
+#     ATR = 262.53, best_price = 61,039.50, TV exit actual = 61,092.00
+#     TV's real offset = 61,092.00 − 61,039.50 = 52.50
+#     Pine input t1Off = 0.4  (read directly from the TradingView Inputs panel)
+#     262.53 × 0.4 × 0.5 = 52.51     ← matches TV to 0.01 pts
+#
+# HOW THIS BROKE:
+# Only the PRODUCT (off_mult × PINE_MINTICK) is observable from a trade.
+# Trade #358 pinned that product at 0.20. With PINE_MINTICK wrongly fixed at
+# 1.0, the only way to hit 0.20 was to force t1Off from Pine's real 0.4 down
+# to 0.20 — which is exactly what BUG-FIX-TRAIL-OFFSET-2026-06-25 did below.
+# That made stage 1 land on the correct product BY COINCIDENCE, while leaving
+# every other stage — and ALL FIVE activation distances — 2× too wide.
+#
+# Fixing mintick to 0.5 lets every multiplier below hold its true Pine value.
+#
+# DO NOT "tune" this. It is a property of the instrument, not a knob.
+# Read it off the Pine (syminfo.mintick) or off the exchange's tick size.
+PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "0.5"))
 
 # ──────────────────────────────────────
 # 5-STAGE TRAIL ENGINE  (PINE-STAGE-EXACT)
@@ -184,21 +222,31 @@ PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "1.0"))
 # Format: (trigger_ATR_mult, trail_points_mult, trail_offset_mult)
 # Values verified line-by-line against Pine inputs t1Trig/t1Pts/t1Off … t5*.
 #
-# ── BUG-FIX-TRAIL-OFFSET-2026-06-25 ─────────────────────────────────────────
-# Trade #358 (SHORT, Jun 25 2026):
-#   ATR=262.53, best_price=61,039.50
-#   Old Stage-1 offset: 0.40 × ATR = 105.01 → trail_SL=61,144.51
-#   TV exit actual    : 61,092.00
-#   Reverse-engineered: TV offset = 61,092 − 61,039.50 = 52.50 ≈ 0.20 × ATR
+# ── REVERTED 2026-07-15 — BUG-FIX-TRAIL-OFFSET-2026-06-25 WAS ITSELF THE BUG ──
+# That "fix" reverse-engineered t1Off = 0.20 from trade #358's geometry and
+# overwrote Pine's real input of 0.4. The arithmetic it used was sound; its
+# assumption was not. It solved for off_mult while holding PINE_MINTICK at a
+# value (1.0) that was never verified against the Pine source.
 #
-# The old offset (0.40) was 2× wider than Pine's real t1Off (0.20).
-# Bot held trail 52.5 pts ABOVE TV's SL → exited at 61,167.50 (+90.5 pts)
-# instead of ~61,092 (+166 pts). Gap = 75.5 pts per trade.
+# Read directly from the TradingView Inputs panel (Shiva Sniper v6.5 — Delta
+# India), the true Pine values are:
+#     Stage-1  Trigger 0.8   Points 0.5    Offset 0.4
+#     Stage-2  Trigger 1.5   Points 0.4    Offset 0.3
+#     Stage-3  Trigger 2.5   Points 0.3    Offset 0.25
+#     Stage-4  Trigger 4     Points 0.2    Offset 0.15
+#     Stage-5  Trigger 6     Points 0.15   Offset 0.1
 #
-# Fix: t1Off 0.40 → 0.20  (Pine-exact, confirmed from live trade geometry).
+# With PINE_MINTICK correctly set to 0.5, trade #358 now reproduces exactly:
+#     262.53 × 0.4 × 0.5 = 52.51 → trail_SL = 61,092.01  (TV: 61,092.00)
+# i.e. stage 1 behaves identically to the old (0.20 × 1.0) pairing, while
+# stages 2-5 and all five activation distances are no longer 2× too wide.
+#
+# These values are transcribed from the Pine Inputs panel. They are NOT
+# tuning parameters. If a trade does not match, the divergence is elsewhere —
+# do not "solve" for these numbers again. That is what caused this bug.
 # ─────────────────────────────────────────────────────────────────────────────
 TRAIL_STAGES = [
-    (0.8,  0.50, 0.20),   # Stage 1   — Pine t1Trig/t1Pts/t1Off  ← FIXED 0.40→0.20
+    (0.8,  0.50, 0.40),   # Stage 1   — Pine t1Trig/t1Pts/t1Off  ← RESTORED 0.20→0.40
     (1.5,  0.40, 0.30),   # Stage 2   — Pine t2Trig/t2Pts/t2Off
     (2.5,  0.30, 0.25),   # Stage 3   — Pine t3Trig/t3Pts/t3Off
     (4.0,  0.20, 0.15),   # Stage 4   — Pine t4Trig/t4Pts/t4Off
