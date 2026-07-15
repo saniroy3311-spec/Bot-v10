@@ -99,6 +99,7 @@ Once BE fires, trail continues but SL can never go worse than entry.
 from __future__ import annotations
 import asyncio
 import logging
+import math
 import os
 import statistics
 import time
@@ -111,6 +112,7 @@ from config import (
     TREND_ATR_MULT, RANGE_ATR_MULT,
     TRAIL_OFFSET_FLOOR_MULT,
     TRAIL_FIRE_SL_ON_CANDLE_EXTREME,
+    DELTA_TICK_PRICE_FIELD, PINE_TICK_TRUNCATE,
     SL_CONFIRM_MS,
     SL_CONFIRM_TICKS,
     TRAIL_SL_CONFIRM_TICKS,
@@ -247,14 +249,25 @@ def _tf_to_ms(tf: str) -> int:
 BAR_PERIOD_MS = _tf_to_ms(CANDLE_TIMEFRAME)
 
 # ─── Pine trail engine helpers ─────────────────────────────────────────────────
+def _pine_tick_distance(tick_count: float) -> float:
+    """
+    FIX-TICK-TRUNC: Pine's strategy.exit(trail_points=, trail_offset=) takes an
+    INTEGER number of ticks. A fractional tick count is truncated, not rounded.
+    Verified to the cent on TV trades #400 (atr 226.72 → 45.0) and #401
+    (atr 240.70 → 48.0); #400 discriminates floor from round.
+    """
+    if PINE_TICK_TRUNCATE:
+        return math.floor(tick_count) * PINE_MINTICK
+    return tick_count * PINE_MINTICK
+
 def _trail_pts(stage: int, atr: float) -> float:
     """
     Activation distance = how far price must move in profit direction before
-    the trail arms.  Pine: trail_points = atr * pts_mult * PINE_MINTICK.
+    the trail arms.  Pine: trail_points = floor(atr * pts_mult) ticks.
     """
     idx = max(stage - 1, 0)
     _, pts_mult, _ = TRAIL_STAGES[idx]
-    return atr * pts_mult * PINE_MINTICK
+    return _pine_tick_distance(atr * pts_mult)
 
 def _trail_off(stage: int, atr: float) -> float:
     """
@@ -264,7 +277,7 @@ def _trail_off(stage: int, atr: float) -> float:
     """
     idx = max(stage - 1, 0)
     _, _, off_mult = TRAIL_STAGES[idx]
-    raw   = atr * off_mult * PINE_MINTICK
+    raw   = _pine_tick_distance(atr * off_mult)
     floor = atr * TRAIL_OFFSET_FLOOR_MULT
     return max(raw, floor)
 
@@ -1531,19 +1544,42 @@ class TrailMonitor:
                 logger.error(f"[TRAIL] exit callback error: {e}", exc_info=True)
 
     # ── Exchange price fetch ───────────────────────────────────────────────────
-    async def _get_mark_price(self) -> Optional[float]:
+    async def _get_trail_price(self) -> Optional[float]:
+        """
+        FIX-TICK-FIELD-MIX — SECOND INJECTION POINT.
+
+        This method feeds _tick_loop() (a REST poll every TRAIL_LOOP_SEC that
+        calls _evaluate_tick(price, source="delta")) and _recalibrate_offset().
+        It used to prefer markPrice with a fallback to `last` — i.e. it pushed
+        MARK into the exact same best_price/breach evaluator that the WS feed
+        pushes LAST into. Fixing ws_feed.py alone leaves this one re-poisoning
+        the stream every 2 seconds.
+
+        Now honours config.DELTA_TICK_PRICE_FIELD and never falls back across
+        logical fields.
+        """
         try:
             ticker = await self._order_mgr.fetch_ticker()
             if ticker is None:
                 return None
-            mark = (
-                ticker.get("markPrice")
-                or (ticker.get("info") or {}).get("mark_price")
-                or ticker.get("last")
-                or 0.0
-            )
-            price = float(mark) if mark else 0.0
-            return price if price  > 0 else None
+            info  = ticker.get("info") or {}
+            field = DELTA_TICK_PRICE_FIELD
+
+            if field in ("mark", "mark_price"):
+                raw = info.get("mark_price") or ticker.get("markPrice")
+            elif field in ("spot", "spot_price"):
+                raw = info.get("spot_price")
+            else:
+                # last traded — ccxt's `last` and Delta's info.close are the
+                # same logical price, so this fallback stays within one field.
+                raw = info.get("close") or ticker.get("last") or ticker.get("close")
+
+            price = float(raw) if raw not in (None, "") else 0.0
+            return price if price > 0 else None
         except Exception as e:
-            logger.warning(f"[TRAIL] _get_mark_price failed: {e}")
+            logger.warning(f"[TRAIL] _get_trail_price failed: {e}")
             return None
+
+    # Back-compat alias — old name, new (field-correct) behaviour.
+    async def _get_mark_price(self) -> Optional[float]:
+        return await self._get_trail_price()
