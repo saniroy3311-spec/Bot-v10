@@ -19,6 +19,7 @@ from config import (
     SYMBOL, CANDLE_TIMEFRAME, WS_RECONNECT_SEC, EMA_TREND_LEN,
     BINANCE_SIGNAL_FEED, BINANCE_SYMBOL,
     TRAIL_EXIT_FROM_DELTA_WS,
+    DELTA_TICK_PRICE_FIELD, DELTA_TICK_DIVERGENCE_WARN_PTS,
 )
 
 logger   = logging.getLogger(__name__)
@@ -38,6 +39,34 @@ _WS_RETRY_AFTER_REST_POLLS = 60
 _WS_HEARTBEAT_SEC          = 30
 
 _BINANCE_DELTA_DIVERGENCE_MAX = 15.0
+
+# ─── FIX-TICK-FIELD-MIX ────────────────────────────────────────────────────────
+# Map a logical field name to the concrete key(s) Delta may use for it.
+# Candidates inside one tuple are the SAME logical price under different names
+# (Delta's v2/ticker calls the last traded price `close`; some payload versions
+# also expose `last_price`). Falling back WITHIN a tuple is safe. Falling back
+# ACROSS tuples is exactly the bug this fix exists to kill.
+_TICK_FIELD_ALIASES = {
+    "last":       ("close", "last_price"),
+    "last_price": ("close", "last_price"),
+    "close":      ("close", "last_price"),
+    "mark":       ("mark_price",),
+    "mark_price": ("mark_price",),
+    "spot":       ("spot_price",),
+    "spot_price": ("spot_price",),
+}
+
+def _tick_field_candidates(field: str) -> tuple:
+    return _TICK_FIELD_ALIASES.get(field.strip().lower(), ("close", "last_price"))
+
+def _coerce_price(raw) -> Optional[float]:
+    if raw is None or raw == "":
+        return None
+    try:
+        p = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return p if p > 0 else None
 
 def _timeframe_to_ms(tf: str) -> int:
     tf = tf.strip().lower()
@@ -83,6 +112,14 @@ class CandleFeed:
         self._msg_count            = 0
         self.trail_monitor         = None  
         self._last_delta_tick: Optional[float] = None
+
+        # FIX-TICK-FIELD-MIX: the concrete payload key we lock onto on the first
+        # usable ticker message. Once locked it NEVER changes for the life of the
+        # process — a message without that key is dropped, not substituted.
+        self._tick_key: Optional[str] = None
+        self._tick_key_missing: int = 0
+        self._last_div_warn_s: float = 0.0
+        self._candle_push_warned: bool = False
 
     @property
     def last_delta_tick(self) -> Optional[float]:
@@ -253,6 +290,74 @@ class CandleFeed:
             f"[source={'Binance' if BINANCE_SIGNAL_FEED else 'Delta'}]"
         )
 
+    # ── FIX-TICK-FIELD-MIX ────────────────────────────────────────────────────
+    def _extract_tick_price(self, data: dict) -> Optional[float]:
+        """
+        Return the configured Delta tick price, or None.
+
+        Locks onto ONE concrete payload key on the first usable message and uses
+        only that key forever after. A message that does not carry the locked key
+        is DROPPED — it is never silently substituted with a different field.
+
+        This is the whole fix. The old code was:
+            data.get("mark_price") or data.get("last_price") or data.get("close")
+        which quietly alternated between mark and last whenever Delta omitted
+        mark_price, producing a ~70pt two-cluster flap in the tick stream and
+        guaranteeing premature trail exits (see config.DELTA_TICK_PRICE_FIELD).
+        """
+        candidates = _tick_field_candidates(DELTA_TICK_PRICE_FIELD)
+
+        if self._tick_key is None:
+            for key in candidates:
+                if _coerce_price(data.get(key)) is not None:
+                    self._tick_key = key
+                    logger.info(
+                        f"[FEED] FIX-TICK-FIELD-MIX: Delta tick field LOCKED → "
+                        f"'{key}'  (config DELTA_TICK_PRICE_FIELD="
+                        f"'{DELTA_TICK_PRICE_FIELD}') — no cross-field fallback"
+                    )
+                    break
+            else:
+                return None
+
+        price = _coerce_price(data.get(self._tick_key))
+        if price is None:
+            self._tick_key_missing += 1
+            if self._tick_key_missing % 100 == 1:
+                logger.warning(
+                    f"[FEED] Delta ticker missing '{self._tick_key}' — tick dropped "
+                    f"(count={self._tick_key_missing}). NOT substituting another "
+                    f"field. If this is constant, set DELTA_TICK_PRICE_FIELD to a "
+                    f"field your payload actually carries. Payload keys: "
+                    f"{sorted(data.keys())}"
+                )
+            return None
+        return price
+
+    def _log_field_divergence(self, data: dict) -> None:
+        """
+        Diagnostic. Proves (or disproves) the mark/last mixing on your own box.
+        If this fires constantly, the two fields are far enough apart that the
+        old `or`-chain was reliably knocking trades out on the spread alone.
+        """
+        if DELTA_TICK_DIVERGENCE_WARN_PTS <= 0:
+            return
+        now = time.time()
+        if now - self._last_div_warn_s < 30.0:
+            return
+        mark = _coerce_price(data.get("mark_price"))
+        last = _coerce_price(data.get("close")) or _coerce_price(data.get("last_price"))
+        if mark is None or last is None:
+            return
+        diff = abs(mark - last)
+        if diff >= DELTA_TICK_DIVERGENCE_WARN_PTS:
+            self._last_div_warn_s = now
+            logger.warning(
+                f"[FEED] Delta mark/last divergence = {diff:.2f} pts "
+                f"(mark={mark:.2f} last={last:.2f}) — using '{self._tick_key}'. "
+                f"Any trail_offset tighter than this would fire on the gap alone."
+            )
+
     async def _run_websocket(self) -> None:
         ws_url    = _WS_TESTNET if DELTA_TESTNET else _WS_LIVE
         ws_symbol = _ccxt_to_ws_symbol(SYMBOL)
@@ -308,17 +413,12 @@ class CandleFeed:
                 if msg_type == "v2/ticker":
                     data = msg.get("data") or msg
                     if data:
-                        raw_price = (
-                            data.get("mark_price") or
-                            data.get("last_price") or
-                            data.get("close") or
-                            0
-                        )
-                        try:
-                            delta_price = float(raw_price)
-                        except (TypeError, ValueError):
-                            delta_price = 0.0
-                        if delta_price > 0 and self.trail_monitor is not None:
+                        # FIX-TICK-FIELD-MIX: strict single-field read. The old
+                        # `mark_price or last_price or close` chain interleaved
+                        # two different prices into one tick stream.
+                        delta_price = self._extract_tick_price(data)
+                        self._log_field_divergence(data)
+                        if delta_price is not None and self.trail_monitor is not None:
                             self._last_delta_tick = delta_price
                             loop = asyncio.get_running_loop()
                             loop.create_task(
@@ -554,12 +654,39 @@ class CandleFeed:
                 )
                 self.trail_monitor.push_ws_candle(h, l, source="delta")
 
+            # ── FIX-TICK-FIELD-MIX — CALLER 2 (THE LIVE VECTOR) ──────────────
+            # This block pushed the candlestick channel's live close into
+            # push_delta_tick() with NO config guard, while the v2/ticker block
+            # above pushed mark_price into the SAME function. Two WS channels,
+            # two different prices, one evaluator:
+            #
+            #   v2/ticker      mark_price  ~65216   ← ratcheted best_price up
+            #   candlestick_Nm close       ~65146   ← fired the SL breach
+            #
+            # trail_sl = best - offset then sat at 65178, a level Delta's book
+            # never traded at, while every candle tick came in 32pts underneath
+            # it. The exit was arithmetic, not a market event. (2026-07-15
+            # 18:30 trade: entry 65146 → exit 65142; TV: 65508.5.)
+            #
+            # The candle close IS the last traded price, so it may only be
+            # pushed when the trail is evaluating in last-traded space. If the
+            # trail is on mark/spot, pushing it here would re-open the exact
+            # interleave this fix exists to close — so we drop it instead.
             if self.trail_monitor is not None:
-                self._last_delta_tick = c   
-                loop = asyncio.get_running_loop()
-                loop.create_task(
-                    self.trail_monitor.push_delta_tick(c)
-                )
+                self._last_delta_tick = c
+                if _tick_field_candidates(DELTA_TICK_PRICE_FIELD)[0] in ("close", "last_price"):
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(
+                        self.trail_monitor.push_delta_tick(c)
+                    )
+                elif not self._candle_push_warned:
+                    self._candle_push_warned = True
+                    logger.warning(
+                        f"[FEED] Candle-close tick push DISABLED — "
+                        f"DELTA_TICK_PRICE_FIELD='{DELTA_TICK_PRICE_FIELD}' but the "
+                        f"candle close is last-traded. Pushing both would interleave "
+                        f"two price spaces into one trail evaluator."
+                    )
 
     async def _poll_rest_once(self) -> None:
         sleep_sec = 5
