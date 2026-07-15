@@ -216,6 +216,68 @@ BRACKET_SL_MIN_PTS    = float(os.environ.get("BRACKET_SL_MIN_PTS",    "300.0"))
 # Read it off the Pine (syminfo.mintick) or off the exchange's tick size.
 PINE_MINTICK = float(os.environ.get("PINE_MINTICK", "0.5"))
 
+# ──────────────────────────────────────────────────────────────────────────────
+# DELTA TICK PRICE FIELD   (FIX-TICK-FIELD-MIX  2026-07-15)   ← THE REAL BUG
+# ──────────────────────────────────────────────────────────────────────────────
+# ROOT CAUSE (trade 2026-07-15 18:30, entry 65146 → exit 65142, TV: 65508.5):
+#
+#   feed/ws_feed.py did:
+#       raw_price = data.get("mark_price") or data.get("last_price") or data.get("close")
+#
+#   Delta's v2/ticker does NOT carry every field on every update. When
+#   mark_price is present the chain yields MARK; when it isn't, the chain
+#   silently falls through to CLOSE (last traded). push_delta_tick() therefore
+#   received an INTERLEAVED stream of two different prices.
+#
+# PROOF FROM THE LOG (18:30:14 → 18:30:19, same second, same feed):
+#       best_price ratchets : 65203.89 → 65223.44        ← one field
+#       breach checks fire  : 65145.90 / 65146.40        ← the other field
+#       wick filter caught it: "price 65146.03 jumped -69.97 pts from last=65216.00"
+#   A 70-point flap inside one second is not the market. It is two fields.
+#
+# WHY IT IS FATAL:
+#   best_price is a one-way ratchet, so it locks onto the HIGHER cluster.
+#   trail_sl = best - offset then lands INSIDE the flap, above the entire
+#   lower cluster. The breach then fires on the lower cluster. Once the two
+#   clusters sit further apart than trail_offset, the exit is arithmetically
+#   guaranteed no matter what the market does.
+#
+# THE FIX:
+#   Pick ONE logical field and never fall back across fields. Use the LAST
+#   TRADED price — that is what the TradingView candles (and therefore the
+#   bar high the whole trail geometry is derived from) are built out of.
+#   mark_price tracks the index, not Delta's book: on the trade above the
+#   mark was ~65216 while the exit actually filled at 65142.
+#
+#   "last" | "last_price" | "close"  → Delta's `close`   (last traded)  ← DEFAULT
+#   "mark" | "mark_price"            → Delta's `mark_price`
+#   "spot" | "spot_price"            → Delta's `spot_price`
+#
+# DO NOT set this to "mark" to "reduce noise". Mark is a different instrument.
+DELTA_TICK_PRICE_FIELD = os.environ.get("DELTA_TICK_PRICE_FIELD", "last").strip().lower()
+
+# Diagnostic only. Logs (rate-limited) whenever mark_price and close diverge by
+# more than this many points. If this fires constantly you have confirmed the
+# mixing on your own box. 0 = disable the diagnostic.
+DELTA_TICK_DIVERGENCE_WARN_PTS = float(
+    os.environ.get("DELTA_TICK_DIVERGENCE_WARN_PTS", "15.0")
+)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PINE TICK TRUNCATION   (FIX-TICK-TRUNC  2026-07-15)
+# ──────────────────────────────────────────────────────────────────────────────
+# Pine's strategy.exit(trail_points=, trail_offset=) takes INTEGER tick counts.
+# A fractional tick count is truncated, not rounded.
+#     offset_in_price = floor(atr * off_mult) * PINE_MINTICK
+#
+# VERIFIED against both TV trades on 2026-07-15 — exact to the cent:
+#   #400  atr=226.72  floor(226.72*0.4)=90 → 45.0 → 65553.50-45.0 = 65508.50  (TV: 65508.5)
+#   #401  atr=240.70  floor(240.70*0.4)=96 → 48.0 → 65501.00-48.0 = 65453.00  (TV: 65453.0)
+# (#400 discriminates: round() would give 45.5 → 65508.00 ≠ TV.)
+#
+# Worth ~0.1-0.4 pts. Free parity. Set false to restore the old float maths.
+PINE_TICK_TRUNCATE = os.environ.get("PINE_TICK_TRUNCATE", "false").lower() == "true"
+
 # ──────────────────────────────────────
 # 5-STAGE TRAIL ENGINE  (PINE-STAGE-EXACT)
 # ──────────────────────────────────────
