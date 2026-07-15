@@ -876,10 +876,11 @@ class TrailMonitor:
                                 "[TRAIL] FIX-10: Position no longer exists on Delta —  "
                                 "bracket SL fired silently. Stopping ghost trail."
                             )
-                            # Use current_sl as best approximation of exit price;
-                            # the bar-close drift check will reconcile with the real fill.
-                            bracket_exit_price = float(self._state.current_sl) \
+                            real_fill = await self._order_mgr.fetch_bracket_fill_price()
+                            bracket_exit_price = real_fill if real_fill is not None else (
+                                float(self._state.current_sl)
                                 if self._state is not None else float(self._risk.sl)
+                            )
                             await self._fire_exit(
                                 bracket_exit_price,
                                 "Bracket SL/TP (ghost-trail-guard)",

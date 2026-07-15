@@ -21,3 +21,6 @@ bot.log
 *.bak-*
 health.json
 journal.db
+.env
+*.bak
+journal.db
