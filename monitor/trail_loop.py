@@ -184,6 +184,9 @@ TRAIL_SL_BREACH_HOLD_SECS = float(os.environ.get("TRAIL_SL_BREACH_HOLD_SECS", "4
 # FIX-16: Once stage has upgraded past 0, trust the move faster
 TRAIL_SL_BREACH_HOLD_SECS_STAGE_UP = float(os.environ.get("TRAIL_SL_BREACH_HOLD_SECS_STAGE_UP", "2.0"))
 
+# FIX-19: one print back inside the SL no longer wipes the breach state.
+RECOVER_CONFIRM_TICKS = int(os.environ.get("RECOVER_CONFIRM_TICKS", "2"))
+
 # FIX-17: Large-breach fast exit (skip the hold guard on big, obvious moves).
 #
 # Problem it solves: FIX-15's hold guard is correct for small wicks (price
@@ -380,6 +383,7 @@ class TrailMonitor:
         # ticks above the SL before firing — replaces the time-based window.
         # Resets to 0 on ANY tick below the SL. Immune to Binance feed interleaving.
         self._breach_delta_count  : int = 0
+        self._recover_delta_count : int = 0   # FIX-19
 
         # FIX-13: Last accepted Delta tick price, used to filter single-tick
         # wicks before they ever reach the breach counter above.
@@ -462,6 +466,7 @@ class TrailMonitor:
 
         # FIX-8: Reset Delta-tick breach counter for the new trade
         self._breach_delta_count = 0
+        self._recover_delta_count = 0   # FIX-19
 
         # FIX-13: Reset last-accepted Delta price for the new trade
         self._last_delta_price = None
@@ -1311,6 +1316,23 @@ class TrailMonitor:
             )
 
             if not breached and source == "delta":
+                # FIX-19: require RECOVER_CONFIRM_TICKS consecutive prints
+                # inside the SL before believing a recovery.
+                _breach_live = (
+                    self._breach_delta_count > 0
+                    or self._trail_breach_hold_since_s > 0.0
+                )
+                if _breach_live and RECOVER_CONFIRM_TICKS > 1:
+                    self._recover_delta_count += 1
+                    if self._recover_delta_count < RECOVER_CONFIRM_TICKS:
+                        logger.info(
+                            f"[TRAIL] FIX-19: recovery tick "
+                            f"{self._recover_delta_count}/{RECOVER_CONFIRM_TICKS} — "
+                            f"price {price:.2f} inside SL {sl_level:.2f}, breach HELD "
+                            f"(breach_count={self._breach_delta_count}) "
+                        )
+                        return False
+                self._recover_delta_count = 0
                 # Price is inside SL — reset counter regardless of source
                 if self._breach_delta_count  > 0:
                     logger.info(
@@ -1340,6 +1362,7 @@ class TrailMonitor:
                 return False
 
             # Delta tick above SL — increment counter
+            self._recover_delta_count = 0   # FIX-19
             self._breach_delta_count += 1
             if self._breach_delta_count == 1:
                 logger.info(
