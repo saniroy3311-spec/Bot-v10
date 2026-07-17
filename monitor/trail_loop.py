@@ -725,36 +725,42 @@ class TrailMonitor:
             await self._evaluate_tick(price)
 
     # ── Delta mark price tick — no offset needed ──────────────────────────────
-    async def push_delta_tick(self, price: float) -> None:
+    def _filter_and_smooth_delta_price(self, price: float) -> Optional[float]:
         """
-        Accept a Delta Exchange mark price tick directly.
-        No Binance offset arithmetic — feeds straight into _evaluate_tick().
+        FIX-20: Shared wick-jump filter (FIX-13/14) + median smoothing (FIX-18)
+        for EVERY Delta price, regardless of which path it arrived on.
 
-        FIX-6: Delta IS the authoritative price source  (same as Pine uses).
-        Always calls the full _evaluate_tick() — updates best_price post-arm.
-        Binance ticks post-arm only check SL/TP, not best_price.
+        Previously this logic lived only inside push_delta_tick() — the
+        WebSocket path. _tick_loop() (the REST poll, every TRAIL_LOOP_SEC
+        seconds) called _evaluate_tick() directly with a raw, unfiltered
+        price, bypassing MAX_DELTA_TICK_JUMP, the streak-recovery override,
+        and TRAIL_MEDIAN_WINDOW smoothing entirely. Since mark/last field
+        selection was already unified (FIX-TICK-FIELD-MIX), the two paths
+        read the same logical field — but the REST path still let a single
+        noisy or momentarily-stale poll move best_price / the breach counter
+        with zero protection, on every poll interval.
 
-        FIX-8 (Option 1):  tagged source="delta" so _sl_confirmed() counts
-        only Delta ticks toward the breach confirmation counter.
+        Returns the filtered+smoothed price to evaluate, or None if this
+        tick should be dropped entirely (wick rejected, not yet confirmed
+        by streak or stale-timeout override).
 
-        FIX-13: Before anything else, reject single-tick wicks. If this tick
-        jumps more than MAX_DELTA_TICK_JUMP pts from the last accepted Delta
-        tick, treat it as exchange noise and drop it — it never reaches the
-        breach counter, never resets it, never updates best_price. A genuine
-        price move shows up as several ticks of this size in a row, so real
-        moves are unaffected; a single freak tick is.
+        FIX-13: Reject single-tick jumps larger than MAX_DELTA_TICK_JUMP pts
+        from the last accepted price — treated as exchange noise and dropped.
+        A genuine price move shows up as several ticks of this size in a row,
+        so real moves are unaffected; a single freak tick is.
 
-        FIX-14: FIX-13 alone has no way back if the reference ever goes
-        stale (e.g. one wrongly-rejected tick freezes _last_delta_price, and
-        every following real tick then also reads as "too far from a stale
-        number" forever). Two recovery paths re-sync the reference:
+        FIX-14: Two recovery paths re-sync the reference if it ever goes stale:
           - STREAK: WICK_STREAK_CONFIRM consecutive rejects in the same
             direction = a real run, not noise → accept and resume.
           - STALE TIMEOUT: no tick accepted for WICK_STALE_TIMEOUT_S →
             accept the next tick unconditionally (covers feed gaps).
+
+        FIX-18: Feeds the median of the last TRAIL_MEDIAN_WINDOW accepted
+        ticks into evaluation, not the raw tick. Default window of 1 means
+        no smoothing unless TRAIL_MEDIAN_WINDOW is raised in .env.
         """
-        if not self._running or self._exit_fired or price  <= 0:
-            return
+        if price  <= 0:
+            return None
 
         now_s = time.time()
 
@@ -791,7 +797,7 @@ class TrailMonitor:
                             f"(> max={MAX_DELTA_TICK_JUMP:.1f} pts) — dropped, not counted  "
                             f"[streak={self._wick_reject_streak}/{WICK_STREAK_CONFIRM}] "
                         )
-                        return
+                        return None
 
                     # FIX-14b: streak recovery — N consecutive same-direction
                     # rejects means this is a real move, not repeated noise
@@ -822,6 +828,31 @@ class TrailMonitor:
             )
         else:
             logger.debug(f"[TRAIL] Delta tick {price:.2f}")
+
+        return eval_price
+
+    async def push_delta_tick(self, price: float) -> None:
+        """
+        Accept a Delta Exchange mark price tick directly.
+        No Binance offset arithmetic — feeds straight into _evaluate_tick().
+
+        FIX-6: Delta IS the authoritative price source  (same as Pine uses).
+        Always calls the full _evaluate_tick() — updates best_price post-arm.
+        Binance ticks post-arm only check SL/TP, not best_price.
+
+        FIX-8 (Option 1):  tagged source="delta" so _sl_confirmed() counts
+        only Delta ticks toward the breach confirmation counter.
+
+        FIX-20: Filtering + smoothing now lives in
+        _filter_and_smooth_delta_price(), shared with the REST poll path
+        in _tick_loop() — see that method's docstring for FIX-13/14/18 detail.
+        """
+        if not self._running or self._exit_fired:
+            return
+
+        eval_price = self._filter_and_smooth_delta_price(price)
+        if eval_price is None:
+            return
 
         await self._evaluate_tick(eval_price, source="delta")
 
@@ -917,7 +948,15 @@ class TrailMonitor:
                 # REST poll uses Delta mark price — always full _evaluate_tick()
                 # FIX-8: tagged source="delta" — REST polls Delta mark price,
                 # so these count toward the breach tick counter too.
-                await self._evaluate_tick(price, source="delta")
+                # FIX-20: this REST-polled price now goes through the SAME
+                # wick-jump filter + median smoothing as WS ticks, instead of
+                # bypassing it. Previously a single noisy or momentarily-stale
+                # REST poll could move best_price / the breach counter every
+                # TRAIL_LOOP_SEC seconds with zero protection.
+                eval_price = self._filter_and_smooth_delta_price(price)
+                if eval_price is None:
+                    continue
+                await self._evaluate_tick(eval_price, source="delta")
             except asyncio.CancelledError:
                 break
             except Exception as e:
