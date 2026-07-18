@@ -315,6 +315,37 @@ TRAIL_STAGES = [
     (6.0,  0.15, 0.10),   # Stage 5   — Pine t5Trig/t5Pts/t5Off
 ]
 
+# ──────────────────────────────────────────────────────────────────────────────
+# TRAIL ARM TRIGGER  (NOISE FIX 2026-07-18)
+# ──────────────────────────────────────────────────────────────────────────────
+# PROBLEM (trade 405, 2026-07-17 19:00 SHORT, ATR=212.15):
+#   The trail was arming at t1Pts (ATR × 0.50 × mintick = 53.04 pts of profit)
+#   but the offset that immediately gets subtracted is t1Off
+#   (ATR × 0.40 × mintick = 42.43 pts). That leaves only:
+#       53.04 − 42.43 = 10.61 pts of real protection
+#   the instant the trail is born. The bot's own feed logs show normal
+#   mark/last divergence of 15–40 pts in this exact session. A 10.6-pt stop
+#   cannot survive that noise — it will get hit by ordinary jitter, not a
+#   real reversal. Trade 405 armed on a small dip, got clipped by a 46-pt
+#   bounce, and closed at +7 instead of riding to +320.
+#
+# FIX: Arm the trail using t1Trig (an ATR multiplier — this is what Pine's
+#   trailStage upgrade condition actually uses) instead of t1Pts (a tick
+#   count that only defines geometry once a stage is already active):
+#       arm distance = ATR × t1Trig = 212.15 × 0.8 = 169.72 pts
+#       protection   = 169.72 − 42.43 = 127.29 pts   (12× wider)
+#
+# On any trade that genuinely runs past both thresholds (the common case),
+# this produces the IDENTICAL best_price and exit as before — it only
+# changes trades that stall near the old 53-pt threshold and reverse, which
+# is exactly the failure mode above. t1Trig/t2Trig/.../t5Trig are already
+# real Pine inputs already transcribed into TRAIL_STAGES above; this just
+# uses the column that was previously dead for arming purposes.
+#
+# true  (default) = arm at t1Trig (wide, noise-resistant)
+# false            = arm at t1Pts (old behaviour, restores the 10.6pt bug)
+TRAIL_ARM_USE_TRIGGER = os.environ.get("TRAIL_ARM_USE_TRIGGER", "true").lower() == "true"
+
 # ──────────────────────────────────────
 # TIME-BASED EXIT
 # ──────────────────────────────────────
