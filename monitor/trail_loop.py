@@ -107,6 +107,7 @@ from collections import deque
 from typing import Callable, Optional
 from config import (
     TRAIL_STAGES, BE_MULT, MAX_SL_MULT, MAX_SL_POINTS,
+    TRAIL_ARM_USE_TRIGGER,
     TRAIL_LOOP_SEC, TRAIL_SL_PRE_FIRE_BUFFER,
     CANDLE_TIMEFRAME, TIME_EXIT_MINUTES, PINE_MINTICK,
     TREND_ATR_MULT, RANGE_ATR_MULT,
@@ -230,13 +231,14 @@ TRAIL_SL_LARGE_BREACH_ATR_PCT = float(os.environ.get("TRAIL_SL_LARGE_BREACH_ATR_
 # / trail SL / breach checks all see a steadier number — without adding any
 # extra hold-time delay (this is a per-tick smoothing, not a timer).
 #
-# TRAIL_MEDIAN_WINDOW=1 (default) means "no smoothing" — median of one value
-# is just that value, so behavior is IDENTICAL to before this change unless
-# you explicitly raise it. Try 3 first; 5 is more aggressive smoothing at the
-# cost of reacting slightly slower to genuine fast moves. Wick-jump rejection
-# (FIX-13) still runs on the RAW tick before it enters this window, so the
-# two defenses stack rather than replace each other.
-TRAIL_MEDIAN_WINDOW = int(os.environ.get("TRAIL_MEDIAN_WINDOW", "1"))
+# TRAIL_MEDIAN_WINDOW=1 means "no smoothing" — median of one value is just
+# that value. DEFAULT CHANGED 2026-07-18: 1 → 3. Costs nothing (no added
+# delay, just smooths ticks that already arrived) and knocks down single-tick
+# jitter before it reaches the breach counter. 5 is more aggressive smoothing
+# at the cost of reacting slightly slower to genuine fast moves. Wick-jump
+# rejection (FIX-13) still runs on the RAW tick before it enters this window,
+# so the two defenses stack rather than replace each other.
+TRAIL_MEDIAN_WINDOW = int(os.environ.get("TRAIL_MEDIAN_WINDOW", "3"))
 
 # ─── Timeframe → milliseconds ──────────────────────────────────────────────────
 def _tf_to_ms(tf: str) -> int:
@@ -272,6 +274,37 @@ def _trail_pts(stage: int, atr: float) -> float:
     _, pts_mult, _ = TRAIL_STAGES[idx]
     return _pine_tick_distance(atr * pts_mult)
 
+def _trail_arm_pts(stage: int, atr: float) -> float:
+    """
+    FIX-NOISE-2026-07-18: Distance required to ARM the trail.
+
+    OLD: armed at trail_pts (t1Pts=0.5 * ATR * mintick = 53pts @ ATR=212).
+         Offset immediately due (t1Off=0.4 * ATR * mintick = 42pts) left
+         only 53-42 = 10.6pts of real protection the instant the trail was
+         born — thinner than the bot's own observed 15-40pt mark/last
+         noise. Trade 405 armed on a small dip, got clipped by a 46pt
+         bounce, exited at +7 instead of riding to +320.
+
+    NEW: arm at trail_trig (t1Trig=0.8, a plain ATR multiplier — this is
+         the value Pine's own trailStage-upgrade condition uses) instead
+         of trail_pts (a tick count that only matters once a stage is
+         already active). t1Trig=0.8 -> 170pts @ ATR=212, leaving
+         170-42 = 127pts of protection — 12x wider.
+
+    On any trade that genuinely runs past both thresholds (the normal
+    case) this produces the IDENTICAL best_price/exit as before. It only
+    changes trades that stall near the old 53pt line and reverse — exactly
+    the failure mode above.
+
+    Gated by TRAIL_ARM_USE_TRIGGER (config.py) — set false to restore old
+    behaviour.
+    """
+    idx = max(stage - 1, 0)
+    trig_mult, pts_mult, _ = TRAIL_STAGES[idx]
+    if TRAIL_ARM_USE_TRIGGER:
+        return atr * trig_mult          # ATR multiplier, NOT a tick count
+    return _pine_tick_distance(atr * pts_mult)
+
 def _trail_off(stage: int, atr: float) -> float:
     """
     Offset distance = gap between best_price and trail_sl.
@@ -287,10 +320,15 @@ def _trail_off(stage: int, atr: float) -> float:
 def _activation_price(entry: float, stage: int, atr: float, is_long: bool) -> float:
     """
     Price at which the trail arms.
-    Long:  entry + trail_pts  (price must RISE this far to arm)
-    Short: entry - trail_pts  (price must FALL this far to arm)
+    Long:  entry + trail_arm_pts  (price must RISE this far to arm)
+    Short: entry - trail_arm_pts  (price must FALL this far to arm)
+
+    FIX-NOISE-2026-07-18: now uses _trail_arm_pts() (t1Trig-based, wide)
+    instead of _trail_pts() (t1Pts-based, thin). See _trail_arm_pts()
+    docstring for the full reasoning. _trail_pts() itself is untouched and
+    still used for post-arm stage 2-5 geometry.
     """
-    pts = _trail_pts(stage, atr)
+    pts = _trail_arm_pts(stage, atr)
     return (entry + pts) if is_long else (entry - pts)
 
 def _trail_sl_from_best(best_price: float, stage: int, atr: float, is_long: bool) -> float:
@@ -549,7 +587,16 @@ class TrailMonitor:
         risk        = self._risk
         state       = self._state
         is_long     = risk.is_long
-        entry_price = risk.entry_price
+        # FIX-ANCHOR-2026-07-18: Pine measures trail profit/activation from
+        # the signal bar's close, not the real exchange fill. On trade 405
+        # the fill was 50pts worse than signal_close, which alone dragged
+        # the arm point 50pts closer to entry — stacking with the
+        # already-thin 10.6pt protection to guarantee an early exit.
+        # risk.sl / risk.tp already anchor to signal_close (see
+        # risk/calculator.py); this makes the trail arm/profit math consistent
+        # with that. entry_price (real fill) is still used below for
+        # breakeven and Max SL, which must stay tied to actual risk.
+        entry_price = risk.signal_close if risk.signal_close > 0 else risk.entry_price
 
         # Apply Binance→Delta offset to bar prices
         if self._source_offset is not None:
@@ -993,7 +1040,10 @@ class TrailMonitor:
             return
 
         is_long     = risk.is_long
-        entry_price = risk.entry_price
+        entry_price = risk.entry_price   # REAL fill — Max SL / breakeven use this
+        # FIX-ANCHOR-2026-07-18: separate anchor for arm/profit-distance math
+        # only. See on_bar_close() for full explanation.
+        pine_entry  = risk.signal_close if risk.signal_close > 0 else risk.entry_price
         atr          = self._current_atr
 
         # ── 1. TP hit ─────────────────────────────────────────────────────────
@@ -1009,8 +1059,9 @@ class TrailMonitor:
 
         # ── 2. Trail arm or initial SL ────────────────────────────────────────
         if not getattr(state, 'trail_armed', False):
-            # Check activation: has price moved trail_pts in profit direction?
-            act_price = _activation_price(entry_price, max(state.stage, 1), atr, is_long)
+            # Check activation: has price moved trail_arm_pts in profit direction?
+            # FIX-ANCHOR-2026-07-18: pine_entry (signal_close), not real fill.
+            act_price = _activation_price(pine_entry, max(state.stage, 1), atr, is_long)
             armed = (price  >= act_price) if is_long else (price  <= act_price)
 
             if armed:
@@ -1070,8 +1121,9 @@ class TrailMonitor:
         self._update_best_price(state, price, is_long)
 
         # ── 3b. Intrabar stage upgrade (RE-ENABLED by request) ───────────────
-        tick_profit = (state.best_price - entry_price) if is_long \
-            else (entry_price - state.best_price)
+        # FIX-ANCHOR-2026-07-18: pine_entry (signal_close), not real fill.
+        tick_profit = (state.best_price - pine_entry) if is_long \
+            else (pine_entry - state.best_price)
         new_stage_tick = _upgrade_stage(state.stage, tick_profit, atr)
         if new_stage_tick > state.stage:
             logger.info(
