@@ -114,11 +114,8 @@ class ShivaSniperBot:
         #     order_mgr    = self._order_mgr,
         # )
 
-        try:
-            self._qty_lots = btc_to_lots(POSITION_BTC_SIZE) if POSITION_BTC_SIZE > 0 else ALERT_QTY
-        except Exception as e:
-            logger.warning(f"btc_to_lots failed ({e}) — falling back to ALERT_QTY={ALERT_QTY}")
-            self._qty_lots = ALERT_QTY
+        # ALERT_QTY (.env) is now the single source of truth for trade size.
+        self._qty_lots = ALERT_QTY
 
         _dashboard.init(self._journal)
         self._trail_mon = TrailMonitor(
@@ -146,7 +143,7 @@ class ShivaSniperBot:
         logger.info("═" * 70)
         logger.info("  Shiva Sniper Bot v10 — Starting")
         logger.info(f"  Symbol={SYMBOL}  TF={CANDLE_TIMEFRAME}")
-        logger.info(f"  Position size: {POSITION_BTC_SIZE} BTC → {self._qty_lots} lots")
+        logger.info(f"  Position size: {self._qty_lots} lots (from ALERT_QTY)")
         logger.info(f"  FILTER_VOL_ENABLED={FILTER_VOL_ENABLED}  (false = full Pine parity)")
         logger.info(f"  MAX_ENTRY_SLIP_ATR_FRAC={MAX_ENTRY_SLIP_ATR_FRAC}  (SL recalc threshold)")
         logger.info("═" * 70)
@@ -429,6 +426,7 @@ class ShivaSniperBot:
                         entry_bar_time_ms = int(time.time() * 1000),
                         on_trail_exit     = self._on_trail_exit,
                         entry_wall_ms     = original_wall_ms,
+                        qty               = self._qty_lots,
                     )
                     await self._telegram.send(f"♻️ <b>Trail Resumed (Recovery)</b>\nEntry: {rebuilt.entry_price:.2f}")
             return
@@ -475,6 +473,7 @@ class ShivaSniperBot:
                     sl      = risk_pre.sl,
                     tp      = risk_pre.tp,
                     atr     = snap.atr,
+                    qty     = self._qty_lots,
                 )
             except Exception as e:
                 logger.error(f"[ENTRY] Order failed: {e}")
@@ -551,6 +550,7 @@ class ShivaSniperBot:
                 signal_bar_low    = snap.low,
                 signal_bar_open   = snap.open,
                 signal_bar_close  = snap.close,
+                qty               = self._qty_lots,
             )
 
             try:
@@ -621,6 +621,7 @@ class ShivaSniperBot:
                 is_long        = was_long,
                 reason         = "Reversal signal",
                 expected_price = snap.close,
+                qty            = self._qty_lots,
             )
             _fill = order.get("average") or order.get("price")
             if _fill:

@@ -474,6 +474,7 @@ class TrailMonitor:
         signal_bar_low    : Optional[float] = None,
         signal_bar_open   : Optional[float] = None,
         signal_bar_close  : Optional[float] = None,
+        qty               : Optional[int] = None,
     ) -> None:
         self._risk         = risk_levels
         self._state        = trail_state
@@ -482,6 +483,7 @@ class TrailMonitor:
         self._exit_fired   = False
         self._running      = True
         self._current_atr  = risk_levels.atr
+        self._qty          = qty
 
         # Pine trail runtime state — reset on every new trade
         trail_state.trail_armed = False 
@@ -1601,7 +1603,7 @@ class TrailMonitor:
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
                 # FIX: Pass expected_price for slippage tracking
-                result = await self._order_mgr.close_position(is_long=is_long, reason=reason, expected_price=exit_price)
+                result = await self._order_mgr.close_position(is_long=is_long, reason=reason, expected_price=exit_price, qty=self._qty)
                 success  = True
                 if isinstance(result, dict):
                     fill = result.get("average") or result.get("price")

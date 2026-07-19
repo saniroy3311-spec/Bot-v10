@@ -283,14 +283,16 @@ class OrderManager:
         sl: float,
         tp: float,
         atr: float = 1.0,
+        qty: Optional[int] = None,
     ) -> dict:
         """
         Place market entry order, then attach an WIDE EMERGENCY bracket SL.
         Python trail loop retains complete operational ownership of exits.
         """
+        order_qty = qty if qty is not None else ALERT_QTY
         side = "buy" if is_long else "sell"
         logger.info(
-            f"[OM] Placing entry | side={side}  qty={ALERT_QTY}   "
+            f"[OM] Placing entry | side={side}  qty={order_qty}   "
             f"sl={sl:.2f}  tp={tp:.2f}"
         )
 
@@ -299,7 +301,7 @@ class OrderManager:
             symbol=SYMBOL,
             type="market",
             side=side,
-            amount=ALERT_QTY,
+            amount=order_qty,
         ))
         fill = float(order.get("average") or order.get("price") or 0.0)
         logger.info(f"[OM] Entry filled | id={order.get('id')}  fill={fill:.2f}")
@@ -410,10 +412,12 @@ class OrderManager:
         is_long: bool,
         reason: str = "Exit",
         expected_price: Optional[float] = None,
+        qty: Optional[int] = None,
     ) -> dict:
         """Close position with reduce-only market order and sweep up safety bracket."""
+        order_qty = qty if qty is not None else ALERT_QTY
         side = "sell" if is_long else "buy"
-        logger.info(f"[OM] Closing position | side={side}  reason={reason}")
+        logger.info(f"[OM] Closing position | side={side}  qty={order_qty}  reason={reason}")
         
         # FIX: Slippage check before closing
         if expected_price and self._current_atr > 0:
@@ -440,7 +444,7 @@ class OrderManager:
                 symbol=SYMBOL,
                 type="market",
                 side=side,
-                amount=ALERT_QTY,
+                amount=order_qty,
                 params={"reduce_only": True},
             ))
             fill = float(order.get("average") or order.get("price") or 0.0)
