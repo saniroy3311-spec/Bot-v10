@@ -1082,6 +1082,27 @@ class TrailMonitor:
                     f"[recal FROZEN] "
                 )
             else:
+                # FIX-BE-INTRABAR (2026-07-19): check breakeven promotion on
+                # every tick, not just at bar close.
+                #
+                # Root cause this closes: a bar can run favorable past the BE
+                # threshold (atr*BE_MULT) intrabar, then reverse and close
+                # below entry — all inside one bar. on_bar_close() only sees
+                # the bar's FINAL close, never the favorable peak, so BE never
+                # armed and the original Initial SL fired for a full loss on a
+                # trade that should have scratched at breakeven.
+                # (Trade 2026-07-19 16:00 bar: peak profit +73pts intrabar vs
+                # BE threshold ~70pts, but the bar reversed and closed for a
+                # loss before the 16:30 close ever evaluated BE.)
+                #
+                # Arming this intrabar, same as trail-arm already is, means the
+                # very next tick's SL check (below) runs against the BE level
+                # instead of waiting for a bar close that may arrive too late.
+                tick_profit_pre_arm = (price - pine_entry) if is_long \
+                    else (pine_entry - price)
+                if not state.be_done and tick_profit_pre_arm > atr * BE_MULT:
+                    self._activate_be(state, risk, is_long, atr, source="tick")
+
                 # Trail not armed — check initial / BE SL only
                 sl_level = state.current_sl + TRAIL_SL_PRE_FIRE_BUFFER if is_long \
                      else state.current_sl - TRAIL_SL_PRE_FIRE_BUFFER
@@ -1091,6 +1112,9 @@ class TrailMonitor:
                 # When this flag is True, skip tick-level Initial SL checks entirely.
                 # The Initial SL will be caught by on_bar_close() same-bar exit check.
                 # Trail SL (post-arm), TP, and Max SL still fire on every tick.
+                # be_done can now flip True mid-bar (FIX-BE-INTRABAR above), which
+                # immediately turns this skip off — so a BE-armed SL still fires
+                # on the very next tick that breaches it, not at the next bar close.
                 _skip_initial_sl = BAR_CLOSE_SL_EVAL and not state.be_done
 
                 if not _skip_initial_sl and self._sl_confirmed(price, sl_level, is_long, source=source):
