@@ -119,6 +119,12 @@ class CandleFeed:
         self._tick_key: Optional[str] = None
         self._tick_key_missing: int = 0
         self._last_div_warn_s: float = 0.0
+        # FIX-ARM-BUFFER: always-current mark/last gap, updated every tick
+        # regardless of the 30s log throttle below. TrailMonitor reads this
+        # to pad the trail-arm threshold by the live feed gap so a trade
+        # doesn't miss arming purely because Delta's bar high sits a few
+        # points under TV's, while Binance/TV's own feed was already through.
+        self.last_mark_last_divergence: float = 0.0
         self._candle_push_warned: bool = False
 
     @property
@@ -340,16 +346,18 @@ class CandleFeed:
         If this fires constantly, the two fields are far enough apart that the
         old `or`-chain was reliably knocking trades out on the spread alone.
         """
-        if DELTA_TICK_DIVERGENCE_WARN_PTS <= 0:
-            return
-        now = time.time()
-        if now - self._last_div_warn_s < 30.0:
-            return
         mark = _coerce_price(data.get("mark_price"))
         last = _coerce_price(data.get("close")) or _coerce_price(data.get("last_price"))
         if mark is None or last is None:
             return
         diff = abs(mark - last)
+        self.last_mark_last_divergence = diff  # always fresh, unthrottled
+
+        if DELTA_TICK_DIVERGENCE_WARN_PTS <= 0:
+            return
+        now = time.time()
+        if now - self._last_div_warn_s < 30.0:
+            return
         if diff >= DELTA_TICK_DIVERGENCE_WARN_PTS:
             self._last_div_warn_s = now
             logger.warning(
