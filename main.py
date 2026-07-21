@@ -707,6 +707,7 @@ class ShivaSniperBot:
             on_feed_ready = self._feed_ready,
         )
         feed.trail_monitor = self._trail_mon
+        self._trail_mon.set_feed(feed)   # FIX-ARM-BUFFER: expose feed gap to trail arm check
         self._feed = feed
 
         if os.environ.get("USE_BINANCE_FEED", "true").lower() == "true":
