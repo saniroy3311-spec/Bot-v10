@@ -382,6 +382,7 @@ class TrailMonitor:
         self._order_mgr = order_mgr
         self._telegram  = telegram
         self._journal   = journal
+        self._feed      = None  # set via set_feed(); source of live mark/last gap
 
         self._running          : bool = False
         self._risk             : Optional[RiskLevels] = None
@@ -561,6 +562,35 @@ class TrailMonitor:
         """Called by main.py after entry to set the 30m bar end boundary."""
         self._entry_bar_end_ms = int(next_bar_open_ms)
 
+    def set_feed(self, feed) -> None:
+        """Called by main.py once the feed is created — gives TrailMonitor
+        read access to feed.last_mark_last_divergence for FIX-ARM-BUFFER."""
+        self._feed = feed
+
+    def _arm_gap_buffer(self, atr: float) -> float:
+        """
+        FIX-ARM-BUFFER: how much to relax the trail-arm threshold by, based
+        on the CURRENT live Delta mark/last gap.
+
+        Root cause this fixes: TV's backtest and the bot's live Delta feed
+        can each print a different high/low for the same real move (see the
+        bot's own recurring "[FEED] Delta mark/last divergence" warnings —
+        15-44 pts seen routinely in normal trading). If price falls just
+        short of the arm line on Delta's feed but TV's feed was already
+        through it, the bot never arms the trail and falls back to a flat
+        breakeven exit instead of a real trailing exit — giving back a
+        trade TV would have captured (e.g. trade exited +7 vs TV's +121.5,
+        arm line missed by only ~15 pts).
+
+        Capped at 40% of current ATR so a temporarily huge divergence spike
+        can't make the trail arm absurdly early; capped at 0 minimum so a
+        missing/unavailable feed reference never subtracts anything.
+        """
+        if self._feed is None:
+            return 0.0
+        gap = float(getattr(self._feed, "last_mark_last_divergence", 0.0) or 0.0)
+        return max(0.0, min(gap, atr * 0.40))
+
     # ── Bar-close update ──────────────────────────────────────────────────────
     def on_bar_close(
         self,
@@ -673,7 +703,16 @@ class TrailMonitor:
             else:
                 # Check if bar extreme crossed activation price during this bar
                 act_price = _activation_price(entry_price, max(state.stage, 1), atr, is_long)
-                armed = (bar_extreme  >= act_price) if is_long else (bar_extreme  <= act_price)
+                # FIX-ARM-BUFFER: relax the line by the live Delta/TV feed gap
+                # so a trade doesn't miss arming purely because Delta's bar
+                # extreme sits a few points under where TV's own feed was.
+                gap_buf = self._arm_gap_buffer(atr)
+                armed = (bar_extreme  >= act_price - gap_buf) if is_long else (bar_extreme  <= act_price + gap_buf)
+                if armed and gap_buf > 0 and ((bar_extreme < act_price) if is_long else (bar_extreme > act_price)):
+                    logger.info(
+                        f"[TRAIL] Arm buffer used (bar_close) | bar_extreme={bar_extreme:.2f}  "
+                        f"act_price={act_price:.2f}  gap_buf={gap_buf:.2f}"
+                    )
                 if armed:
                     state.trail_armed      = True
                     self._trail_ever_armed = True   # FIX-5: freeze recal
@@ -1064,7 +1103,10 @@ class TrailMonitor:
             # Check activation: has price moved trail_arm_pts in profit direction?
             # FIX-ANCHOR-2026-07-18: pine_entry (signal_close), not real fill.
             act_price = _activation_price(pine_entry, max(state.stage, 1), atr, is_long)
-            armed = (price  >= act_price) if is_long else (price  <= act_price)
+            # FIX-ARM-BUFFER: same feed-gap buffer as the bar-close check above,
+            # applied here so intrabar tick arming gets the same relief.
+            gap_buf = self._arm_gap_buffer(atr)
+            armed = (price  >= act_price - gap_buf) if is_long else (price  <= act_price + gap_buf)
 
             if armed:
                 # Trail just armed this tick
@@ -1073,13 +1115,14 @@ class TrailMonitor:
                 state.best_price  = price
                 new_trail_sl = _trail_sl_from_best(price, max(state.stage, 1), atr, is_long)
                 self._apply_trail_sl(state, risk, new_trail_sl, is_long, source="arm_tick")
+                buf_note = f"  gap_buf={gap_buf:.2f}" if gap_buf > 0 else ""
                 logger.info(
                     f"[TRAIL] Trail ARMED | price={price:.2f}  "
                     f"act_price={act_price:.2f}  "
                     f"trail_sl={state.current_sl:.2f}  "
                     f"trail_pts={_trail_pts(max(state.stage,1), atr):.2f}  "
                     f"trail_off={_trail_off(max(state.stage,1), atr):.2f}  "
-                    f"[recal FROZEN] "
+                    f"[recal FROZEN]{buf_note}"
                 )
             else:
                 # FIX-BE-INTRABAR (2026-07-19): check breakeven promotion on
