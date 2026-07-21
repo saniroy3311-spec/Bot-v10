@@ -1160,7 +1160,9 @@ class TrailMonitor:
                 # on the very next tick that breaches it, not at the next bar close.
                 _skip_initial_sl = BAR_CLOSE_SL_EVAL and not state.be_done
 
-                if not _skip_initial_sl and self._sl_confirmed(price, sl_level, is_long, source=source):
+                if not _skip_initial_sl and self._sl_confirmed(
+                    price, sl_level, is_long, source=source, trail_armed=state.be_done
+                ):
                     reason = "Breakeven SL" if state.be_done else "Initial SL"
                     await self._fire_exit(price, reason, source="tick")
                     return
