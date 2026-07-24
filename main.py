@@ -399,6 +399,10 @@ class ShivaSniperBot:
                         current_sl = rebuilt.sl
 
                     self._risk        = rebuilt
+                    # FIX-21: keep OrderManager's slippage-check ATR in sync —
+                    # it only updates on a fresh open_position() call, which a
+                    # recovered position never makes.
+                    self._order_mgr.set_atr(rebuilt.atr)
                     from config import TRAIL_STAGES as _TS, PINE_MINTICK as _MT
                     _t1_dist = rebuilt.atr * _TS[0][1] * _MT
                     _pine_init_sl = (rebuilt.entry_price + _t1_dist) if not rebuilt.is_long else (rebuilt.entry_price - _t1_dist)
