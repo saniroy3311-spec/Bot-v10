@@ -250,14 +250,31 @@ class ShivaSniperBot:
                     # FIX-10: Try to get the real fill price from Delta order/fill
                     # history before falling back to the bracket trigger price.
                     # This corrects the journal entry (was off by ~3-4 pts per lot).
+                    # FIX-24 (FABRICATED-EXIT-PRICE): retry — Delta's fills
+                    # endpoint lags the actual fill by 1-2s, so a single attempt
+                    # fails exactly on the fast SL fires we most need a real
+                    # price for. If it still can't be resolved, the exit price
+                    # below is a GUESS and must be labelled as such rather than
+                    # written to the journal as if it were measured.
                     real_fill: Optional[float] = None
-                    try:
-                        real_fill = await self._order_mgr.fetch_bracket_fill_price()
-                    except Exception as fill_err:
-                        logger.warning(f"[BAR] fetch_bracket_fill_price failed: {fill_err}")
+                    for _attempt in range(1, 4):
+                        try:
+                            real_fill = await self._order_mgr.fetch_bracket_fill_price()
+                            if real_fill is not None and float(real_fill) > 0:
+                                break
+                            real_fill = None
+                        except Exception as fill_err:
+                            logger.warning(
+                                f"[BAR] fetch_bracket_fill_price attempt "
+                                f"{_attempt}/3 failed: {fill_err}"
+                            )
+                        if _attempt < 3:
+                            await asyncio.sleep(1.0 * _attempt)
+
+                    exit_is_estimated = real_fill is None
 
                     if real_fill is not None:
-                        exit_price = real_fill
+                        exit_price = float(real_fill)
                         logger.info(f"[BAR] Drift recovery: using real fill price {exit_price:.2f}")
                     elif self._trail_state is not None:
                         exit_price = float(self._trail_state.current_sl)
@@ -272,13 +289,33 @@ class ShivaSniperBot:
                             exit_price = 0.0
                         logger.info(f"[BAR] Drift recovery: using bar close as exit price {exit_price:.2f}")
 
+                    if exit_is_estimated:
+                        logger.critical(
+                            f"[BAR] ⚠️ FIX-24: real bracket fill unresolved — logging "
+                            f"{exit_price:.2f} as an ESTIMATE. Exclude this trade from "
+                            f"TradingView comparison and parameter tuning."
+                        )
+                        try:
+                            await self._telegram.send(
+                                "⚠️ <b>Estimated exit price</b>\n"
+                                "Bracket fired but the real fill could not be fetched.\n"
+                                f"Logged <code>{exit_price:.2f}</code> as an ESTIMATE — "
+                                "verify on Delta before trusting this trade's P&L."
+                            )
+                        except Exception:
+                            pass
+
                     if self._trail_mon._running:
                         self._trail_mon.stop()
 
                     try:
                         await self._on_trail_exit(
                             exit_price = exit_price,
-                            reason     = "Bracket SL/TP (recovered)",
+                            reason     = (
+                                "Bracket SL/TP (ESTIMATED — fill unresolved)"
+                                if exit_is_estimated
+                                else "Bracket SL/TP (recovered)"
+                            ),
                             source     = "drift-check",
                             position_already_closed = True,
                         )
@@ -424,6 +461,14 @@ class ShivaSniperBot:
                     except Exception as _te:
                         pass
 
+                    # FIX-23 (RECOVERY-OFFSET-POISONING): is_recovery=True tells
+                    # TrailMonitor that rebuilt.entry_price is a HISTORICAL fill
+                    # (seeded above from fetch_open_position at startup), so it
+                    # must never be used as the Binance→Delta offset reference.
+                    # Without this the first Binance tick locked
+                    # offset = binance_now - entry_then = unrealised P&L, and
+                    # RECAL_MAX_JUMP=10 then blocked the correction for the whole
+                    # life of the trade.
                     self._trail_mon.start(
                         risk_levels       = rebuilt,
                         trail_state       = self._trail_state,
@@ -431,6 +476,7 @@ class ShivaSniperBot:
                         on_trail_exit     = self._on_trail_exit,
                         entry_wall_ms     = original_wall_ms,
                         qty               = self._qty_lots,
+                        is_recovery       = True,
                     )
                     await self._telegram.send(f"♻️ <b>Trail Resumed (Recovery)</b>\nEntry: {rebuilt.entry_price:.2f}")
             return
