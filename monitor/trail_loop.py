@@ -11,11 +11,17 @@ EFFECT: v10 was replacing the initial SL (e.g. 500 pts away) with a trail
 SL just 320 pts from entry the instant price moved 0.01 pts favorable.
 Any normal intrabar noise could then hit this tight SL for a loss
 while Pine's trail wasn't even armed yet.
-FIX-2 | Intrabar stage upgrades removed (HIGH — premature SL tightening)
-OLD:  _evaluate_tick() upgraded trail stages on every price tick.
-NEW:  Stage upgrades happen ONLY in on_bar_close() (Pine-exact: calc_on_every_tick=false).
-EFFECT: v10 reached stage 2/3 on an intrabar spike, tightened the trail
-immediately, then trailed out at a worse price than Pine.
+FIX-2 | SUPERSEDED — intrabar stage upgrades are DELIBERATELY ENABLED
+OLD (FIX-2 as originally shipped): stage upgrades removed from _evaluate_tick(),
+allowed only in on_bar_close() for strict Pine parity (calc_on_every_tick=false).
+NOW (FIX-22, current behaviour): _evaluate_tick() step 3b upgrades the stage
+intrabar off best_price, and on_bar_close() step 3 upgrades it again at close.
+This is an INTENTIONAL deviation from Pine, kept for profit capture on fast
+moves — it is not a bug and must not be "fixed" back to bar-close-only without
+a measured TV comparison showing it loses money.
+READ THIS BEFORE EDITING: the old wording above claimed bar-close-only and
+directly contradicted the code at _evaluate_tick() step 3b, which has caused
+repeated wrong diagnoses. Stage upgrades happen in BOTH places by design.
 FIX-3 | Intrabar breakeven removed (MEDIUM — premature BE stop)
 OLD:  _evaluate_tick() checked breakeven on every price tick.
 NEW:  Breakeven check ONLY in on_bar_close() (Pine-exact).
@@ -85,9 +91,11 @@ activation_price = entryPrice + P
 best_price = highest price seen since trail armed
 trail_sl = best_price - O
 Exit when current_price <= trail_sl
-STAGE UPGRADES (bar-close only)
+STAGE UPGRADES (bar close AND intrabar — see FIX-22)
 ──────────────────────────────────────────────────────────────────────────
 Pine upgrades trailStage when profitDist >= atr * triggerMult AT BAR CLOSE.
+This bot ALSO upgrades intrabar off best_price (_evaluate_tick step 3b) —
+a deliberate deviation from Pine, see FIX-22 above.
 When stage upgrades, trail_sl recomputes from existing best_price.
 best_price does NOT reset on stage upgrade.
 BREAKEVEN (bar-close only)
@@ -129,6 +137,11 @@ logger = logging.getLogger("trail_loop")
 # Pre-arm: tightened from 50 → 10 pts to prevent large sudden jumps.
 # Post-arm: recalibration is fully frozen (this constant not reached).
 RECAL_MAX_JUMP = 10.0
+
+# FIX-23 (RECOVERY-OFFSET-POISONING): maximum age of the Delta price used as
+# the reference when locking the Binance→Delta source offset. Older than this
+# and the reference is treated as unusable rather than trusted.
+OFFSET_REF_MAX_AGE_S = float(os.environ.get("OFFSET_REF_MAX_AGE_S", "30.0"))
 
 # FIX-20: Recovery valves for FIX-5, mirroring FIX-14's wick-streak/stale-timeout
 # pattern but applied to offset recalibration instead of raw ticks.
@@ -384,7 +397,8 @@ class TrailMonitor:
       • Trail arms when price crosses activation_price (entry ± trail_pts)
       • best_price tracks the running extreme since arming
       • trail_sl = best_price ± trail_offset
-      • Stage upgrades ratchet up at BAR CLOSE only (Pine: calc_on_every_tick=false)
+      • Stage upgrades ratchet up at BAR CLOSE *and* intrabar (FIX-22 —
+        deliberate deviation from Pine, kept for profit capture)
       • Breakeven fires at BAR CLOSE only (Pine: calc_on_every_tick=false)
       • Initial SL updates every bar with live ATR (matches Pine's strategy.exit recalc)
 
@@ -420,6 +434,13 @@ class TrailMonitor:
         # Source offset (Binance→Delta price compensation)
         self._source_offset    : Optional[float] = None
         self._first_tick_ts_ms : int  = 0
+
+        # FIX-23 (RECOVERY-OFFSET-POISONING): True when this trade was adopted
+        # from an already-open Delta position at startup instead of being
+        # opened by this process. On a recovered trade risk.entry_price is a
+        # HISTORICAL fill, so it must never be used as the offset reference —
+        # see _offset_reference_price().
+        self._is_recovery      : bool = False
 
         # Offset recalibration
         self._last_recal_ms     : int  = 0
@@ -504,7 +525,9 @@ class TrailMonitor:
         signal_bar_open   : Optional[float] = None,
         signal_bar_close  : Optional[float] = None,
         qty               : Optional[int] = None,
+        is_recovery       : bool = False,
     ) -> None:
+        self._is_recovery  = bool(is_recovery)   # FIX-23
         self._risk         = risk_levels
         self._state        = trail_state
         self._on_exit_cb   = on_trail_exit
@@ -568,6 +591,12 @@ class TrailMonitor:
 
         self._task = asyncio.get_running_loop().create_task(self._tick_loop())
 
+        # FIX-23: fetch one live Delta price immediately so the Binance→Delta
+        # offset locks against a CONTEMPORANEOUS reference instead of
+        # risk.entry_price. Critical on the recovery path, harmless (and
+        # slightly more correct — it excludes entry slippage) on fresh trades.
+        asyncio.get_running_loop().create_task(self._seed_offset_reference())
+
         logger.info(
             f"[TRAIL] Started | entry={risk_levels.entry_price:.2f}  "
             f"sl={risk_levels.sl:.2f} tp={risk_levels.tp:.2f}  "
@@ -575,7 +604,16 @@ class TrailMonitor:
             f"activation_pts={_trail_pts(1, risk_levels.atr):.2f}  "
             f"trail_off={_trail_off(1, risk_levels.atr):.2f}  "
             f"activation_price={_activation_price(risk_levels.entry_price, 1, risk_levels.atr, risk_levels.is_long):.2f} "
+            f"recovery={self._is_recovery}"
         )
+
+        if self._is_recovery:
+            logger.warning(
+                "[TRAIL] FIX-23: recovery trade — entry_price is HISTORICAL. "
+                "Binance ticks will be DROPPED until a live Delta reference "
+                "arrives, so the source offset can never be seeded from "
+                "unrealised P&L."
+            )
 
         if signal_bar_high is not None:
             logger.info(
@@ -795,6 +833,68 @@ class TrailMonitor:
                 self._fire_exit(exit_px, reason, source="bar_close")
             )
 
+    # ── FIX-23: offset reference resolution ───────────────────────────────────
+    def _offset_reference_price(self) -> tuple[Optional[float], str]:
+        """
+        FIX-23 (RECOVERY-OFFSET-POISONING)
+
+        Return the Delta price to lock the Binance→Delta source offset against,
+        plus a short tag naming where it came from (for the log line).
+
+        The offset is meant to be a FEED SPREAD: "what does Binance print at the
+        same instant Delta prints X". That is only true if both sides of the
+        subtraction are contemporaneous. Priority:
+
+          1. _last_delta_price — the last accepted live Delta tick, if it is
+             fresher than OFFSET_REF_MAX_AGE_S. Always correct, on both fresh
+             and recovered trades.
+          2. risk.entry_price — ONLY on a FRESH trade, where the fill happened
+             seconds ago and therefore IS a contemporaneous Delta price. This
+             preserves the pre-FIX-23 behaviour exactly for normal entries, so
+             nothing changes on the path that was already working.
+          3. (None, "unavailable") on a RECOVERED trade with no live Delta tick
+             yet. The caller must defer the lock — never fall back to a
+             historical entry_price, which is what poisoned the offset.
+        """
+        now_s = time.time()
+
+        if self._last_delta_price is not None and self._last_delta_price > 0:
+            age_s = now_s - self._last_delta_accept_wall_s
+            if age_s <= OFFSET_REF_MAX_AGE_S:
+                return float(self._last_delta_price), f"live_delta({age_s:.1f}s)"
+            logger.warning(
+                f"[TRAIL] FIX-23: last Delta price is {age_s:.1f}s stale  "
+                f"(> {OFFSET_REF_MAX_AGE_S:.0f}s) — not usable as offset reference."
+            )
+
+        if not self._is_recovery and self._risk is not None and self._risk.entry_price > 0:
+            # Fresh trade: the fill is seconds old, so it is contemporaneous.
+            return float(self._risk.entry_price), "fresh_fill"
+
+        return None, "unavailable"
+
+    async def _seed_offset_reference(self) -> None:
+        """
+        FIX-23: fetch one live Delta price right after start() so the offset
+        reference exists immediately instead of waiting up to TRAIL_LOOP_SEC
+        for the first REST poll. Without this, a recovered trade drops every
+        Binance tick for the first few seconds of the resume.
+
+        Only seeds when no Delta tick has been accepted yet, so it can never
+        overwrite fresher WebSocket data.
+        """
+        try:
+            px = await self._get_trail_price()
+            if px and px > 0 and self._last_delta_price is None:
+                self._last_delta_price         = float(px)
+                self._last_delta_accept_wall_s = time.time()
+                logger.info(
+                    f"[TRAIL] FIX-23: offset reference seeded from live Delta "
+                    f"price {px:.2f} (field={DELTA_TICK_PRICE_FIELD})"
+                )
+        except Exception as e:
+            logger.warning(f"[TRAIL] FIX-23: offset reference seed failed: {e}")
+
     # ── Live ticks — Binance WS feed (offset-adjusted) ────────────────────────
     async def on_price_tick(self, price: float, source: str = "binance") -> None:
         """
@@ -811,11 +911,32 @@ class TrailMonitor:
 
         if source == "binance" and self._risk is not None:
             if self._source_offset is None:
-                raw_offset = price - self._risk.entry_price
+                # FIX-23 (RECOVERY-OFFSET-POISONING)
+                # OLD: raw_offset = price - self._risk.entry_price
+                # On a RECOVERED trade entry_price is the historical fill from
+                # hours ago, so (binance_now - entry_then) is UNREALISED P&L,
+                # not a feed spread. That poisoned offset was then subtracted
+                # from every Binance tick and, because RECAL_MAX_JUMP=10 blocks
+                # the correction, it stayed poisoned for the life of the trade —
+                # exactly the "delta=64922.00 never changes while offset walks
+                # +21 → -44" signature in the logs.
+                # NEW: lock against a CONTEMPORANEOUS Delta price. If none is
+                # available yet on a recovery, drop the Binance tick rather than
+                # lock a wrong offset. Delta ticks need no offset, so trailing
+                # keeps working off push_delta_tick()/_tick_loop meanwhile.
+                ref_price, ref_src = self._offset_reference_price()
+                if ref_price is None:
+                    logger.debug(
+                        "[TRAIL] FIX-23: Binance tick dropped — no contemporaneous "
+                        "Delta reference yet to lock the source offset against."
+                    )
+                    return
+
+                raw_offset = price - ref_price
                 if abs(raw_offset)  > 500.0:
                     logger.warning(
                         f"[TRAIL] Source offset rejected (|{raw_offset:+.2f}|  > 500):  "
-                        f"binance={price:.2f} delta_fill={self._risk.entry_price:.2f} "
+                        f"binance={price:.2f} delta_ref={ref_price:.2f} (src={ref_src}) "
                     )
                     return
                 self._source_offset    = raw_offset
@@ -825,7 +946,9 @@ class TrailMonitor:
                 self._last_offset_accept_wall_s = time.time()
                 logger.info(
                     f"[TRAIL] Source offset locked: binance={price:.2f}  "
-                    f"delta={self._risk.entry_price:.2f} offset={self._source_offset:+.2f} "
+                    f"delta={ref_price:.2f} (ref={ref_src}) "
+                    f"offset={self._source_offset:+.2f} "
+                    f"entry_price={self._risk.entry_price:.2f} recovery={self._is_recovery}"
                 )
             price = price - self._source_offset
 
@@ -1065,6 +1188,44 @@ class TrailMonitor:
             self._last_recal_ms     = int(time.time() * 1000)
             self._recal_in_progress = False
 
+    # ── FIX-24: resilient bracket-fill lookup ─────────────────────────────────
+    async def _fetch_bracket_fill_retry(
+        self, attempts: int = 3, delay_s: float = 1.0
+    ) -> Optional[float]:
+        """
+        FIX-24 (FABRICATED-EXIT-PRICE): fetch the REAL executed price of a
+        silently-fired bracket order, retrying a few times.
+
+        Delta's /v2/fills and /v2/history/orders endpoints routinely lag the
+        actual fill by 1-2 seconds. The old single-shot call therefore failed
+        often on exactly the fast SL fires we most need a real price for, and
+        the caller quietly substituted a guess.
+
+        Returns the real fill price, or None if it genuinely can't be resolved
+        (the caller must then mark the exit as ESTIMATED).
+        """
+        for attempt in range(1, attempts + 1):
+            try:
+                px = await self._order_mgr.fetch_bracket_fill_price()
+                if px is not None and float(px) > 0:
+                    if attempt > 1:
+                        logger.info(
+                            f"[TRAIL] FIX-24: bracket fill resolved on attempt {attempt}"
+                        )
+                    return float(px)
+                logger.warning(
+                    f"[TRAIL] FIX-24: bracket fill not available yet "
+                    f"(attempt {attempt}/{attempts})"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[TRAIL] FIX-24: fetch_bracket_fill_price attempt "
+                    f"{attempt}/{attempts} failed: {e}"
+                )
+            if attempt < attempts:
+                await asyncio.sleep(delay_s * attempt)
+        return None
+
     # ── Safety-net REST poll ──────────────────────────────────────────────────
     async def _tick_loop(self) -> None:
         # FIX-10 (GHOST-TRAIL): How many _tick_loop iterations between each
@@ -1093,14 +1254,55 @@ class TrailMonitor:
                                 "[TRAIL] FIX-10: Position no longer exists on Delta —  "
                                 "bracket SL fired silently. Stopping ghost trail."
                             )
-                            real_fill = await self._order_mgr.fetch_bracket_fill_price()
-                            bracket_exit_price = real_fill if real_fill is not None else (
-                                float(self._state.current_sl)
-                                if self._state is not None else float(self._risk.sl)
-                            )
+                            # FIX-24 (FABRICATED-EXIT-PRICE)
+                            # OLD: a single fetch_bracket_fill_price() attempt;
+                            # on failure it silently logged self._state.current_sl
+                            # as if it were the real fill. That is a GUESS, and it
+                            # was being written to the journal, the P&L and the
+                            # TV-comparison numbers with no marker — corrupting
+                            # the exact measurements used to tune this bot.
+                            # NEW: retry (Delta's fills endpoint lags the fill by
+                            # a second or two), and if it still can't be resolved,
+                            # label the exit ESTIMATED and log CRITICAL so the
+                            # number is never mistaken for a measured fill.
+                            real_fill = await self._fetch_bracket_fill_retry()
+
+                            if real_fill is not None:
+                                bracket_exit_price = real_fill
+                                ghost_reason = "Bracket SL/TP (ghost-trail-guard)"
+                                logger.info(
+                                    f"[TRAIL] FIX-24: real bracket fill resolved "
+                                    f"@ {bracket_exit_price:.2f}"
+                                )
+                            else:
+                                bracket_exit_price = (
+                                    float(self._state.current_sl)
+                                    if self._state is not None else float(self._risk.sl)
+                                )
+                                ghost_reason = "Bracket SL/TP (ESTIMATED — fill unresolved)"
+                                logger.critical(
+                                    f"[TRAIL] ⚠️ FIX-24: could NOT resolve the real "
+                                    f"bracket fill price. Falling back to the last "
+                                    f"known SL level {bracket_exit_price:.2f} as an "
+                                    f"ESTIMATE. This trade's exit price / P&L is a "
+                                    f"GUESS — exclude it from any TradingView "
+                                    f"comparison or parameter tuning."
+                                )
+                                try:
+                                    if self._telegram is not None:
+                                        await self._telegram.send(
+                                            "⚠️ <b>Estimated exit price</b>\n"
+                                            "Bracket fired but the real fill could not be "
+                                            f"fetched. Logged <code>{bracket_exit_price:.2f}</code> "
+                                            "as an ESTIMATE — verify on Delta before "
+                                            "trusting this trade's P&L."
+                                        )
+                                except Exception:
+                                    pass
+
                             await self._fire_exit(
                                 bracket_exit_price,
-                                "Bracket SL/TP (ghost-trail-guard)",
+                                ghost_reason,
                                 source="pos-poll",
                             )
                             break
@@ -1145,9 +1347,12 @@ class TrailMonitor:
           6. Max SL check
           7. Time exit check
 
-        NOTE: Stage upgrades and breakeven are NOT checked here.
-              They happen ONLY in on_bar_close() — Pine parity
-              (calc_on_every_tick=false means strategy body runs at bar close only).
+        NOTE: Breakeven is NOT checked here — it happens ONLY in on_bar_close()
+              (Pine parity: calc_on_every_tick=false → strategy body runs at
+              bar close only).
+              Stage upgrades DO happen here, at step 3b, off best_price. That
+              is a deliberate deviation from Pine (FIX-22) — the module
+              docstring's old "bar-close only" wording was stale.
 
         Called by: push_delta_tick(), _tick_loop() (REST), on_price_tick() pre-arm.
         Post-arm Binance ticks use _evaluate_tick_sl_only() instead (FIX-6).
