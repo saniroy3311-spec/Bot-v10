@@ -130,6 +130,26 @@ logger = logging.getLogger("trail_loop")
 # Post-arm: recalibration is fully frozen (this constant not reached).
 RECAL_MAX_JUMP = 10.0
 
+# FIX-20: Recovery valves for FIX-5, mirroring FIX-14's wick-streak/stale-timeout
+# pattern but applied to offset recalibration instead of raw ticks.
+# Plain FIX-5 compares every 30s candidate offset to the LAST ACCEPTED offset.
+# If the real Binance↔Delta spread is genuinely walking (not noise), every
+# candidate keeps landing >10pts from a now-stale reference and gets rejected
+# forever — the offset (and therefore Initial SL / activation_price) freezes
+# stale indefinitely with no way back, exactly like the tick feed could before
+# FIX-14. Two independent recovery paths, either one re-syncs the offset:
+# 1) STREAK: if N consecutive rejected candidates all move the SAME direction,
+#    that's a real drift, not noise — accept the latest one and resume
+#    tracking from there. A genuine single-cycle blip (jumps then reverts)
+#    never satisfies "same direction N times running", so normal FIX-5
+#    protection against a one-off bad read is untouched.
+# 2) STALE TIMEOUT: if no candidate has been accepted for this long, the next
+#    candidate is accepted unconditionally — covers a real, sustained spread
+#    widening (funding event, thin liquidity, feed hiccup) that isn't
+#    reverting on its own.
+OFFSET_REJECT_STREAK_CONFIRM = 4      # consecutive same-direction rejects before override
+OFFSET_STALE_TIMEOUT_S       = 60.0   # force-accept next candidate after this long stale (2 recal cycles @30s)
+
 # FIX-13: Maximum single-tick jump allowed on the raw Delta price feed before
 # a tick is treated as a noise wick and skipped entirely (not counted toward
 # breach, not used to reset the breach counter — just ignored, as if it never
@@ -409,6 +429,14 @@ class TrailMonitor:
         # FIX-5: Once trail ever arms, offset recalibration is permanently frozen.
         self._trail_ever_armed  : bool = False
 
+        # FIX-20: Recovery state for FIX-5 offset-recal rejection (see constants
+        # above). Tracks a run of consecutive same-direction rejected candidates
+        # and the wall-clock time of the last ACCEPTED offset, so a real,
+        # sustained spread drift can never lock the offset stale indefinitely.
+        self._last_offset_accept_wall_s : float = 0.0
+        self._offset_reject_streak      : int   = 0
+        self._offset_reject_dir         : int   = 0   # +1 widening, -1 narrowing, 0 none yet
+
         # FIX-7: Trail-SL spike debounce. A momentary real tick can poke the
         # trail SL by a fraction of a point and then immediately retreat.
         # TradingView/Pine never sees these sub-bar spikes, so it keeps trailing
@@ -498,6 +526,11 @@ class TrailMonitor:
         # Seed recal timer from trade open (not epoch 0) so recalibration
         # doesn't fire on the very first tick before the offset stabilises.
         self._last_recal_ms = int(time.time() * 1000)
+
+        # FIX-20: reset offset-recal recovery state for the new trade
+        self._last_offset_accept_wall_s = 0.0
+        self._offset_reject_streak      = 0
+        self._offset_reject_dir         = 0
 
         # FIX-5: Reset arm-freeze flag for the new trade
         self._trail_ever_armed = False
@@ -787,6 +820,9 @@ class TrailMonitor:
                     return
                 self._source_offset    = raw_offset
                 self._first_tick_ts_ms = int(time.time() * 1000)
+                # FIX-20: seed the "last accepted" clock so a stuck-forever
+                # rejection streak later has a real baseline to time out from.
+                self._last_offset_accept_wall_s = time.time()
                 logger.info(
                     f"[TRAIL] Source offset locked: binance={price:.2f}  "
                     f"delta={self._risk.entry_price:.2f} offset={self._source_offset:+.2f} "
@@ -966,18 +1002,62 @@ class TrailMonitor:
             delta_mark = await self._get_mark_price()
             if delta_mark and delta_mark  > 0 and self._source_offset is not None:
                 new_offset = binance_price_raw - delta_mark
+                jump = new_offset - self._source_offset
+                now_wall_s = time.time()
+
                 # FIX-5: tightened from 50 → RECAL_MAX_JUMP (10 pts)
-                if abs(new_offset - self._source_offset)  <= RECAL_MAX_JUMP:
+                if abs(jump)  <= RECAL_MAX_JUMP:
                     old = self._source_offset
                     self._source_offset = new_offset
+                    # FIX-20: real accept — clear the reject streak/clock.
+                    self._offset_reject_streak      = 0
+                    self._offset_reject_dir         = 0
+                    self._last_offset_accept_wall_s = now_wall_s
                     logger.info(
                         f"[TRAIL] Offset recalibrated: {old:+.2f} → {new_offset:+.2f}  "
                         f"(binance={binance_price_raw:.2f} delta={delta_mark:.2f}) "
                     )
+                    return
+
+                # ── FIX-20: recovery valves before rejecting outright ──────────
+                direction = 1 if jump > 0 else -1
+
+                if direction == self._offset_reject_dir:
+                    self._offset_reject_streak += 1
+                else:
+                    self._offset_reject_dir    = direction
+                    self._offset_reject_streak = 1
+
+                stale_s = (
+                    now_wall_s - self._last_offset_accept_wall_s
+                    if self._last_offset_accept_wall_s > 0 else 0.0
+                )
+
+                streak_hit = self._offset_reject_streak >= OFFSET_REJECT_STREAK_CONFIRM
+                stale_hit  = (
+                    self._last_offset_accept_wall_s > 0
+                    and stale_s >= OFFSET_STALE_TIMEOUT_S
+                )
+
+                if streak_hit or stale_hit:
+                    old = self._source_offset
+                    self._source_offset = new_offset
+                    self._offset_reject_streak      = 0
+                    self._offset_reject_dir         = 0
+                    self._last_offset_accept_wall_s = now_wall_s
+                    override_reason = "streak" if streak_hit else "stale-timeout"
+                    logger.warning(
+                        f"[TRAIL] Offset recal OVERRIDE ({override_reason}): "
+                        f"{old:+.2f} → {new_offset:+.2f} jump={jump:+.2f}  "
+                        f"(streak={self._offset_reject_streak if not streak_hit else OFFSET_REJECT_STREAK_CONFIRM}  "
+                        f"stale={stale_s:.0f}s binance={binance_price_raw:.2f} delta={delta_mark:.2f}) "
+                    )
                 else:
                     logger.warning(
-                        f"[TRAIL] Offset recal rejected: jump={abs(new_offset - self._source_offset):.2f}  "
-                        f"> max={RECAL_MAX_JUMP:.1f} pts "
+                        f"[TRAIL] Offset recal rejected: jump={abs(jump):.2f}  "
+                        f"> max={RECAL_MAX_JUMP:.1f} pts  "
+                        f"(streak={self._offset_reject_streak}/{OFFSET_REJECT_STREAK_CONFIRM}  "
+                        f"stale={stale_s:.0f}s/{OFFSET_STALE_TIMEOUT_S:.0f}s) "
                     )
         except Exception as e:
             logger.warning(f"[TRAIL] Offset recal failed: {e}")
