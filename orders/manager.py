@@ -168,6 +168,18 @@ class OrderManager:
         # Strong references to prevent background tasks from being garbage collected
         self._background_tasks: set[asyncio.Task] = set()
 
+    # FIX-21: _current_atr is normally set inside open_position() (line ~314)
+    # on a fresh entry fill. A RECOVERED position (bot restart mid-trade) never
+    # calls open_position() — it's adopted via fetch_open_position() instead —
+    # so _current_atr silently stays at its 1.0 default. The slippage guard in
+    # close_position() then divides a normal points-off-expected gap by 1.0
+    # instead of the real ATR, producing false CRITICAL HIGH SLIPPAGE alerts
+    # (e.g. a real 6.6% ATR gap logged as 1250%). main.py's recovery-rebuild
+    # path calls this once the real ATR is pulled from the journal/snapshot,
+    # to keep this in sync the same way self._risk already is.
+    def set_atr(self, atr: float) -> None:
+        self._current_atr = atr if atr and atr > 0 else 1.0
+
     # ── Lifecycle ──────────────────────────────────────────────────────────
     async def initialize(self) -> None:
         """Load markets and validate the configured symbol exists."""
