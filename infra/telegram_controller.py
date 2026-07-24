@@ -145,7 +145,16 @@ class TelegramController:
             open_t = self._journal.get_open_trade()
             if open_t:
                 try:
-                    await self._order_mgr.close_position_market(reason="telegram_stop")
+                    # FIX-25: close_position_market() does not exist on
+                    # OrderManager — this raised AttributeError every time
+                    # /stop_bot ran with MANAGE_OPEN_ON_STOP=close, so the
+                    # position was never actually flattened. The real method is
+                    # close_position() and is_long is a REQUIRED argument.
+                    await self._order_mgr.close_position(
+                        is_long = bool(open_t["is_long"]),
+                        reason  = "telegram_stop",
+                        qty     = open_t.get("qty"),
+                    )
                     note = "\nOpen position flattened at market."
                 except Exception as e:
                     note = f"\n⚠️ Failed to flatten: <code>{e}</code>"
