@@ -589,6 +589,13 @@ class TrailMonitor:
             (entry_bar_time_ms // BAR_PERIOD_MS) * BAR_PERIOD_MS
         ) + BAR_PERIOD_MS
 
+        # DIAG: confirm time-exit boundary anchors to real entry, not restart time
+        _mins_to_exit = (self._entry_bar_end_ms - int(time.time() * 1000)) / 60000.0
+        logger.info(
+            f"[TRAIL] entry_bar_end_ms={self._entry_bar_end_ms} "
+            f"({_mins_to_exit:.1f} min from now) recovery={is_recovery}"
+        )
+
         self._task = asyncio.get_running_loop().create_task(self._tick_loop())
 
         # FIX-23: fetch one live Delta price immediately so the Binance→Delta
