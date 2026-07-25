@@ -1108,6 +1108,7 @@ class TrailMonitor:
         if eval_price is None:
             return
 
+        logger.info(f"[TRAIL] HEARTBEAT push_delta_tick eval_price={eval_price:.2f}")
         await self._evaluate_tick(eval_price, source="delta")
 
     async def _recalibrate_offset(self, binance_price_raw: float) -> None:
@@ -1369,6 +1370,7 @@ class TrailMonitor:
         """
         risk  = self._risk
         state = self._state
+        logger.info(f"[TRAIL] HEARTBEAT _evaluate_tick called | risk_is_none={risk is None} state_is_none={state is None}")
         if risk is None or state is None:
             return
 
