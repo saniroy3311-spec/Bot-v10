@@ -472,7 +472,7 @@ class ShivaSniperBot:
                     self._trail_mon.start(
                         risk_levels       = rebuilt,
                         trail_state       = self._trail_state,
-                        entry_bar_time_ms = int(time.time() * 1000),
+                        entry_bar_time_ms = original_wall_ms if original_wall_ms is not None else int(time.time() * 1000),
                         on_trail_exit     = self._on_trail_exit,
                         entry_wall_ms     = original_wall_ms,
                         qty               = self._qty_lots,
