@@ -573,6 +573,9 @@ class TrailMonitor:
         self._wick_reject_streak       = 0
         self._wick_reject_dir          = 0
 
+        # FIX-21: Reset "last tick received" timer (separate from "accepted")
+        self._last_delta_tick_wall_s   = time.time()
+
         # FIX-18: Reset median smoothing window for the new trade
         self._delta_median_window.clear()
 
@@ -1018,6 +1021,12 @@ class TrailMonitor:
 
         now_s = time.time()
 
+        # FIX-21: track "last tick RECEIVED" separately from "last tick
+        # ACCEPTED". A stream of rejected wicks still counts as the feed
+        # being alive — it must not be treated the same as true silence.
+        stale_for_received = now_s - getattr(self, "_last_delta_tick_wall_s", now_s)
+        self._last_delta_tick_wall_s = now_s
+
         if self._last_delta_price is not None:
             jump = price - self._last_delta_price
             abs_jump = abs(jump)
@@ -1025,8 +1034,15 @@ class TrailMonitor:
             if abs_jump  > MAX_DELTA_TICK_JUMP:
                 stale_for = now_s - self._last_delta_accept_wall_s
 
+                # FIX-21: only treat this as a genuine feed gap if ticks
+                # themselves stopped arriving (stale_for_received large).
+                # If ticks are arriving every ~1s but all getting rejected
+                # as wicks, that is NOT a feed gap — let the streak-confirm
+                # path do its job instead of being short-circuited.
+                feed_actually_silent = stale_for_received  >= WICK_STALE_TIMEOUT_S
+
                 # FIX-14a: feed gap recovery — too long since any accepted tick
-                if stale_for  >= WICK_STALE_TIMEOUT_S:
+                if stale_for  >= WICK_STALE_TIMEOUT_S and feed_actually_silent:
                     logger.info(
                         f"[TRAIL] Wick filter stale-timeout override — no tick  "
                         f"accepted for {stale_for:.1f}s, force-accepting  "
