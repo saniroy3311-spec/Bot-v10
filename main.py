@@ -553,14 +553,36 @@ class ShivaSniperBot:
                     f"{self._qty_lots} lots — no correction needed"
                 )
 
-            slip = (fill - snap.close) if sig.is_long else (snap.close - fill)
+            # FIX-SLIP-DIRECTION (2026-07-31): the old formula measured slip in
+            # the P&L-favourable direction, which is the OPPOSITE of the stop
+            # buffer direction. SL is anchored to signal_close, not fill, so:
+            #   Long : SL = anchor - stopDist (fixed low).  Buffer to SL from
+            #          fill = fill - SL. Buffer SHRINKS when fill < anchor.
+            #   Short: SL = anchor + stopDist (fixed high). Buffer to SL from
+            #          fill = SL - fill. Buffer SHRINKS when fill > anchor.
+            # So "bad" slip (buffer shrinking) is (anchor - fill) for longs and
+            # (fill - anchor) for shorts — exactly reversed from the old code.
+            slip = (snap.close - fill) if sig.is_long else (fill - snap.close)
             slip_limit = snap.atr * MAX_ENTRY_SLIP_ATR_FRAC
 
             if slip > slip_limit:
+                # FIX-SLIP-NOOP (2026-07-31): passing signal_close here made this
+                # a no-op -- calc_levels() anchors to signal_close whenever it is
+                # > 0, so the "recalculated" SL/TP came out byte-identical to
+                # risk_pre above. Omitting signal_close anchors to the actual
+                # fill instead, restoring the intended ATR stop distance around
+                # the real entry. This is a deliberate, logged departure from
+                # strict Pine-anchor behaviour -- it only fires when slippage
+                # already broke Pine parity for this trade.
+                logger.warning(
+                    f"[ENTRY-SLIP] {slip:.2f}pts buffer shrink "
+                    f"(limit={slip_limit:.2f}pts, {slip/snap.atr*100:.1f}% ATR) -- "
+                    f"recalculating SL/TP anchored to fill={fill:.2f} "
+                    f"instead of signal_close={snap.close:.2f}"
+                )
                 risk_pre = calc_levels(
                     fill, snap.atr, sig.is_long, sig.is_trend,
                     entry_bar_open=snap.open,
-                    signal_close=snap.close,
                 )
 
             risk = RiskLevels(
