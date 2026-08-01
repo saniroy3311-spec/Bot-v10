@@ -49,6 +49,7 @@ from config import (
     TELEGRAM_ENABLED,
     SYMBOL, ALERT_QTY, CANDLE_TIMEFRAME, FILTER_VOL_ENABLED,
     POSITION_BTC_SIZE, TREND_ATR_MULT, RANGE_ATR_MULT,
+    ALLOW_REVERSAL,
 )
 from feed.ws_feed            import CandleFeed
 from feed.binance_price_feed import BinancePriceFeed
@@ -379,7 +380,8 @@ class ShivaSniperBot:
                 # exactly like Pine does. Same-direction or NONE signals are
                 # left alone (no pyramiding, matches existing behaviour).
                 if (
-                    not _is_entry_bar
+                    ALLOW_REVERSAL
+                    and not _is_entry_bar
                     and self._risk is not None
                     and _candidate_sig.signal_type != SignalType.NONE
                     and _candidate_sig.is_long != self._risk.is_long

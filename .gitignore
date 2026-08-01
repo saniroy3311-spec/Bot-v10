@@ -24,3 +24,6 @@ journal.db
 .env
 *.bak
 journal.db
+.env.*
+!.env.example
+*.bak.*

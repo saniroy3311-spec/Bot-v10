@@ -363,7 +363,7 @@ TIME_EXIT_MINUTES = int(os.environ.get("TIME_EXIT_MINUTES", "0"))
 BE_MULT = float(os.environ.get("BE_MULT", "0.6"))
 RSI_OB  = int(os.environ.get("RSI_OB", "70"))
 RSI_OS  = int(os.environ.get("RSI_OS", "30"))
-BREAKOUT_BUFFER_PTS = 0
+BREAKOUT_BUFFER_PTS = float(os.environ.get("BREAKOUT_BUFFER_PTS", "0"))
 # HISTORY: Was set to 40 to compensate for Delta REST OHLCV being 30–80 pts
 # different from TradingView's BTCUSDT candles on the same bar. A bar with
 # tv_close barely below tv_prev_low would fire in Pine but NOT in the bot
@@ -379,7 +379,7 @@ BREAKOUT_BUFFER_PTS = 0
 # If you see ghost entries return:  increase to 10 or 15.
 # If you see missed signals remain: set to 0 (exact Pine parity with Binance).
 # Only set high (30-50) if BINANCE_SIGNAL_FEED=false.
-BREAKOUT_BUFFER_PTS = 0
+BREAKOUT_BUFFER_PTS = float(os.environ.get("BREAKOUT_BUFFER_PTS", "0"))
 
 # ──────────────────────────────────────
 # COMMISSION + BUFFERS
@@ -509,3 +509,7 @@ TRAIL_T5_TRIG, TRAIL_T5_PTS, TRAIL_T5_OFF = TRAIL_STAGES[4]
 # False = legacy:     Initial SL fires on every live tick (can exit on intrabar wicks)
 # RECOMMENDED: True — this is the single biggest cause of bot-vs-TV divergence.
 BAR_CLOSE_SL_EVAL = os.environ.get("BAR_CLOSE_SL_EVAL", "true").lower() == "true"
+
+# Pine gates every entry on noPosition, so it never auto-reverses.
+# Keep false for TradingView parity.
+ALLOW_REVERSAL = os.environ.get("ALLOW_REVERSAL", "false").lower() == "true"
