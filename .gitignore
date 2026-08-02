@@ -29,3 +29,4 @@ journal.db
 *.bak.*
 clients.db
 dashboard/clients.db
+shadow_log.jsonl
