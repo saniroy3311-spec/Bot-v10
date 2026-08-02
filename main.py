@@ -37,6 +37,7 @@ RUNNING
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import signal
@@ -49,18 +50,24 @@ from config import (
     TELEGRAM_ENABLED,
     SYMBOL, ALERT_QTY, CANDLE_TIMEFRAME, FILTER_VOL_ENABLED,
     POSITION_BTC_SIZE, TREND_ATR_MULT, RANGE_ATR_MULT,
+    STRATEGY_MODE, TB_SL_ATR_MULT, TB_TP_RR_MULT, TB_ADX_TREND_TH,
+    PAPER_TRADING,
 )
 from feed.ws_feed            import CandleFeed
 from feed.binance_price_feed import BinancePriceFeed
 from feed.fills_feed         import FillsFeed
 from indicators.engine  import compute
-from strategy.signal    import evaluate, SignalType
+from strategy import (
+    evaluate, evaluate_trend_breakout,
+    calc_levels, calc_levels_tb,
+    SignalType,
+)
 from risk.calculator    import (
     RiskLevels, TrailState,
-    calc_levels, recalc_levels_from_fill, calc_real_pl, calc_gross_pl,
+    recalc_levels_from_fill, calc_real_pl, calc_gross_pl,
 )
 from monitor.trail_loop import TrailMonitor
-from orders.manager     import OrderManager
+from orders.manager     import create_order_manager
 from infra.telegram            import Telegram
 from infra.telegram_controller import TelegramController, EngineState
 from infra.whatsapp            import WhatsApp
@@ -92,7 +99,8 @@ MAX_ENTRY_SLIP_ATR_FRAC = float(os.environ.get("MAX_ENTRY_SLIP_ATR_FRAC", "0.3")
 
 class ShivaSniperBot:
     def __init__(self) -> None:
-        self._order_mgr = OrderManager()
+        # Use factory to get PaperOrderManager when PAPER_TRADING=true
+        self._order_mgr = create_order_manager()
         self._telegram  = Telegram()
         self._whatsapp  = WhatsApp()
         self._journal   = Journal()
@@ -132,6 +140,17 @@ class ShivaSniperBot:
         self._trail_state : Optional[TrailState]  = None
         self._signal_type : str                   = "None"
         self._entry_bar_boundary_ms : int         = 0   # FIX-9: next bar open after entry
+
+        # ── Strategy Selector (default rsi_bounce preserves live behavior) ─────
+        self._strategy_mode = STRATEGY_MODE
+        if self._strategy_mode == "trend_breakout":
+            self._evaluate_fn = evaluate_trend_breakout
+            self._calc_levels_fn = calc_levels_tb
+            self._is_tb_mode = True
+        else:
+            self._evaluate_fn = evaluate
+            self._calc_levels_fn = calc_levels
+            self._is_tb_mode = False
 
         # Guards
         self._entry_lock  = asyncio.Lock()
@@ -351,7 +370,7 @@ class ShivaSniperBot:
         # in_position=True, so a genuine opposite signal from Pine's engine
         # was silently dropped — the bot just kept waiting for SL/TP/trail
         # while Pine had already auto-reversed the position on that bar.
-        _candidate_sig = evaluate(snap, has_position=False)
+        _candidate_sig = self._evaluate_fn(snap, has_position=False)
 
         # ── 2. Trail update for open position ─────────────────────────────────
         if self._in_position:
@@ -515,7 +534,7 @@ class ShivaSniperBot:
             if self._in_position:
                 return
 
-            risk_pre = calc_levels(snap.close, snap.atr, sig.is_long, sig.is_trend, entry_bar_open=snap.open, signal_close=snap.close)
+            risk_pre = self._calc_levels_fn(snap.close, snap.atr, sig.is_long, sig.is_trend, entry_bar_open=snap.open, signal_close=snap.close)
 
             try:
                 order = await self._order_mgr.place_entry(
@@ -665,6 +684,20 @@ class ShivaSniperBot:
                 qty         = self._qty_lots,
             )
 
+            # Log to dedicated Trend Breakout paper trade log
+            self._log_tb_paper_trade(
+                event="entry",
+                signal_type=sig.signal_type.value,
+                is_long=sig.is_long,
+                entry_price=fill,
+                sl=risk.sl,
+                tp=risk.tp,
+                stop_dist=risk.stop_dist,
+                atr=snap.atr,
+                qty=self._qty_lots,
+                signal_timestamp=int(snap.timestamp),
+            )
+
     async def _force_close_for_reversal(self, snap) -> None:
         """
         FIX-REV: Force-close the current position on an opposite-direction
@@ -763,10 +796,40 @@ class ShivaSniperBot:
         except Exception:
             pass
 
+        # Log to dedicated Trend Breakout paper trade log
+        self._log_tb_paper_trade(
+            event="exit",
+            exit_reason=reason,
+            exit_price=exit_price,
+            real_pl=pl,
+            trail_stage=self._trail_state.stage if self._trail_state else 0,
+            signal_type=self._signal_type,
+        )
+
         self._in_position  = False
         self._risk         = None
         self._trail_state  = None
         self._signal_type  = "None"
+
+    def _log_tb_paper_trade(self, event: str, **kwargs) -> None:
+        """
+        Log simulated Trend Breakout trades to dedicated JSONL file.
+        Separate from live RSI Bounce journal to prevent mixing.
+        Only logs when STRATEGY_MODE=trend_breakout AND PAPER_TRADING=true.
+        """
+        if self._is_tb_mode and PAPER_TRADING:
+            record = {
+                "timestamp": time.time(),
+                "event": event,  # "entry" | "exit"
+                "strategy": "trend_breakout",
+                **kwargs
+            }
+            try:
+                with open("tb_paper_trades.jsonl", "a") as f:
+                    f.write(json.dumps(record) + "\n")
+                logger.debug(f"[TB-PAPER] Logged {event}: {kwargs}")
+            except Exception as e:
+                logger.warning(f"[TB-PAPER] Failed to write log: {e}")
 
     async def run(self) -> None:
         await self.initialize()

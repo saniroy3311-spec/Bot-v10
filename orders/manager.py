@@ -522,3 +522,145 @@ class OrderManager:
             logger.warning(f"[OM] fetch_bracket_fill_price layer-2 failed: {exc}")
 
         return None
+
+
+# ─── Paper Order Manager (for paper trading / backtesting) ────────────────────────
+class PaperOrderManager:
+    """
+    In-memory order manager for paper trading.
+    Simulates entries, exits, and bracket orders without placing real orders.
+    Compatible interface with OrderManager.
+    """
+    def __init__(self) -> None:
+        self._position: Optional[dict] = None
+        self._bracket_active: bool = False
+        self._current_sl: Optional[float] = None
+        self._current_tp: Optional[float] = None
+        self._is_long: Optional[bool] = None
+        self._current_atr: float = 1.0
+        self._order_id_counter = 1000
+        self._trade_log = []  # List of simulated trades
+
+    def set_atr(self, atr: float) -> None:
+        self._current_atr = atr if atr and atr > 0 else 1.0
+
+    async def initialize(self) -> None:
+        logger.info("[PAPER-OM] Initialized (no real connection)")
+
+    async def place_entry(
+        self,
+        is_long: bool,
+        sl: float,
+        tp: float,
+        atr: float,
+        qty: int,
+    ) -> dict:
+        """Simulate entry order."""
+        self._is_long = is_long
+        self._current_sl = sl
+        self._current_tp = tp
+        self._current_atr = atr
+        self._bracket_active = True
+
+        fill_price = sl + atr * 0.6 if is_long else sl - atr * 0.6  # Simulate fill near entry
+
+        self._position = {
+            "is_long": is_long,
+            "entry_price": fill_price,
+            "sl": sl,
+            "tp": tp,
+            "qty": qty,
+            "atr": atr,
+        }
+
+        self._trade_log.append({
+            "event": "entry",
+            "is_long": is_long,
+            "fill_price": fill_price,
+            "sl": sl,
+            "tp": tp,
+            "qty": qty,
+            "timestamp": time.time(),
+        })
+
+        self._order_id_counter += 1
+        logger.info(f"[PAPER-OM] Simulated entry | {'LONG' if is_long else 'SHORT'} fill={fill_price:.2f} sl={sl:.2f} tp={tp:.2f}")
+        return {"id": f"paper_{self._order_id_counter}", "average": fill_price, "filled": qty, "amount": qty}
+
+    async def close_position(
+        self,
+        is_long: bool,
+        reason: str = "Exit",
+        expected_price: Optional[float] = None,
+        qty: Optional[int] = None,
+    ) -> dict:
+        """Simulate position close."""
+        if not self._position:
+            logger.warning("[PAPER-OM] close_position: no open position")
+            return {"info": "already_closed"}
+
+        fill_price = expected_price or self._position.get("sl", self._position.get("tp", 0))
+
+        self._trade_log.append({
+            "event": "exit",
+            "is_long": self._position["is_long"],
+            "exit_price": fill_price,
+            "exit_reason": reason,
+            "qty": self._position["qty"],
+            "timestamp": time.time(),
+            "entry_price": self._position["entry_price"],
+            "sl": self._position["sl"],
+            "tp": self._position["tp"],
+        })
+
+        logger.info(f"[PAPER-OM] Simulated exit | reason={reason} fill={fill_price:.2f}")
+
+        self._order_id_counter += 1
+        order_resp = {"id": f"paper_{self._order_id_counter}", "average": fill_price}
+
+        self._position = None
+        self._bracket_active = False
+        self._current_sl = None
+        self._current_tp = None
+        self._is_long = None
+
+        return order_resp
+
+    async def fetch_open_position(self) -> Optional[dict]:
+        """Return simulated open position."""
+        return self._position
+
+    async def cancel_all_orders(self) -> None:
+        """Simulate cancelling all orders."""
+        self._bracket_active = False
+        logger.info("[PAPER-OM] Simulated cancel all orders")
+
+    async def fetch_bracket_fill_price(self) -> Optional[float]:
+        """Return None (no real fills in paper mode)."""
+        return None
+
+    async def fetch_ticker(self) -> Optional[dict]:
+        """Return simulated ticker."""
+        return {"last": 0, "markPrice": 0}
+
+    def get_trade_log(self) -> list:
+        """Return the simulated trade log for review."""
+        return self._trade_log
+
+    async def close_exchange(self) -> None:
+        logger.info("[PAPER-OM] Closed (no real connection)")
+
+
+# ─── Factory function ────────────────────────────────────────────────────────────
+def create_order_manager():
+    """
+    Factory to create appropriate OrderManager based on PAPER_TRADING setting.
+    Returns OrderManager for live trading, PaperOrderManager for paper trading.
+    """
+    from config import PAPER_TRADING
+    if PAPER_TRADING:
+        logger.info("[OM-FACTORY] Creating PaperOrderManager (PAPER_TRADING=true)")
+        return PaperOrderManager()
+    else:
+        logger.info("[OM-FACTORY] Creating OrderManager (PAPER_TRADING=false)")
+        return OrderManager()

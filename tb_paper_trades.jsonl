@@ -1,0 +1,2 @@
+{"timestamp": 1785673736.995605, "event": "entry", "strategy": "trend_breakout", "signal_type": "Trend Long", "is_long": true, "entry_price": 100000, "sl": 99600, "tp": 100800, "stop_dist": 400, "atr": 500, "qty": 33, "signal_timestamp": 1234567890}
+{"timestamp": 1785673736.995605, "event": "exit", "strategy": "trend_breakout", "exit_reason": "TP", "exit_price": 100800, "real_pl": 2640.0, "trail_stage": 3, "signal_type": "Trend Long"}

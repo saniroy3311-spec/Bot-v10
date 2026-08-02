@@ -128,6 +128,21 @@ ADX_RANGE_TH = int(os.environ.get("ADX_RANGE_TH", "18"))
 ADX_TOLERANCE = float(os.environ.get("ADX_TOLERANCE", "0.0"))
 
 # ──────────────────────────────────────
+# STRATEGY SELECTOR
+# ──────────────────────────────────────
+# Default "rsi_bounce" preserves current live behavior exactly.
+# Set "trend_breakout" to enable the new isolated Trend Breakout mode.
+STRATEGY_MODE = os.environ.get("STRATEGY_MODE", "rsi_bounce").lower()
+
+# ──────────────────────────────────────
+# TREND BREAKOUT PARAMETERS (isolated from live RSI params)
+# ──────────────────────────────────────
+# Only used when STRATEGY_MODE=trend_breakout
+TB_SL_ATR_MULT   = float(os.environ.get("TB_SL_ATR_MULT",   "0.8"))
+TB_TP_RR_MULT    = float(os.environ.get("TB_TP_RR_MULT",    "2.0"))
+TB_ADX_TREND_TH  = int(os.environ.get("TB_ADX_TREND_TH",    "22"))
+
+# ──────────────────────────────────────
 # ENTRY FILTERS  (PINE-ALIGNED)
 # ──────────────────────────────────────
 # Pine: filterATRMult = 1.4, filterBodyMult = 0.5
@@ -493,7 +508,12 @@ LOG_FILE = os.environ.get("LOG_FILE", "/root/Bot-v10/journal.db")
 # Alert threshold for slippage as a percentage of ATR.
 MAX_EXIT_SLIPPAGE_ATR_PCT = float(os.environ.get("MAX_EXIT_SLIPPAGE_ATR_PCT", "25.0"))
 
-# ─────────────────────────────────────
+# ──────────────────────────────────────
+# PAPER TRADING
+# ──────────────────────────────────────
+PAPER_TRADING = os.environ.get("PAPER_TRADING", "false").lower() == "true"
+
+# ──────────────────────────────────────
 # PARITY ALIASES  (flat constants for verification — do not use in logic)
 # Derived from TRAIL_STAGES list above. Values are identical.
 # ──────────────────────────────────────
