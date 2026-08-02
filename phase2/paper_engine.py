@@ -24,9 +24,12 @@ from typing import Optional
 from indicators.engine  import compute_full_series
 from strategy.signal    import evaluate, SignalType, Signal
 from risk.calculator    import (
-    calc_levels, calc_trail_stage, get_trail_params,
-    should_trigger_be, max_sl_hit, calc_real_pl, RiskLevels,
+    calc_levels, calc_trail_stage, calc_real_pl, RiskLevels,
 )
+# get_trail_params / should_trigger_be / max_sl_hit live in strategy_logic.py,
+# NOT risk.calculator — fixing a pre-existing bad import (these were never in
+# risk/calculator.py; this mismatch predates the trend_breakout changes).
+from strategy_logic import get_trail_params, should_trigger_be, max_sl_hit
 from config import ALERT_QTY, COMMISSION_PCT, TRAIL_STAGES
 
 
