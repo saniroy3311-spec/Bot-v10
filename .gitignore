@@ -27,3 +27,5 @@ journal.db
 .env.*
 !.env.example
 *.bak.*
+clients.db
+dashboard/clients.db
