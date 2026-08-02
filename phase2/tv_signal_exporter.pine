@@ -1,0 +1,101 @@
+// ============================================================
+// TV SIGNAL EXPORTER — Shiva Sniper v6.5 Phase 2 Verification
+// PURPOSE: Export exact entry signal bars from TradingView
+//          so Python bot can compare bar-by-bar.
+//
+// HOW TO USE:
+//   1. Add to SAME chart + timeframe as your strategy
+//   2. Open "Data Window" (Shift+Alt+D) to inspect values
+//   3. Right-click chart → Download historical data
+//      This exports all plot values per bar
+//   4. Save as phase2/data/tv_signals.csv
+//   5. Run: python phase2/run_phase2.py --tv phase2/data/tv_signals.csv
+//
+// PLOTS:
+//   trend_long  = 1 on trend long entry bar, else 0
+//   trend_short = 1 on trend short entry bar, else 0
+//   range_long  = 1 on range long entry bar, else 0
+//   range_short = 1 on range short entry bar, else 0
+//   any_signal  = 1 on any entry bar
+//   entry_price = close price on signal bar (for price comparison)
+//   entry_sl    = SL level computed at entry
+//   entry_tp    = TP level computed at entry
+// ============================================================
+//@version=5
+indicator("Shiva Sniper v6.5 — Signal Exporter", overlay=false, max_bars_back=500)
+
+// ── Inputs (must match config.py exactly) ───────────────────
+emaTrendLen   = input.int(200,   "EMA Trend Length")
+emaFastLen    = input.int(50,    "EMA Fast Length")
+atrLen        = input.int(14,    "ATR Length")
+diLen         = input.int(14,    "DI Length")
+adxSmooth     = input.int(14,    "ADX Smoothing")
+adxEMA        = input.int(5,     "ADX EMA")
+rsiLen        = input.int(14,    "RSI Length")
+adxTrendTh    = input.int(22,    "ADX Trend Threshold")
+adxRangeTh    = input.int(18,    "ADX Range Threshold")
+filterATRmul  = input.float(1.4, "Filter ATR Mult")
+filterBody    = input.float(0.5, "Filter Body (ATR)")
+trendRR       = input.float(4.0, "Trend RR")
+rangeRR       = input.float(2.5, "Range RR")
+trendATRmul   = input.float(0.6, "Trend ATR SL Mult")
+rangeATRmul   = input.float(0.5, "Range ATR SL Mult")
+maxSLPoints   = input.float(500.0,"Hard Max SL (Points)")
+rsiOB         = input.int(70,    "RSI Overbought")
+rsiOS         = input.int(30,    "RSI Oversold")
+
+// ── Indicators ───────────────────────────────────────────────
+emaTrend            = ta.ema(close, emaTrendLen)
+emaFast             = ta.ema(close, emaFastLen)
+atr                 = ta.atr(atrLen)
+rsi                 = ta.rsi(close, rsiLen)
+[dip, dim, adxRaw]  = ta.dmi(diLen, adxSmooth)
+adx                 = ta.ema(adxRaw, adxEMA)
+volSMA              = ta.sma(volume, 20)
+atrSMA              = ta.sma(atr, 50)
+
+// ── Regime ───────────────────────────────────────────────────
+trendRegime = adx > adxTrendTh
+rangeRegime = adx < adxRangeTh
+
+// ── Filters ──────────────────────────────────────────────────
+filters = atr < atrSMA * filterATRmul
+          and volume > volSMA
+          and math.abs(close - open) > atr * filterBody
+
+// ── Entry conditions (exact Pine v6.5 logic) ─────────────────
+trendLong  = trendRegime and emaFast > emaTrend and dip > dim
+             and close > high[1] and filters
+trendShort = trendRegime and emaFast < emaTrend and dim > dip
+             and close < low[1] and filters
+rangeLong  = rangeRegime and rsi < rsiOS and filters
+rangeShort = rangeRegime and rsi > rsiOB and filters
+
+anySignal  = trendLong or trendShort or rangeLong or rangeShort
+
+// ── SL / TP at entry ─────────────────────────────────────────
+isTrend   = trendLong or trendShort
+atrMult   = isTrend ? trendATRmul : rangeATRmul
+rr        = isTrend ? trendRR     : rangeRR
+stopDist  = math.min(atr * atrMult, maxSLPoints)
+
+isLong    = trendLong or rangeLong
+entrySL   = anySignal ? (isLong ? close - stopDist : close + stopDist) : na
+entryTP   = anySignal ? (isLong ? close + stopDist * rr : close - stopDist * rr) : na
+
+// ── Plots ────────────────────────────────────────────────────
+plot(trendLong  ? 1 : 0, title="trend_long",  color=color.green)
+plot(trendShort ? 1 : 0, title="trend_short", color=color.red)
+plot(rangeLong  ? 1 : 0, title="range_long",  color=color.lime)
+plot(rangeShort ? 1 : 0, title="range_short", color=color.orange)
+plot(anySignal  ? 1 : 0, title="any_signal",  color=color.white)
+plot(anySignal  ? close    : na, title="entry_price", color=color.yellow)
+plot(anySignal  ? entrySL  : na, title="entry_sl",    color=color.red)
+plot(anySignal  ? entryTP  : na, title="entry_tp",    color=color.teal)
+plot(anySignal  ? atr      : na, title="entry_atr",   color=color.purple)
+
+// ── Chart shapes (visual confirmation) ───────────────────────
+plotshape(trendLong,  style=shape.triangleup,   location=location.belowbar, color=color.green,  size=size.small, title="Trend Long")
+plotshape(trendShort, style=shape.triangledown, location=location.abovebar, color=color.red,    size=size.small, title="Trend Short")
+plotshape(rangeLong,  style=shape.circle,       location=location.belowbar, color=color.lime,   size=size.small, title="Range Long")
+plotshape(rangeShort, style=shape.circle,       location=location.abovebar, color=color.orange, size=size.small, title="Range Short")

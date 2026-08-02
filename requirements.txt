@@ -1,0 +1,40 @@
+# Shiva Sniper v6.5 — Python dependencies
+# Generated for Hostinger VPS (Ubuntu 24.04, Python 3.12)
+#
+# FIX-REQ-001: aiohttp pinned to 3.10.11
+#   ccxt==4.4.57 requires aiohttp<=3.10.11
+#
+# FIX-REQ-002: pandas and numpy unpinned
+#   pandas-ta==0.4.71b0 requires pandas>=2.3.2 and numpy>=2.2.6
+#   Pinning pandas==2.2.3 conflicts. Let pip pick compatible versions.
+#
+# FIX-REQ-003: pandas-ta unpinned
+#   0.4.71b0 is a beta with aggressive dependency requirements.
+#   Using >= to allow pip to find a working combination.
+
+# Exchange connectivity
+ccxt==4.4.57
+
+# WebSocket candle feed
+websockets>=12.0
+
+# Async HTTP — dashboard server + Telegram
+# MUST stay <=3.10.11 while ccxt==4.4.57 is pinned
+aiohttp==3.10.11
+
+# Data / indicators — let pip resolve compatible versions
+pandas>=2.3.2
+pandas-ta>=0.3.14b
+numpy>=2.2.6
+
+# PostgreSQL driver (optional — only needed if DATABASE_URL is set)
+psycopg2-binary==2.9.10
+
+# Environment variables from .env file
+python-dotenv==1.0.1
+
+# ── Client Dashboard (dashboard/) — FastAPI app on port 8080 ────────────────
+# Compatible with aiohttp<=3.10.11 (httpx has no conflict)
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+httpx>=0.27.0
