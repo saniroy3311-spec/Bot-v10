@@ -354,6 +354,14 @@ class ShivaSniperBot:
         # while Pine had already auto-reversed the position on that bar.
         _candidate_sig = evaluate(snap, has_position=False)
 
+        # SHADOW-LOG (spec §6C): record this bar's decision for paper-vs-backtest
+        # divergence tracking. No-op unless SHADOW_LOG_ENABLED=true; never raises.
+        try:
+            from infra.shadow_logger import log_bar as _shadow_log_bar
+            _shadow_log_bar(snap, _candidate_sig, self._in_position)
+        except Exception:
+            pass
+
         # ── 2. Trail update for open position ─────────────────────────────────
         if self._in_position:
             if self._trail_mon._running:
@@ -602,6 +610,7 @@ class ShivaSniperBot:
             self._in_position  = True
             self._risk         = risk
             self._signal_type  = sig.signal_type.value
+            self._entry_ts     = int(snap.timestamp)   # SHADOW-LOG: per-trade key
             
             # current_sl = risk.sl  (= signal_close ± ATR×atrMult, Pine-exact)
             # DO NOT use entry+trail_pts here — that is the activation distance,
@@ -752,6 +761,26 @@ class ShivaSniperBot:
                 self._journal.close_open_trade()
         except Exception as e:
             logger.warning(f"[JOURNAL] log_trade failed: {e}")
+
+        # SHADOW-LOG (spec §6C): record the exit + realized P/L for per-trade
+        # paper-vs-backtest comparison. No-op unless SHADOW_LOG_ENABLED=true;
+        # never raises.
+        try:
+            from infra.shadow_logger import log_event as _shadow_log_event
+            _shadow_log_event(
+                "exit",
+                entry_ts    = int(getattr(self, "_entry_ts", 0)),
+                signal_type = self._signal_type,
+                is_long     = (risk.is_long if risk else None),
+                entry_price = round(float(risk.entry_price), 2) if risk else 0.0,
+                exit_price  = round(float(exit_price), 2),
+                sl          = round(float(risk.sl), 2) if risk else 0.0,
+                tp          = round(float(risk.tp), 2) if risk else 0.0,
+                real_pl     = round(float(pl), 6),
+                exit_reason = reason,
+            )
+        except Exception:
+            pass
 
         try:
             await self._telegram.notify_exit(
