@@ -214,3 +214,36 @@ def calc_pl_breakdown(
     comm   = entry_price * qty * COMMISSION_PCT
     net_pl = raw_pl - comm
     return {"raw_pl": raw_pl, "commission": comm, "net_pl": net_pl}
+
+
+# ─── Trail stage (MISSING-FUNCTION FIX for phase2/paper_engine.py) ────────────
+#
+# paper_engine.py imports calc_trail_stage(profit_dist, atr) from this module,
+# but it was never defined here — only the live trail engine
+# (monitor/trail_loop.py::_upgrade_stage) implements the equivalent logic, as a
+# private function that also takes a current_stage ratchet argument.
+#
+# paper_engine.py does its OWN ratchet after calling this
+# (`if new_stage > state.trail_stage: state.trail_stage = new_stage`), so this
+# version intentionally omits the current_stage argument and always computes
+# fresh from profit_dist/atr — mirroring _upgrade_stage(0, profit_dist, atr).
+#
+# Uses the same TRAIL_STAGES config list the live engine reads, so backtest
+# and live trail-stage thresholds can never drift apart.
+from config import TRAIL_STAGES  # noqa: E402  (kept local to this section)
+
+
+def calc_trail_stage(profit_dist: float, atr: float) -> int:
+    """
+    Highest trail stage unlocked by profit_dist at the given ATR.
+    Pine parity: profitDist >= atr * triggerMult (checked at bar close).
+    Mirrors monitor/trail_loop.py::_upgrade_stage exactly (ratchet-free —
+    the caller in paper_engine.py applies the "never downgrade" ratchet).
+    """
+    new_stage = 0
+    for i in range(len(TRAIL_STAGES) - 1, -1, -1):
+        trigger_mult, _, _ = TRAIL_STAGES[i]
+        if profit_dist >= atr * trigger_mult:
+            new_stage = i + 1
+            break
+    return new_stage
