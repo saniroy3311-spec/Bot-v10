@@ -168,6 +168,36 @@ MAX_SL_MULT    = float(os.environ.get("MAX_SL_MULT",    "1.5"))
 MAX_SL_POINTS  = float(os.environ.get("MAX_SL_POINTS",  "500.0"))
 
 # ──────────────────────────────────────
+# ENTRY STRATEGY SELECTOR  (Trend_Breakout_Strategy_Spec.pdf §6B)
+# ──────────────────────────────────────
+# "rsi_bounce"     (DEFAULT) — existing live logic: trend breakout in trend
+#                   regime + RSI reversal trades in range regime. Unchanged.
+# "trend_breakout" — trend-breakout only (range/RSI trades suppressed) AND
+#                   SL/TP shift to the validated 0.8×ATR / 2.0×R.
+#
+# strategy/signal.py reads this to pick evaluate(). The SL/TP shift is applied
+# HERE by rebinding TREND_ATR_MULT / TREND_RR below, so risk/calculator.py
+# (initial levels) and monitor/trail_loop.py (trailing) both use the same
+# validated numbers with no edits to those files.
+#
+# Rollback: unset ENTRY_STRATEGY (or set =rsi_bounce). Nothing else changes.
+ENTRY_STRATEGY = os.environ.get("ENTRY_STRATEGY", "rsi_bounce").strip().lower()
+
+# Validated Trend-Breakout SL/TP (spec §3): SL=0.8×ATR, TP=2.0×SL_dist.
+# Overrideable in .env for tuning, but default to the validated config.
+TB_SL_ATR_MULT = float(os.environ.get("TB_SL_ATR_MULT", "0.8"))
+TB_TP_RR_MULT  = float(os.environ.get("TB_TP_RR_MULT",  "2.0"))
+
+if ENTRY_STRATEGY == "trend_breakout":
+    # Rebind the shared trend-regime multipliers. Because every trade this
+    # strategy takes is a trend trade (range trades are suppressed in
+    # strategy/trend_breakout.py), this is the correct, consistent source of
+    # truth for both the initial bracket and the trail. rsi_bounce mode leaves
+    # these at their live 0.6 / 4.0 values untouched.
+    TREND_ATR_MULT = TB_SL_ATR_MULT   # 0.6 → 0.8
+    TREND_RR       = TB_TP_RR_MULT    # 4.0 → 2.0
+
+# ──────────────────────────────────────
 # EMERGENCY BRACKET WIDENING  (FIX-BRACKET-INTRABAR)
 # ──────────────────────────────────────
 # The exchange-side bracket SL is a RESTING stop order on Delta. It fires on
